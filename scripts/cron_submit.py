@@ -115,7 +115,10 @@ def main() -> None:
         return
 
     _log(f"FIRING {window}-min window for {head} (kickoff in {mins:.1f} min)")
-    af, oa = APIFootball(), OddsAPI()
+    # Each scheduled window must observe the market again. Provider instances
+    # still deduplicate lookups within this run, but bypass older disk entries.
+    af = APIFootball(refresh_odds=True)
+    oa = OddsAPI(refresh_odds=True)
     markets = sp.markets(lobby["id"], sp_match["id"])
     result = run_match(sp_match, markets, af, oa, allow_external=False)
 

@@ -15,8 +15,9 @@ from .teams import same_team, split_match_name
 
 
 class APIFootball:
-    def __init__(self, key: str | None = None):
+    def __init__(self, key: str | None = None, *, refresh_odds: bool = False):
         self.key = key or config.APIFOOTBALL_KEY
+        self.refresh_odds = refresh_odds
         self.s = requests.Session()
         self.s.headers["x-apisports-key"] = self.key
         self._fixtures_cache: list[dict] | None = None
@@ -75,6 +76,7 @@ class APIFootball:
                 return resp[0]["bookmakers"] if resp else []
             self._odds_cache[fixture_id] = cache.get_or_fetch(
                 "af_odds", str(fixture_id), fetch, ttl=6 * 3600,
+                refresh=self.refresh_odds,
             )
         return self._odds_cache[fixture_id]
 

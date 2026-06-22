@@ -30,9 +30,11 @@ SINGLE_SIDE_DEVIG = 0.92
 
 
 class OddsAPI:
-    def __init__(self, key: str | None = None):
+    def __init__(self, key: str | None = None, *, refresh_odds: bool = False):
         self.key = key or config.ODDS_API_KEY
+        self.refresh_odds = refresh_odds
         self._events: list[dict] | None = None
+        self._odds_cache: dict[tuple[str, str], list[dict]] = {}
 
     def _get(self, path: str, **params) -> Any:
         params["apiKey"] = self.key
@@ -67,6 +69,9 @@ class OddsAPI:
             return []
         mkey = ",".join(sorted(set(markets)))
         key = f"{event_id}|{mkey}|{config.ODDS_REGIONS}"
+        memory_key = (event_id, mkey)
+        if memory_key in self._odds_cache:
+            return self._odds_cache[memory_key]
 
         def fetch():
             try:
@@ -78,7 +83,11 @@ class OddsAPI:
             except requests.HTTPError:
                 return []  # some market bundles 422 if none available
 
-        return cache.get_or_fetch("oddsapi_odds", key, fetch)
+        books = cache.get_or_fetch(
+            "oddsapi_odds", key, fetch, refresh=self.refresh_odds,
+        )
+        self._odds_cache[memory_key] = books
+        return books
 
 
 # --- de-vig helpers (operate on Odds API outcome dicts) ---

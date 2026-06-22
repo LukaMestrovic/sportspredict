@@ -29,10 +29,17 @@ def get_or_fetch(
     key: str,
     fetch: Callable[[], Any],
     ttl: int = DEFAULT_TTL,
+    *,
+    refresh: bool = False,
 ) -> Any:
-    """Return cached value for `key`, else call `fetch()` and store it."""
+    """Return cached value for `key`, or fetch and store a current value.
+
+    ``refresh`` bypasses an existing entry but still replaces it, so later
+    callers reuse the newly fetched value rather than triggering another call.
+    """
     p = _path(namespace, key)
-    if p.exists() and (ttl <= 0 or time.time() - p.stat().st_mtime < ttl):
+    if (not refresh and p.exists()
+            and (ttl <= 0 or time.time() - p.stat().st_mtime < ttl)):
         return json.loads(p.read_text())["value"]
     value = fetch()
     p.parent.mkdir(parents=True, exist_ok=True)
