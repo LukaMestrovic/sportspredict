@@ -86,22 +86,23 @@ python run.py predict --submit
 python validate.py --days 7
 ```
 
-Runs the full pipeline against every **settled** WC2026 fixture from the last 7
-days: reconstructs the SportPredict-style questions, prices them from live odds,
-settles each from the final score + match statistics, and reports the Brier
-score. Latest run:
+Runs the production API-Football and empirical pricing path against every
+**settled** WC2026 fixture from the last 7 days: reconstructs SportPredict-style
+questions, settles them from the final score and match statistics, and reports
+the Brier score. The paid Odds API is not queried and web fallback is forcibly
+disabled to prevent result leakage. Latest run:
 
 ```
-Fixtures:           28
-Predictions priced: 188
-Bot mean Brier:     0.2234   (lower is better)
+Fixtures:           27
+Predictions priced: 216
+Bot mean Brier:     0.2090   (lower is better)
 Coin-flip Brier:    0.2500   (always 50%)
-Directional acc.:   62%
+Directional acc.:   63%
 ```
 
-> API-Football purges pre-match odds a few days after kickoff, so fixtures older
-> than ~5 days price fewer markets; the pipeline still runs and reports them as
-> `odds unavailable`.
+> API-Football purges pre-match odds a few days after kickoff, so fresh
+> backtests on older fixtures may price fewer markets. Cached pre-match odds
+> remain usable.
 
 ## Caching & quota
 
@@ -113,7 +114,7 @@ The Odds API is **paid and metered**; API-Football is flat-rate but rate-limited
   the bot requests only the markets a match actually needs and reuses the cache
   across questions and re-runs. Clear with `python -c "from bot.cache import clear; clear()"`.
 - **API-Football** — fixtures (1 h) and per-fixture odds (6 h) cached, with
-  rate-limit backoff.
+  rate-limit backoff; final statistics used by backtests are cached permanently.
 
 `ODDS_REGIONS` (default `eu,uk`) controls breadth vs cost; `EXTERNAL_FALLBACK=0`
 disables the paid web layer entirely.
@@ -235,7 +236,7 @@ bot/
   cache.py         persistent on-disk cache (quota efficiency)
   sportspredict.py SportPredict REST client (/api/v1)
   web.py           SportPredict web API (/api) — crowd stats for settled markets
-  apifootball.py   API-Football client + cached fixtures/odds
+  apifootball.py   API-Football client + cached fixtures/odds/statistics
   oddsapi.py       The Odds API client (fallback) + de-vig
   parser.py        LLM question → structured intent
   matcher.py       intent → API-Football / Odds API market spec (catalog)
@@ -246,6 +247,10 @@ bot/
   pipeline.py      orchestration: AF → Odds API → derive/empirical → external
 run.py             CLI: predict / submit
 validate.py        settled-match backtest (vs realized outcomes)
+scripts/
+  predict_log.py   local JSON/Markdown prediction snapshots
+  cron_submit.py   scheduled 30- and 5-minute submissions
+  run.sh           cron-safe virtualenv wrapper
 notebooks/
   bot_vs_crowd.ipynb   bot vs crowd-mean post-mortem on settled markets
 ```

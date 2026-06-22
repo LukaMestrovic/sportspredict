@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Price the next N open matches, log every question+prediction to disk.
+"""Price the next N open matches and log every question and prediction.
 
-Web layer stays on (do NOT set EXTERNAL_FALLBACK=0). Does not submit by itself;
-pass --submit to send to SportPredict after review.
+Uses the configured pricing cascade. Does not submit by itself; pass --submit
+to send the logged predictions to SportPredict after review.
 """
 from __future__ import annotations
 

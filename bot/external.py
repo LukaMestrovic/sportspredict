@@ -4,9 +4,9 @@ When no odds source and no derivation can price a question, fall back to a
 web-grounded LLM estimate: the model searches prediction markets, team news,
 stats and previews, then returns a calibrated YES probability.
 
-**Cost & quota.** This uses OpenAI web search (~$0.03–0.04 per question — far
-more than the nano parser), so every result is cached to disk (keyed by match +
-question); a question is searched at most once. Disable with env
+**Cost & quota.** This uses OpenAI web search (~$0.03–0.04 per question), so
+every result is cached to disk (keyed by match + question); a question is
+searched at most once. Disable with env
 `EXTERNAL_FALLBACK=0`. See README "Cost".
 """
 from __future__ import annotations
