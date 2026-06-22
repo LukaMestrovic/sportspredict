@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from .parser import PROMPT_VERSION
 
 
 LEDGER_PATH = config.ROOT / "logs" / "prediction_ledger.sqlite3"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _now() -> str:
@@ -68,6 +69,8 @@ def connect(path: Path = LEDGER_PATH) -> sqlite3.Connection:
             settled_at TEXT,
             result_id TEXT,
             result_created_at TEXT,
+            result_probability_int INTEGER,
+            result_brier_score REAL,
             PRIMARY KEY (run_id, market_id)
         );
 
@@ -76,6 +79,15 @@ def connect(path: Path = LEDGER_PATH) -> sqlite3.Connection:
         CREATE INDEX IF NOT EXISTS questions_unsettled
             ON questions(outcome) WHERE outcome IS NULL;
     """)
+    columns = {
+        row[1] for row in db.execute("PRAGMA table_info(questions)").fetchall()
+    }
+    for name, declaration in (
+        ("result_probability_int", "INTEGER"),
+        ("result_brier_score", "REAL"),
+    ):
+        if name not in columns:
+            db.execute(f"ALTER TABLE questions ADD COLUMN {name} {declaration}")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     return db
 
@@ -99,7 +111,7 @@ def record_run(
     )
     predictions = {p.market_id: p for p in result.predictions}
 
-    with connect(path) as db:
+    with closing(connect(path)) as db, db:
         db.execute(
             """INSERT INTO runs (
                 id, recorded_at, event_id, lobby_id, match_id, fixture_id,
@@ -143,7 +155,7 @@ def record_run(
 def mark_submitted(
     run_id: str, *, path: Path = LEDGER_PATH, submitted_at: str | None = None
 ) -> None:
-    with connect(path) as db:
+    with closing(connect(path)) as db, db:
         db.execute(
             "UPDATE runs SET status = 'submitted', submitted_at = ?, error = NULL "
             "WHERE id = ?",
@@ -152,8 +164,104 @@ def mark_submitted(
 
 
 def mark_failed(run_id: str, error: str, *, path: Path = LEDGER_PATH) -> None:
-    with connect(path) as db:
+    with closing(connect(path)) as db, db:
         db.execute(
             "UPDATE runs SET status = 'failed', error = ? WHERE id = ?",
             (error, run_id),
         )
+
+
+def unsettled_match_ids(
+    lobby_id: str, *, path: Path = LEDGER_PATH
+) -> list[str]:
+    with closing(connect(path)) as db, db:
+        rows = db.execute(
+            """SELECT DISTINCT r.match_id
+               FROM runs r JOIN questions q ON q.run_id = r.id
+               WHERE r.lobby_id = ? AND r.status = 'submitted'
+                 AND q.probability_int IS NOT NULL AND q.outcome IS NULL
+               ORDER BY r.kickoff""",
+            (lobby_id,),
+        ).fetchall()
+    return [row["match_id"] for row in rows]
+
+
+def settle_results(
+    outcomes: dict[str, int],
+    results: list[dict],
+    *,
+    path: Path = LEDGER_PATH,
+    settled_at: str | None = None,
+) -> dict[str, int]:
+    """Settle submitted ledger rows by stable SportPredict market ID.
+
+    ``outcomes`` comes from the settled web API's explicit ``current_value``;
+    the authenticated results payload supplies the official final submission.
+    """
+    settled_at = settled_at or _now()
+    result_by_market = {
+        row["market_id"]: row for row in results
+        if row.get("market_status") == "settled"
+    }
+    updated = 0
+    with closing(connect(path)) as db, db:
+        for market_id, outcome in outcomes.items():
+            if outcome not in (0, 1):
+                continue
+            result = result_by_market.get(market_id, {})
+            rows = db.execute(
+                """SELECT q.run_id, q.probability_int
+                   FROM questions q JOIN runs r ON r.id = q.run_id
+                   WHERE q.market_id = ? AND q.outcome IS NULL
+                     AND q.probability_int IS NOT NULL
+                     AND r.status = 'submitted'""",
+                (market_id,),
+            ).fetchall()
+            for row in rows:
+                probability = row["probability_int"] / 100.0
+                brier = (probability - outcome) ** 2
+                db.execute(
+                    """UPDATE questions SET
+                        outcome = ?, brier_score = ?, settled_at = ?,
+                        result_id = ?, result_created_at = ?,
+                        result_probability_int = ?, result_brier_score = ?
+                       WHERE run_id = ? AND market_id = ?""",
+                    (
+                        outcome, brier, settled_at, result.get("id"),
+                        result.get("created_date"),
+                        result.get("probability_submitted"),
+                        result.get("brier_score"), row["run_id"], market_id,
+                    ),
+                )
+                updated += 1
+        remaining = db.execute(
+            """SELECT COUNT(*) FROM questions q
+               JOIN runs r ON r.id = q.run_id
+               WHERE r.status = 'submitted' AND q.probability_int IS NOT NULL
+                 AND q.outcome IS NULL"""
+        ).fetchone()[0]
+    return {"settled_predictions": updated, "remaining_predictions": remaining}
+
+
+def performance(*, path: Path = LEDGER_PATH) -> list[dict]:
+    """Return overall and per-window/source Brier summaries."""
+    queries = (
+        ("overall", "'all'", "'all'"),
+        ("window", "CAST(r.window_min AS TEXT)", "'all'"),
+        ("source", "'all'", "q.source"),
+    )
+    summaries: list[dict] = []
+    with closing(connect(path)) as db, db:
+        for group, window_expr, source_expr in queries:
+            rows = db.execute(
+                f"""SELECT {window_expr} AS window_min,
+                            {source_expr} AS source,
+                            COUNT(*) AS predictions,
+                            AVG(q.brier_score) AS mean_brier
+                     FROM questions q JOIN runs r ON r.id = q.run_id
+                     WHERE q.outcome IS NOT NULL
+                     GROUP BY {window_expr}, {source_expr}
+                     ORDER BY window_min, source"""
+            ).fetchall()
+            summaries.extend({"group": group, **dict(row)} for row in rows)
+    return summaries

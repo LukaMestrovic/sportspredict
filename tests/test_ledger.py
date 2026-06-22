@@ -2,6 +2,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from bot import ledger
@@ -51,19 +52,63 @@ class LedgerRecordingTests(unittest.TestCase):
             "run-2", path=self.path,
             submitted_at="2026-06-22T16:55:00+00:00",
         )
-        with ledger.connect(self.path) as db:
+        with closing(ledger.connect(self.path)) as db:
             run = db.execute("SELECT * FROM runs WHERE id = 'run-2'").fetchone()
         self.assertEqual(run["status"], "submitted")
         self.assertEqual(run["submitted_at"], "2026-06-22T16:55:00+00:00")
 
+    def test_settles_both_windows_from_explicit_real_outcome(self):
+        for run_id, window, result in (
+            ("run-30", 30, _result(0.30, 30)),
+            ("run-5", 5, _result(0.40, 40)),
+        ):
+            ledger.record_run(
+                "event", "lobby", result, window, window - 0.5,
+                path=self.path, run_id=run_id,
+            )
+            ledger.mark_submitted(run_id, path=self.path)
 
-def _result():
+        official = [{
+            "id": "result", "market_id": "a", "market_status": "settled",
+            "probability_submitted": 40, "brier_score": 0.36,
+            "created_date": "2026-06-22T16:55:00Z",
+        }]
+        stats = ledger.settle_results(
+            {"a": 1}, official, path=self.path,
+            settled_at="2026-06-22T20:00:00Z",
+        )
+        again = ledger.settle_results({"a": 1}, official, path=self.path)
+
+        with closing(ledger.connect(self.path)) as db:
+            rows = db.execute(
+                "SELECT * FROM questions WHERE market_id = 'a' ORDER BY run_id"
+            ).fetchall()
+            skipped = db.execute(
+                "SELECT outcome FROM questions WHERE market_id = 'b'"
+            ).fetchall()
+        self.assertEqual(stats, {
+            "settled_predictions": 2, "remaining_predictions": 0,
+        })
+        self.assertEqual(again["settled_predictions"], 0)
+        self.assertEqual([row["outcome"] for row in rows], [1, 1])
+        self.assertAlmostEqual(rows[0]["brier_score"], 0.49)
+        self.assertAlmostEqual(rows[1]["brier_score"], 0.36)
+        self.assertEqual(rows[1]["result_probability_int"], 40)
+        self.assertTrue(all(row["outcome"] is None for row in skipped))
+
+        summary = ledger.performance(path=self.path)
+        overall = next(row for row in summary if row["group"] == "overall")
+        self.assertEqual(overall["predictions"], 2)
+        self.assertAlmostEqual(overall["mean_brier"], 0.425)
+
+
+def _result(probability=0.634, probability_int=63):
     markets = [
         {"id": "a", "question": "Will Home win the match?"},
         {"id": "b", "question": "Will something unusual happen?"},
     ]
     prediction = Prediction(
-        "a", markets[0]["question"], 0.634, 63, 4, "Home win",
+        "a", markets[0]["question"], probability, probability_int, 4, "Home win",
     )
     return MatchResult(
         sp_match={
