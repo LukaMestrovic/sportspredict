@@ -104,6 +104,36 @@ Directional acc.:   63%
 > backtests on older fixtures may price fewer markets. Cached pre-match odds
 > remain usable.
 
+### Prediction ledger
+
+Every submission is recorded in `logs/prediction_ledger.sqlite3` before it is
+sent. The local SQLite ledger keeps one row per real question per submission
+window, including:
+
+- event, lobby, match, fixture, kickoff, observation and submission times;
+- parser/model version, structured intent and attempted provider market spec;
+- raw API-Football and Odds API snapshots observed for the run;
+- each bookmaker's de-vigged probability, final probability, source and label;
+- skipped questions and their reasons; and
+- eventual binary outcome and Brier score.
+
+Scheduled runs are tagged `30` or `5`; manual submissions use `-1`. A failed
+API submission remains in the ledger with status `failed` and does not create a
+cron marker.
+
+Settle completed real questions and print overall, per-window and per-source
+performance:
+
+```bash
+python -m scripts.settle_ledger
+```
+
+Settlement is idempotent. It joins by SportPredict `market_id`, reads the
+explicit `current_value` outcome from the settled web API, and stores the
+authenticated result metadata. This avoids trying to infer an outcome from a
+Brier score, which is ambiguous for a 50% prediction. The ledger is git-ignored
+runtime data and should be retained across deployments.
+
 ## Caching & quota
 
 The Odds API is **paid and metered**; API-Football is flat-rate but rate-limited
@@ -239,6 +269,7 @@ bot — install with `uv pip install pandas matplotlib jupyter nbconvert`.
 bot/
   config.py        keys + constants
   cache.py         persistent on-disk cache (quota efficiency)
+  ledger.py        SQLite prediction traces + real-result settlement
   sportspredict.py SportPredict REST client (/api/v1)
   web.py           SportPredict web API (/api) — crowd stats for settled markets
   apifootball.py   API-Football client + cached fixtures/odds/statistics
@@ -255,6 +286,7 @@ validate.py        settled-match backtest (vs realized outcomes)
 scripts/
   predict_log.py   local JSON/Markdown prediction snapshots
   cron_submit.py   scheduled 30- and 5-minute submissions
+  settle_ledger.py settle real questions and report live Brier scores
   run.sh           cron-safe virtualenv wrapper
 notebooks/
   bot_vs_crowd.ipynb   bot vs crowd-mean post-mortem on settled markets

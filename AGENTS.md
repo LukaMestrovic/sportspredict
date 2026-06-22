@@ -23,6 +23,11 @@ git-ignored; keep it that way).
   Compounds are composed from **separately priced components**, not from
   marginal lines of one book.
 - Submit probabilities as integers **1–99**.
+- Every submission path must use `pipeline.submit_with_ledger`; do not call the
+  raw batch submitter from a user-facing or scheduled workflow. The SQLite
+  ledger records real questions, raw odds, pricing traces and both submission
+  windows. Settle it only through explicit SportPredict `current_value` outcomes
+  (`python -m scripts.settle_ledger`), never by web search or score inference.
 - **Determinism is required.** Every LLM call (parser + compound splitter) goes
   through `parser.chat_json`, which caches on `(PROMPT_VERSION, model, messages)`
   so the same question always maps to the same intent/source/probability across
