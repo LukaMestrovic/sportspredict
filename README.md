@@ -8,11 +8,11 @@ prices each through a **layered fallback cascade**, so almost nothing is skipped
 
 ## Architecture
 
-The **Parser** (LLM) turns each question into a structured intent; the intent is
-then priced by the first source in the cascade that can cover it:
+The **Parser** turns each question into a structured intent; the intent is then
+priced by the first source in the cascade that can cover it:
 
 ```
-                    ┌─ Parser (LLM, gpt-4.1, cached) ─ structured intent
+                    ┌─ Templates, then cached LLM fallback ─ structured intent
    question ───────▶│
                     └─ price via cascade ▼
    ┌────────────────────────────────────────────────────────────────┐
@@ -23,13 +23,13 @@ then priced by the first source in the cascade that can cover it:
    └────────────────────────────────────────────────────────────────┘
 ```
 
-1. **Parser** ([bot/parser.py](bot/parser.py)) — `gpt-4.1` reads each question
-   and emits an intent (market, subject team/player, comparator, threshold,
-   period). All of a match's questions go in **one batched call**. The call is
-   **cached on `(model, prompt version, questions)`**, so a question maps to the
-   same intent — and therefore the same source and probability — on every re-run
-   (re-runs cost $0). Unambiguous period/market phrasings are resolved by
-   deterministic rules in `_repair_intent`, not left to the model.
+1. **Parser** ([bot/parser.py](bot/parser.py)) — recurring competition templates
+   are parsed deterministically. Only unfamiliar wording is sent to `gpt-4.1`,
+   in at most **one batched call per match**. That fallback is cached on
+   `(model, prompt version, questions)`, so a question maps to the same intent —
+   and therefore the same source and probability — on every re-run. Known
+   compound forms are also split locally; novel compounds use the same cached
+   LLM path.
 2. **Matcher** ([bot/matcher.py](bot/matcher.py)) — maps an intent to a specific
    provider market (API-Football bet ID or Odds API key) from
    [soccer_live_odds_market_catalog.pdf](soccer_live_odds_market_catalog.pdf),
@@ -95,7 +95,7 @@ disabled to prevent result leakage. Latest run:
 ```
 Fixtures:           27
 Predictions priced: 216
-Bot mean Brier:     0.2090   (lower is better)
+Bot mean Brier:     0.2088   (lower is better)
 Coin-flip Brier:    0.2500   (always 50%)
 Directional acc.:   63%
 ```
@@ -116,6 +116,11 @@ The Odds API is **paid and metered**; API-Football is flat-rate but rate-limited
 - **API-Football** — fixtures (1 h) and per-fixture odds (6 h) cached, with
   rate-limit backoff; final statistics used by backtests are cached permanently.
 
+The autonomous submitter deliberately bypasses the odds TTL once at both the
+30-minute and 5-minute windows. Each refresh replaces the disk entry and is
+deduplicated in memory within that run, so the final submission sees late market
+movement and newly opened props without repeated identical provider calls.
+
 `ODDS_REGIONS` (default `eu,uk`) controls breadth vs cost; `EXTERNAL_FALLBACK=0`
 disables the paid web layer entirely.
 
@@ -125,19 +130,19 @@ SportPredict is free; API-Football is a flat-rate subscription. Metered costs:
 
 | Source | Unit cost | Per match (first run) | Whole tournament* |
 |---|---|---|---|
-| Parser `gpt-4.1` (cached) | $2.00/$8.00 per 1M tok | ~$0.004 (1 batched call) | ~$0.46 |
-| Compound splitter `gpt-4.1` (cached) | same | ~$0.001 (few compounds) | ~$0.10 |
-| Odds API | flat sub, billed `markets×regions` | cached after first fetch | within plan |
+| Parser `gpt-4.1` (cached fallback) | $2.00/$8.00 per 1M tok | $0 known; ≤$0.004 unfamiliar | ≤$0.46 |
+| Compound splitter `gpt-4.1` (cached fallback) | same | $0 known; ≤$0.001 unfamiliar | ≤$0.10 |
+| Odds API | flat sub, billed `markets×regions` | normal cache; refreshed at 30/5 min | within plan |
 | External web search `gpt-4.1-mini` | ~$0.035 / question | **off by default** | **$0** (opt-in) |
 
-*104 matches. **Every LLM call and odds response is cached**, so the figures
-above are one-time; re-runs and re-prices add ~$0. Caching the parser on
-`(model, prompt, questions)` also makes question→source mapping deterministic
-across runs. The web layer is **off by default** (`EXTERNAL_FALLBACK=0`) — it is
-non-deterministic and the empirical layer covers its cases from bookmaker odds at
-prediction time. Total tournament LLM spend is well under **$1**; enable the web
-layer (`EXTERNAL_FALLBACK=1`) only if you accept ~$15–20 and a non-deterministic
-last resort.
+*104 matches. **Every LLM call is cached**, and ordinary odds re-runs reuse the
+disk cache; only the two scheduled submission windows deliberately refresh
+odds. Caching the parser on `(model, prompt, questions)` also makes unfamiliar
+question→source mapping deterministic across runs. The web layer is **off by
+default** (`EXTERNAL_FALLBACK=0`) — it is non-deterministic and the empirical
+layer covers its cases from bookmaker odds at prediction time. Total tournament
+LLM spend is well under **$1**; enable the web layer (`EXTERNAL_FALLBACK=1`) only
+if you accept ~$15–20 and a non-deterministic last resort.
 
 ## Supported markets
 
@@ -238,7 +243,7 @@ bot/
   web.py           SportPredict web API (/api) — crowd stats for settled markets
   apifootball.py   API-Football client + cached fixtures/odds/statistics
   oddsapi.py       The Odds API client (fallback) + de-vig
-  parser.py        LLM question → structured intent
+  parser.py        deterministic templates + cached LLM fallback → intent
   matcher.py       intent → API-Football / Odds API market spec (catalog)
   predictor.py     API-Football odds → de-vigged probability
   pricing.py       price one intent through the AF → Odds API cascade

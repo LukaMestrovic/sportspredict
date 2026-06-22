@@ -28,10 +28,11 @@ git-ignored; keep it that way).
   so the same question always maps to the same intent/source/probability across
   runs. Never add an uncached LLM call. Bump `PROMPT_VERSION` when you change
   parser semantics.
-- Parser uses `PARSER_MODEL` (default `gpt-4.1`); **one batched call per match**.
-  Because the call is cached, the model is a one-time cost — favour reliability
-  over the cheapest model. Document any per-match cost change in the README
-  "Cost" table.
+- Recurring question and compound templates are parsed deterministically. The
+  parser uses `PARSER_MODEL` (default `gpt-4.1`) for unfamiliar wording only,
+  with **at most one batched fallback call per match**. Because the call is
+  cached, the model is a one-time cost — favour reliability over the cheapest
+  model. Document any per-match cost change in the README "Cost" table.
 
 ## Quota & caching (important)
 - **The Odds API is paid/metered** and **API-Football is rate-limited (450/min)**.
@@ -39,6 +40,9 @@ git-ignored; keep it that way).
   `cache/` (git-ignored). Never add an uncached odds fetch in a hot loop.
 - The Odds API bills `markets × regions`: request only needed markets; the cache
   key is per `(event, market, regions)`. `ODDS_REGIONS` tunes breadth vs cost.
+- Scheduled 30- and 5-minute submissions intentionally refresh odds once per
+  window. Keep refreshes deduplicated within the run so identical Odds API
+  market requests never incur repeated credits.
 - The external web layer (`gpt-4.1-mini` + web search, ~$0.035/question) is the
   main spend. It is cached per question and gated by `EXTERNAL_FALLBACK` (set
   `=0` to disable). Don't run it on settled matches in backtests — a web search

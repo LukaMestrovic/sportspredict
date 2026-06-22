@@ -10,9 +10,10 @@ match and submits once per window (30, then 5) using marker files so it never
 re-submits on the intervening ticks. A file lock prevents overlapping ticks
 (a fire calls the LLM/odds and can outlast one minute) from double-submitting.
 
-Determinism is preserved: the parser is cached, the web layer stays off
-(EXTERNAL_FALLBACK=0). Submitting close to kickoff just gives the sharpest odds
-and lets the empirical layer price the deep markets that go live near kickoff.
+Determinism is preserved: recurring templates are local, LLM fallbacks are
+cached, and the web layer stays off (EXTERNAL_FALLBACK=0). Each window forces
+one fresh provider observation so the 5-minute run sees late movement and deep
+markets that were unavailable at 30 minutes.
 
 Manual checks:
   python -m scripts.cron_submit --dry-run   # decide + price, never submit/mark
