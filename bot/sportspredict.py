@@ -32,6 +32,11 @@ class SportPredict:
         r.raise_for_status()
         return r.json()
 
+    def _patch(self, path: str, body: dict) -> Any:
+        r = self.s.patch(f"{config.SP_BASE}{path}", json=body, timeout=30)
+        r.raise_for_status()
+        return r.json()
+
     # --- discovery ---
     def event(self) -> dict:
         events = self._get("/events", limit=20)
@@ -58,8 +63,24 @@ class SportPredict:
 
     # --- predictions ---
     def submit_batch(self, predictions: list[dict]) -> dict:
-        """predictions: [{market_id, lobby_id, probability(1-99 int)}]"""
+        """Create up to 50 new predictions: [{market_id, lobby_id, probability}].
+
+        The API allows only ONE prediction per market: re-POSTing an existing
+        market is rejected per-item ("already exists") in the returned
+        {succeeded, failed, results} body — it does not raise. To CHANGE an
+        existing prediction use ``update_prediction`` (see ``upsert``).
+        """
         return self._post("/predictions/batch", {"predictions": predictions})
+
+    def list_predictions(self, lobby_id: str) -> list[dict]:
+        """Every prediction this account holds in the lobby (open/closed/settled),
+        each with its stable prediction ``id`` and ``market_id``."""
+        return self._get("/predictions", lobby_id=lobby_id)
+
+    def update_prediction(self, prediction_id: str, probability: int) -> dict:
+        """PATCH an existing prediction's probability (1-99 int) by its id."""
+        return self._patch(f"/predictions/{prediction_id}",
+                            {"probability": int(probability)})
 
     def results(self, lobby_id: str) -> list[dict]:
         """Settled predictions (closed + resolved markets) with brier scores."""

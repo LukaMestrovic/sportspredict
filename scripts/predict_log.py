@@ -100,10 +100,13 @@ def main() -> None:
     print("log:", md_path, "|", json_path)
 
     if args.submit:
-        batch, _run_ids = submit_with_ledger(
+        outcome, _run_ids = submit_with_ledger(
             sp, event["id"], lobby["id"], results,
         )
-        print(f"SUBMITTED {len(batch)} predictions")
+        landed = outcome["submitted"] + outcome["updated"] + outcome["unchanged"]
+        print(f"UPSERT: created={outcome['submitted']} updated={outcome['updated']} "
+              f"unchanged={outcome['unchanged']} failed={outcome['failed']} "
+              f"(landed={landed}/{len(outcome['payload'])})")
 
 
 if __name__ == "__main__":

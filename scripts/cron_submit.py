@@ -133,7 +133,7 @@ def main() -> None:
         _log(f"DRY-RUN {summary} — not submitted")
         return
 
-    batch, run_ids = submit_with_ledger(
+    outcome, run_ids = submit_with_ledger(
         sp, event["id"], lobby["id"], [result],
         window_min=window, minutes_before=mins,
     )
@@ -143,11 +143,16 @@ def main() -> None:
     for w in WINDOWS:
         if w >= window:
             _marker(sp_match["id"], kickoff, w).touch()
-    _write_audit(head, kickoff, window, mins, batch, by_src, result, run_id)
-    _log(f"SUBMITTED {len(batch)} predictions — {summary}")
+    _write_audit(head, kickoff, window, mins, outcome, by_src, result, run_id)
+    landed = outcome["submitted"] + outcome["updated"] + outcome["unchanged"]
+    _log(f"UPSERT {head}: created={outcome['submitted']} updated={outcome['updated']} "
+         f"unchanged={outcome['unchanged']} failed={outcome['failed']} "
+         f"(landed={landed}/{len(outcome['payload'])}) — {summary}")
+    if outcome["failed"]:
+        _log(f"  WARN {outcome['failed']} rejected: {outcome['errors'][:2]}")
 
 
-def _write_audit(head, kickoff, window, mins, batch, by_src, result, run_id) -> None:
+def _write_audit(head, kickoff, window, mins, outcome, by_src, result, run_id) -> None:
     """One JSON line per fire, for an auditable submission history."""
     rec = {
         "submitted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -156,7 +161,12 @@ def _write_audit(head, kickoff, window, mins, batch, by_src, result, run_id) -> 
         "window_min": window,
         "minutes_before": round(mins, 1),
         "ledger_run_id": run_id,
-        "n_submitted": len(batch),
+        "n_predictions": len(outcome["payload"]),
+        "created": outcome["submitted"],
+        "updated": outcome["updated"],
+        "unchanged": outcome["unchanged"],
+        "failed": outcome["failed"],
+        "errors": outcome["errors"][:5],
         "by_source": by_src,
         "predictions": [
             {"question": p.question, "probability": p.probability_int,

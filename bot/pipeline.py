@@ -138,16 +138,63 @@ def _mk_pred(m: dict, out: dict, source: str) -> Prediction:
 
 def submit_predictions(
     sp: SportPredict, lobby_id: str, results: list[MatchResult]
-) -> list[dict]:
-    """Submit all priced results in API-sized batches and return the payload."""
-    batch = [
+) -> dict:
+    """Upsert all priced predictions and return a result summary.
+
+    SportPredict allows only one prediction per market, so a market that already
+    has a prediction (the whole lobby is pre-seeded with a baseline) must be
+    PATCHed, not re-POSTed — a plain create is silently rejected per-item. We
+    therefore look up our existing predictions, POST genuinely-new markets, and
+    PATCH the ones whose probability moved.
+
+    Returns ``{payload, submitted, updated, unchanged, failed, errors}``.
+    """
+    payload = [
         {"market_id": p.market_id, "lobby_id": lobby_id,
          "probability": p.probability_int}
         for result in results for p in result.predictions
     ]
-    for start in range(0, len(batch), 50):
-        sp.submit_batch(batch[start:start + 50])
-    return batch
+    existing: dict[str, tuple[str, int]] = {}
+    for p in sp.list_predictions(lobby_id):
+        mid = p.get("market_id")
+        if mid and p.get("market_status", "open") == "open":
+            existing[mid] = (p["id"], int(round(float(p.get("probability") or 0))))
+
+    summary = {"payload": payload, "submitted": 0, "updated": 0,
+               "unchanged": 0, "failed": 0, "errors": []}
+
+    # POST markets we have no prediction on yet (in API-sized batches).
+    new = [e for e in payload if e["market_id"] not in existing]
+    for start in range(0, len(new), 50):
+        chunk = new[start:start + 50]
+        try:
+            res = sp.submit_batch(chunk)
+        except Exception as exc:  # network/4xx on the whole batch
+            summary["failed"] += len(chunk)
+            summary["errors"].append({"batch": len(chunk), "error": str(exc)})
+            continue
+        summary["submitted"] += res.get("succeeded", 0)
+        for r in res.get("results", []):
+            if not r.get("success"):
+                summary["failed"] += 1
+                summary["errors"].append(r)
+
+    # PATCH markets that already have a prediction whose probability changed.
+    for e in payload:
+        prior = existing.get(e["market_id"])
+        if prior is None:
+            continue
+        pred_id, old_prob = prior
+        if old_prob == e["probability"]:
+            summary["unchanged"] += 1
+            continue
+        try:
+            sp.update_prediction(pred_id, e["probability"])
+            summary["updated"] += 1
+        except Exception as exc:
+            summary["failed"] += 1
+            summary["errors"].append({"market_id": e["market_id"], "error": str(exc)})
+    return summary
 
 
 def submit_with_ledger(
@@ -158,8 +205,8 @@ def submit_with_ledger(
     *,
     window_min: int = -1,
     minutes_before: float | None = None,
-) -> tuple[list[dict], list[str]]:
-    """Record priced runs, submit them, and durably record the outcome."""
+) -> tuple[dict, list[str]]:
+    """Record priced runs, upsert them, and durably record the outcome."""
     now = datetime.now(timezone.utc)
     run_ids = []
     for result in results:
@@ -173,14 +220,22 @@ def submit_with_ledger(
             event_id, lobby_id, result, window_min, match_minutes,
         ))
     try:
-        batch = submit_predictions(sp, lobby_id, results)
+        summary = submit_predictions(sp, lobby_id, results)
     except Exception as exc:
         for run_id in run_ids:
             ledger.mark_failed(run_id, str(exc))
         raise
+    # "landed" = our intended value is now on the platform (newly created,
+    # patched, or already equal). Only flag the run failed if nothing landed.
+    landed = summary["submitted"] + summary["updated"] + summary["unchanged"]
     for run_id in run_ids:
-        ledger.mark_submitted(run_id)
-    return batch, run_ids
+        if landed == 0 and summary["failed"]:
+            ledger.mark_failed(
+                run_id, f"0 landed, {summary['failed']} rejected: "
+                        f"{summary['errors'][:1]}")
+        else:
+            ledger.mark_submitted(run_id)
+    return summary, run_ids
 
 
 def predict_open_matches(submit: bool = False, limit: int | None = None):
