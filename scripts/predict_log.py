@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 from bot.apifootball import APIFootball
 from bot.oddsapi import OddsAPI
@@ -76,11 +77,13 @@ def main() -> None:
         log["matches"].append(m_entry)
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    json_path = f"logs/predictions_{stamp}.json"
-    md_path = f"logs/predictions_{stamp}.md"
-    with open(json_path, "w") as f:
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+    json_path = log_dir / f"predictions_{stamp}.json"
+    md_path = log_dir / f"predictions_{stamp}.md"
+    with json_path.open("w") as f:
         json.dump(log, f, indent=2)
-    with open(md_path, "w") as f:
+    with md_path.open("w") as f:
         f.write("\n".join(md))
 
     # console summary
