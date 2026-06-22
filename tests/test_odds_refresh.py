@@ -64,6 +64,8 @@ class ProviderRefreshTests(unittest.TestCase):
             )
 
         self.assertEqual(len(calls), 2)
+        self.assertEqual(len(fresh.observations), 1)
+        self.assertEqual(fresh.observations[0]["markets"], ["h2h"])
 
 
 if __name__ == "__main__":

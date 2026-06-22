@@ -40,6 +40,12 @@ class MatchResult:
     away: str | None
     predictions: list[Prediction] = field(default_factory=list)
     skipped: list[tuple[str, str]] = field(default_factory=list)  # (question, why)
+    markets: list[dict] = field(default_factory=list)
+    intents: dict[str, dict] = field(default_factory=dict)
+    market_specs: dict[str, dict | None] = field(default_factory=dict)
+    skip_reasons: dict[str, str] = field(default_factory=dict)
+    af_books: list[dict] = field(default_factory=list)
+    oa_observations: list[dict] = field(default_factory=list)
 
 
 def _clamp_int(p: float) -> int:
@@ -55,10 +61,15 @@ def run_match(
     allow_external: bool = True,
 ) -> MatchResult:
     fixture = af.find_fixture(sp_match["opening_time"], sp_match.get("name"))
-    res = MatchResult(sp_match=sp_match, fixture=fixture, home=None, away=None)
+    res = MatchResult(
+        sp_match=sp_match, fixture=fixture, home=None, away=None, markets=markets,
+    )
 
     if not fixture:
         res.skipped = [(m["question"], "no API-Football fixture") for m in markets]
+        res.skip_reasons = {
+            m["id"]: "no API-Football fixture" for m in markets
+        }
         return res
 
     home = fixture["teams"]["home"]["name"]
@@ -66,6 +77,7 @@ def run_match(
     res.home, res.away = home, away
 
     intents = parse_questions(markets, home, away)
+    res.intents = intents
     ctx = PriceCtx(
         home=home, away=away,
         af_books=af.odds(fixture["fixture"]["id"]),
@@ -76,17 +88,17 @@ def run_match(
     kickoff = sp_match["opening_time"]
     for m in markets:
         q = m["question"]
-        out = src = None
+        intent = intents.get(m["id"])
+        out = src = spec = None
         skip_reason = "no source could price it"
         if _COMPOUND_RE.search(q):
             # 1) compound -> derive from the two component markets
             out, src = derive.price_compound(q, ctx)
             if not out:
-                out, src = derive.price_empirical(q, intents.get(m["id"]), ctx)
+                out, src = derive.price_empirical(q, intent, ctx)
             skip_reason = "compound component unavailable"
         else:
             # 2) single market: API-Football -> Odds API
-            intent = intents.get(m["id"])
             if intent:
                 out, src, spec = price_intent(intent, ctx)
                 if intent.get("market") == "none":
@@ -102,10 +114,14 @@ def run_match(
         # 3) last resort: web-grounded external estimate
         if not out and allow_external:
             out, src = external.estimate(q, home, away, kickoff)
+        res.market_specs[m["id"]] = spec
         if out:
             res.predictions.append(_mk_pred(m, out, src))
         else:
             res.skipped.append((q, skip_reason))
+            res.skip_reasons[m["id"]] = skip_reason
+    res.af_books = ctx.af_books
+    res.oa_observations = list(getattr(ctx.oa, "observations", []))
     return res
 
 

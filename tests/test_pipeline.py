@@ -66,6 +66,8 @@ class SkipReasonTests(unittest.TestCase):
             )
         estimate.assert_not_called()
         self.assertEqual(len(result.skipped), 1)
+        self.assertEqual(result.markets, [market])
+        self.assertEqual(result.skip_reasons["m"], "parser returned no intent")
 
 
 class SubmissionTests(unittest.TestCase):

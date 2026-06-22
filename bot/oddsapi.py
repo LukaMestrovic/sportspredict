@@ -16,6 +16,7 @@ Outcome shapes:
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from statistics import mean
 from typing import Any
 
@@ -35,6 +36,7 @@ class OddsAPI:
         self.refresh_odds = refresh_odds
         self._events: list[dict] | None = None
         self._odds_cache: dict[tuple[str, str], list[dict]] = {}
+        self.observations: list[dict] = []
 
     def _get(self, path: str, **params) -> Any:
         params["apiKey"] = self.key
@@ -87,6 +89,12 @@ class OddsAPI:
             "oddsapi_odds", key, fetch, refresh=self.refresh_odds,
         )
         self._odds_cache[memory_key] = books
+        self.observations.append({
+            "observed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "event_id": event_id,
+            "markets": mkey.split(","),
+            "bookmakers": books,
+        })
         return books
 
 
