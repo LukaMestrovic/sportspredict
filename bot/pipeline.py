@@ -51,6 +51,8 @@ def run_match(
     markets: list[dict],
     af: APIFootball,
     oa: OddsAPI | None = None,
+    *,
+    allow_external: bool = True,
 ) -> MatchResult:
     fixture = af.find_fixture(sp_match["opening_time"], sp_match.get("name"))
     res = MatchResult(sp_match=sp_match, fixture=fixture, home=None, away=None)
@@ -98,7 +100,7 @@ def run_match(
             if not out:
                 out, src = derive.price_empirical(q, intent, ctx)
         # 3) last resort: web-grounded external estimate
-        if not out:
+        if not out and allow_external:
             out, src = external.estimate(q, home, away, kickoff)
         if out:
             res.predictions.append(_mk_pred(m, out, src))

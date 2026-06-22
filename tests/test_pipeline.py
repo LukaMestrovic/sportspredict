@@ -49,6 +49,24 @@ class SkipReasonTests(unittest.TestCase):
             )
         self.assertEqual(result.skipped[0][1], "parser marked unsupported")
 
+    def test_external_fallback_can_be_disabled_for_backtests(self):
+        fixture = {
+            "fixture": {"id": 1},
+            "teams": {"home": {"name": "Home"}, "away": {"name": "Away"}},
+        }
+        market = {"id": "m", "question": "Will something unsupported happen?"}
+        with patch("bot.pipeline.parse_questions", return_value={}), patch(
+            "bot.pipeline.external.estimate"
+        ) as estimate:
+            result = run_match(
+                {"name": "Home vs Away", "opening_time": "2026-01-01T00:00:00Z"},
+                [market],
+                _AF(fixture),
+                allow_external=False,
+            )
+        estimate.assert_not_called()
+        self.assertEqual(len(result.skipped), 1)
+
 
 class SubmissionTests(unittest.TestCase):
     def test_predictions_are_submitted_in_api_sized_batches(self):

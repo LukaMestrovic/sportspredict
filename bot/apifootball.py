@@ -78,3 +78,11 @@ class APIFootball:
                 "af_odds", str(fixture_id), fetch, ttl=6 * 3600,
             )
         return self._odds_cache[fixture_id]
+
+    def settled_statistics(self, fixture_id: int) -> list[dict]:
+        """Final fixture statistics, cached forever because they are immutable."""
+        return cache.get_or_fetch(
+            "af_statistics", str(fixture_id),
+            lambda: self._get("/fixtures/statistics", fixture=fixture_id)["response"],
+            ttl=0,
+        )

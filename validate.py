@@ -3,13 +3,14 @@
 
 For every FINISHED WC2026 fixture in the window we:
   1. reconstruct the SportPredict-style questions for that match,
-  2. run the real pipeline (LLM parser -> market matcher -> odds predictor),
+  2. run the production pipeline through API-Football and empirical derivation,
   3. settle each question from API-Football final score + statistics,
   4. score the bot's probability with the Brier score (p - outcome)^2.
 
-This exercises every stage on real data. Note: API-Football purges pre-match
-odds a few days after kickoff, so only recently-settled fixtures can be priced;
-older ones are reported as "odds unavailable" (pipeline still runs, unscored).
+The paid Odds API and external web fallback are disabled: backtests must not
+spend paid credits or leak settled results through web search. API-Football
+purges pre-match odds a few days after kickoff, so older fixtures price fewer
+markets.
 
 Usage:  python validate.py [--days 7] [--max-fixtures N]
 """
@@ -18,13 +19,8 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timedelta, timezone
 
-import requests
-
-from bot import config
 from bot.apifootball import APIFootball
-from bot.matcher import match_intent
-from bot.parser import parse_questions
-from bot.predictor import predict
+from bot.pipeline import run_match
 
 
 # --- question templates + settlement (kind -> (question text, settler)) ---
@@ -70,9 +66,8 @@ def settle_context(af: APIFootball, fixture: dict) -> dict | None:
     if fts["home"] is None or ht["home"] is None:
         return None
 
-    data = af._get("/fixtures/statistics", fixture=fid)["response"]
     stat = {}
-    for t in data:
+    for t in af.settled_statistics(fid):
         stat[t["team"]["name"]] = {s["type"]: (s["value"] or 0) for s in t["statistics"]}
     if home not in stat or away not in stat:
         return None
@@ -111,7 +106,7 @@ def main() -> None:
 
     scored: list[float] = []          # bot brier scores
     coin: list[float] = []            # 50% baseline brier on same questions
-    n_priced = n_skipped = n_unsettleable = 0
+    n_priced = n_skipped = 0
     skip_reasons: dict[str, int] = {}
 
     for fx in fixtures:
@@ -124,31 +119,29 @@ def main() -> None:
             continue
 
         questions = build_questions(home, away)
-        intents = parse_questions(questions, home, away)
         bookmakers = af.odds(fx["fixture"]["id"])
         has_odds = bool(bookmakers)
+        result = run_match(
+            {"name": f"{home} vs {away}", "opening_time": fx["fixture"]["date"]},
+            questions,
+            af,
+            allow_external=False,
+        )
+        predictions = {p.market_id: p for p in result.predictions}
+        skip_by_question = dict(result.skipped)
 
         line = f"[{date}] {home} {ctx['ft_home']}-{ctx['ft_away']} {away}"
         print(line + ("" if has_odds else "  (odds purged)"))
 
         for q in questions:
             outcome = q["settle"](ctx)
-            intent = intents.get(q["id"])
-            spec = match_intent(intent, home, away) if intent else None
-            if not spec:
+            prediction = predictions.get(q["id"])
+            if not prediction:
                 n_skipped += 1
-                skip_reasons["no market"] = skip_reasons.get("no market", 0) + 1
+                reason = skip_by_question.get(q["question"], "not priced")
+                skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
                 continue
-            if not has_odds:
-                n_skipped += 1
-                skip_reasons["odds unavailable"] = skip_reasons.get("odds unavailable", 0) + 1
-                continue
-            out = predict(bookmakers, spec)
-            if not out:
-                n_skipped += 1
-                skip_reasons["no book coverage"] = skip_reasons.get("no book coverage", 0) + 1
-                continue
-            p = out["probability"]
+            p = prediction.probability
             brier = (p - outcome) ** 2
             scored.append(brier)
             coin.append((0.5 - outcome) ** 2)
