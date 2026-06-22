@@ -19,6 +19,8 @@ logs/predictions_*.json
 logs/predictions_*.md
 # cron submission audit trail (runtime, per-machine)
 logs/cron_submissions.jsonl
+# durable local prediction ledger
+logs/prediction_ledger.sqlite3*
 
 # paid odds-api cache
 cache/
