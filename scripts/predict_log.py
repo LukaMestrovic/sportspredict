@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 from bot.apifootball import APIFootball
 from bot.oddsapi import OddsAPI
-from bot.pipeline import run_match
+from bot.pipeline import run_match, submit_predictions
 from bot.sportspredict import SportPredict
 
 TAG = {"api-football": "AF", "odds-api": "OA", "derived": "DRV",
@@ -97,13 +97,7 @@ def main() -> None:
     print("log:", md_path, "|", json_path)
 
     if args.submit:
-        batch = [
-            {"market_id": p.market_id, "lobby_id": lobby["id"],
-             "probability": p.probability_int}
-            for r in results for p in r.predictions
-        ]
-        for i in range(0, len(batch), 50):
-            sp.submit_batch(batch[i:i + 50])
+        batch = submit_predictions(sp, lobby["id"], results)
         print(f"SUBMITTED {len(batch)} predictions")
 
 

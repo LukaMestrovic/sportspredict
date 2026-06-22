@@ -29,7 +29,7 @@ from pathlib import Path
 from bot.apifootball import APIFootball
 from bot.config import ROOT
 from bot.oddsapi import OddsAPI
-from bot.pipeline import run_match
+from bot.pipeline import run_match, submit_predictions
 from bot.sportspredict import SportPredict
 
 # Submit at these many minutes-before-kickoff (largest first). A window fires on
@@ -129,13 +129,7 @@ def main() -> None:
         _log(f"DRY-RUN {summary} — not submitted")
         return
 
-    batch = [
-        {"market_id": p.market_id, "lobby_id": lobby["id"],
-         "probability": p.probability_int}
-        for p in result.predictions
-    ]
-    for i in range(0, len(batch), 50):  # API caps batch at 50
-        sp.submit_batch(batch[i:i + 50])
+    batch = submit_predictions(sp, lobby["id"], [result])
 
     # Mark this window and every wider one so a delayed start can't re-fire them.
     for w in WINDOWS:

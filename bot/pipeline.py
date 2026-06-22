@@ -115,6 +115,20 @@ def _mk_pred(m: dict, out: dict, source: str) -> Prediction:
     )
 
 
+def submit_predictions(
+    sp: SportPredict, lobby_id: str, results: list[MatchResult]
+) -> list[dict]:
+    """Submit all priced results in API-sized batches and return the payload."""
+    batch = [
+        {"market_id": p.market_id, "lobby_id": lobby_id,
+         "probability": p.probability_int}
+        for result in results for p in result.predictions
+    ]
+    for start in range(0, len(batch), 50):
+        sp.submit_batch(batch[start:start + 50])
+    return batch
+
+
 def predict_open_matches(submit: bool = False, limit: int | None = None):
     """Run the pipeline over all open SP matches. Optionally submit predictions."""
     sp = SportPredict()
@@ -132,11 +146,5 @@ def predict_open_matches(submit: bool = False, limit: int | None = None):
         results.append(run_match(sp_match, markets, af, oa))
 
     if submit:
-        batch = [
-            {"market_id": p.market_id, "lobby_id": lobby["id"],
-             "probability": p.probability_int}
-            for r in results for p in r.predictions
-        ]
-        for i in range(0, len(batch), 50):  # API caps batch at 50
-            sp.submit_batch(batch[i:i + 50])
+        submit_predictions(sp, lobby["id"], results)
     return results

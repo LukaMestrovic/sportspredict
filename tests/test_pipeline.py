@@ -1,7 +1,13 @@
 import unittest
 from unittest.mock import patch
 
-from bot.pipeline import _COMPOUND_RE, run_match
+from bot.pipeline import (
+    MatchResult,
+    Prediction,
+    _COMPOUND_RE,
+    run_match,
+    submit_predictions,
+)
 
 
 class CompoundDetectionTests(unittest.TestCase):
@@ -44,6 +50,21 @@ class SkipReasonTests(unittest.TestCase):
         self.assertEqual(result.skipped[0][1], "parser marked unsupported")
 
 
+class SubmissionTests(unittest.TestCase):
+    def test_predictions_are_submitted_in_api_sized_batches(self):
+        sp = _SP()
+        predictions = [
+            Prediction(str(i), "question", 0.5, 50, 1, "label")
+            for i in range(51)
+        ]
+        result = MatchResult({}, None, None, None, predictions=predictions)
+        batch = submit_predictions(sp, "lobby", [result])
+        self.assertEqual([len(part) for part in sp.batches], [50, 1])
+        self.assertEqual(batch[0], {
+            "market_id": "0", "lobby_id": "lobby", "probability": 50,
+        })
+
+
 class _AF:
     def __init__(self, fixture):
         self.fixture = fixture
@@ -53,6 +74,14 @@ class _AF:
 
     def odds(self, _fixture_id):
         return []
+
+
+class _SP:
+    def __init__(self):
+        self.batches = []
+
+    def submit_batch(self, batch):
+        self.batches.append(batch)
 
 
 if __name__ == "__main__":
