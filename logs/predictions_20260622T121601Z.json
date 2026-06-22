@@ -1,0 +1,589 @@
+{
+  "generated_at": "2026-06-22T12:13:40.349957+00:00",
+  "event": "Jump Trading Probability Cup",
+  "lobby_id": "8df8038c-fd2c-4a5f-be4e-0e11d5966c05",
+  "matches": [
+    {
+      "match": "Argentina vs Austria",
+      "kickoff": "2026-06-22T17:00:00.000Z",
+      "predictions": [
+        {
+          "question": "Will Austria be caught offside 2 or more times?",
+          "probability_int": 53,
+          "probability": 0.533,
+          "source": "api-football",
+          "n_books": 4,
+          "market_id": "9042bb3c-faa7-424d-b217-f75c8da0bb93",
+          "label": "away team_offsides Over 1.5"
+        },
+        {
+          "question": "Will the second half have more goals than the first half?",
+          "probability_int": 44,
+          "probability": 0.4383,
+          "source": "api-football",
+          "n_books": 5,
+          "market_id": "04682a41-eef9-4316-bbc9-6078a5afcf6a",
+          "label": "2nd half outscores 1st"
+        },
+        {
+          "question": "Will Austria finish with more corner kicks than Argentina?",
+          "probability_int": 23,
+          "probability": 0.2323,
+          "source": "api-football",
+          "n_books": 8,
+          "market_id": "f52f7be4-737e-4fde-ae53-5012c89da082",
+          "label": "corners_compare away"
+        },
+        {
+          "question": "Will Argentina win the match?",
+          "probability_int": 64,
+          "probability": 0.6419,
+          "source": "api-football",
+          "n_books": 14,
+          "market_id": "2e319b9e-222b-42d3-899a-c02ebb50a02a",
+          "label": "Argentina win"
+        },
+        {
+          "question": "Will the match have 2 or fewer total goals?",
+          "probability_int": 50,
+          "probability": 0.5004,
+          "source": "api-football",
+          "n_books": 12,
+          "market_id": "47c70f44-d6da-4dd4-9486-5bda8a49a50d",
+          "label": "total_goals Under 2.5"
+        },
+        {
+          "question": "Will there be 4 or more total cards shown?",
+          "probability_int": 43,
+          "probability": 0.4294,
+          "source": "api-football",
+          "n_books": 6,
+          "market_id": "9ae92a8b-0200-4282-8837-15f42e7b62cb",
+          "label": "total_cards Over 3.5"
+        },
+        {
+          "question": "Will Argentina score in the second half?",
+          "probability_int": 62,
+          "probability": 0.625,
+          "source": "api-football",
+          "n_books": 1,
+          "market_id": "d5280dd9-1186-4445-a989-24af39d0b713",
+          "label": "team_score_2h home Yes"
+        },
+        {
+          "question": "Will Austria have more shots on target than Argentina in the second half?",
+          "probability_int": 35,
+          "probability": 0.35,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "9b0cd14f-f996-4322-9c64-9f7500399848",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will Argentina have 6 or more shots on target?",
+          "probability_int": 85,
+          "probability": 0.85,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "991f4aed-bd68-495b-a486-5777c6696e09",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will Marcel Sabitzer have at least 1 shot on target?",
+          "probability_int": 47,
+          "probability": 0.4677,
+          "source": "odds-api",
+          "n_books": 2,
+          "market_id": "fb6a23ec-aa0c-4177-b1f4-dc11c5722541",
+          "label": "Marcel Sabitzer SoT Over 0.5"
+        }
+      ],
+      "skipped": []
+    },
+    {
+      "match": "France vs Iraq",
+      "kickoff": "2026-06-22T21:00:00.000Z",
+      "predictions": [
+        {
+          "question": "At halftime, will Iraq have more corner kicks than France?",
+          "probability_int": 77,
+          "probability": 0.7655,
+          "source": "api-football",
+          "n_books": 4,
+          "market_id": "81272767-7a80-4fc9-8718-780e5b7b8d34",
+          "label": "corners_compare home 1H"
+        },
+        {
+          "question": "Will France commit more fouls than Iraq?",
+          "probability_int": 32,
+          "probability": 0.3167,
+          "source": "api-football",
+          "n_books": 1,
+          "market_id": "3e440d97-28bd-4bc6-99fd-ae19afa30e77",
+          "label": "fouls_compare home"
+        },
+        {
+          "question": "Will France win the match?",
+          "probability_int": 89,
+          "probability": 0.8862,
+          "source": "api-football",
+          "n_books": 14,
+          "market_id": "183fa7fb-ffc9-476b-8da8-b7c327217fc8",
+          "label": "France win"
+        },
+        {
+          "question": "Will Iraq score in the second half?",
+          "probability_int": 22,
+          "probability": 0.217,
+          "source": "api-football",
+          "n_books": 1,
+          "market_id": "cb74766a-606c-4ddb-b126-5644e8621145",
+          "label": "team_score_2h away Yes"
+        },
+        {
+          "question": "Will France score in the first half?",
+          "probability_int": 77,
+          "probability": 0.7663,
+          "source": "api-football",
+          "n_books": 1,
+          "market_id": "84f61c4c-4eef-4552-9e31-0fff10f913d8",
+          "label": "team_score_1h home Yes"
+        },
+        {
+          "question": "Will both teams score AND the match have 3 or more total goals?",
+          "probability_int": 25,
+          "probability": 0.2465,
+          "source": "derived",
+          "n_books": 0,
+          "market_id": "0a389ffb-8dd7-4cfc-8c8e-3bba3f3eee0a",
+          "label": "AND(0.34,0.72)"
+        },
+        {
+          "question": "Will Iraq receive at least 1 card in the second half?",
+          "probability_int": 75,
+          "probability": 0.75,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "79139fdc-c500-48b1-a25e-ab06cd319e4e",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will Iraq have 2 or more shots on target in the second half?",
+          "probability_int": 15,
+          "probability": 0.15,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "6784828e-1741-4a45-bba9-a538ebf8459a",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will Iraq have 4 or more shots on target?",
+          "probability_int": 15,
+          "probability": 0.15,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "f383ba61-f1d7-4d67-bc62-7c13b31dfde4",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will Mohanad Ali have at least 1 shot on target?",
+          "probability_int": 34,
+          "probability": 0.3426,
+          "source": "odds-api",
+          "n_books": 2,
+          "market_id": "bc149420-04e9-42e5-a89f-8b48ff70589a",
+          "label": "Mohanad Ali SoT Over 0.5"
+        }
+      ],
+      "skipped": []
+    },
+    {
+      "match": "Norway vs Senegal",
+      "kickoff": "2026-06-23T00:00:00.000Z",
+      "predictions": [
+        {
+          "question": "Will Senegal be caught offside 2 or more times?",
+          "probability_int": 49,
+          "probability": 0.4886,
+          "source": "api-football",
+          "n_books": 4,
+          "market_id": "0cc6a8f7-c900-49c4-a63d-2690d7062aa8",
+          "label": "away team_offsides Over 1.5"
+        },
+        {
+          "question": "Will Senegal commit more fouls than Norway?",
+          "probability_int": 49,
+          "probability": 0.4864,
+          "source": "api-football",
+          "n_books": 1,
+          "market_id": "d10b7858-0adb-4826-8334-721ba766747b",
+          "label": "fouls_compare away"
+        },
+        {
+          "question": "Will Norway win the match?",
+          "probability_int": 44,
+          "probability": 0.4372,
+          "source": "api-football",
+          "n_books": 14,
+          "market_id": "74361392-bbd2-4537-a6a9-76cb154852c0",
+          "label": "Norway win"
+        },
+        {
+          "question": "Will there be 9 or more total corner kicks?",
+          "probability_int": 56,
+          "probability": 0.5649,
+          "source": "api-football",
+          "n_books": 7,
+          "market_id": "106011a4-4f60-4a2b-8dc3-7b86e62a91cd",
+          "label": "total_corners Over 8.5"
+        },
+        {
+          "question": "Will Norway score more goals than Senegal in the second half?",
+          "probability_int": 65,
+          "probability": 0.65,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "d7b38061-1368-4af0-8f50-2be4b544189f",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will a penalty kick be awarded OR a red card be shown in the match?",
+          "probability_int": 65,
+          "probability": 0.65,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "4031237a-a29e-42fb-8015-128b65a0a660",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will there be 4 or more total shots on target in the second half?",
+          "probability_int": 65,
+          "probability": 0.65,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "93add2e1-ef96-4273-952a-0278a3ec16d9",
+          "label": "web-estimate"
+        },
+        {
+          "question": "At halftime, will the match be tied?",
+          "probability_int": 13,
+          "probability": 0.13,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "daa30667-41a8-4d96-89bd-ee02d348dcf7",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will Norway have 6 or more shots on target?",
+          "probability_int": 85,
+          "probability": 0.85,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "edc723ad-ebe1-479d-ba72-fc30f6784aa3",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will Sadio Man\u00e9 score a goal (excluding own goals)?",
+          "probability_int": 26,
+          "probability": 0.2589,
+          "source": "odds-api",
+          "n_books": 5,
+          "market_id": "fe636b52-a740-4479-aace-6f45ec2a8b1d",
+          "label": "Sadio Man\u00e9 to score"
+        }
+      ],
+      "skipped": []
+    },
+    {
+      "match": "Jordan vs Algeria",
+      "kickoff": "2026-06-23T03:00:00.000Z",
+      "predictions": [
+        {
+          "question": "Will Jordan commit more fouls than Algeria?",
+          "probability_int": 56,
+          "probability": 0.5609,
+          "source": "api-football",
+          "n_books": 1,
+          "market_id": "4bde0b61-f7be-491d-b904-6f77a66d6324",
+          "label": "fouls_compare home"
+        },
+        {
+          "question": "Will Algeria be caught offside 2 or more times?",
+          "probability_int": 49,
+          "probability": 0.4884,
+          "source": "api-football",
+          "n_books": 1,
+          "market_id": "9854c8e3-ac27-44c1-8755-5b7ba6e453c9",
+          "label": "offsides_compare away"
+        },
+        {
+          "question": "Will Jordan score at least 1 goal?",
+          "probability_int": 55,
+          "probability": 0.5546,
+          "source": "api-football",
+          "n_books": 2,
+          "market_id": "95627759-e55e-42b2-b16f-f5ea520179a2",
+          "label": "team_score home Yes"
+        },
+        {
+          "question": "Will the match have 3 or more total goals?",
+          "probability_int": 50,
+          "probability": 0.4991,
+          "source": "api-football",
+          "n_books": 12,
+          "market_id": "fb5633a1-f376-4427-915b-8b155f53da1e",
+          "label": "total_goals Over 2.5"
+        },
+        {
+          "question": "Will there be 4 or more total shots on target in the second half?",
+          "probability_int": 65,
+          "probability": 0.65,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "0028af24-c404-48a3-93a4-dbaa312873ff",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will Jordan score the first goal of the game and Algeria score in the second half?",
+          "probability_int": 65,
+          "probability": 0.65,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "7d3c9145-2a6d-4c95-b44c-1cf2f28eddbc",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will a penalty kick be awarded OR a red card be shown?",
+          "probability_int": 65,
+          "probability": 0.65,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "3b3b16e2-8f9f-462b-86a9-395fcf7aecb0",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will Riyad Mahrez have at least 1 shot on target in the second half?",
+          "probability_int": 85,
+          "probability": 0.85,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "483d6c6f-df9d-4ff6-822e-c12d2f322999",
+          "label": "web-estimate"
+        },
+        {
+          "question": "At halftime, will the match be tied?",
+          "probability_int": 50,
+          "probability": 0.5,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "67abee3c-e87a-4a8e-ad2a-ec62c36e9b0b",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will Mousa Al-Taamari have at least 1 shot on target?",
+          "probability_int": 85,
+          "probability": 0.85,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "756f09a8-e08b-4433-8489-061b1445fb40",
+          "label": "web-estimate"
+        }
+      ],
+      "skipped": []
+    },
+    {
+      "match": "Portugal vs Uzbekistan",
+      "kickoff": "2026-06-23T17:00:00.000Z",
+      "predictions": [
+        {
+          "question": "Will Uzbekistan be caught offside 2 or more times?",
+          "probability_int": 42,
+          "probability": 0.4162,
+          "source": "api-football",
+          "n_books": 4,
+          "market_id": "8dcbcf84-b3ef-4715-bb70-6f2f4e2abd50",
+          "label": "away team_offsides Over 1.5"
+        },
+        {
+          "question": "Will Portugal be caught offside 2 or more times?",
+          "probability_int": 65,
+          "probability": 0.6509,
+          "source": "api-football",
+          "n_books": 3,
+          "market_id": "cbfeb052-0320-4ad3-865d-f384d490544d",
+          "label": "home team_offsides Over 1.5"
+        },
+        {
+          "question": "Will Portugal win the match?",
+          "probability_int": 79,
+          "probability": 0.7935,
+          "source": "api-football",
+          "n_books": 14,
+          "market_id": "a4940da6-3dba-440c-8b9e-580cd50ea272",
+          "label": "Portugal win"
+        },
+        {
+          "question": "Will both teams score AND the match have 3 or more total goals?",
+          "probability_int": 24,
+          "probability": 0.2441,
+          "source": "derived",
+          "n_books": 0,
+          "market_id": "c68e9b78-6ae8-47c7-861e-6996a2cf8280",
+          "label": "AND(0.41,0.60)"
+        },
+        {
+          "question": "In the second half, will Portugal have more shots on target than Uzbekistan?",
+          "probability_int": 85,
+          "probability": 0.85,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "53c6d590-e6d8-4c2b-a0d8-534735de7886",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will a penalty kick be awarded OR a red card be shown?",
+          "probability_int": 50,
+          "probability": 0.5,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "9315d769-e4e4-4946-a133-de1ea821f6a0",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will Eldor Shomurodov have at least 1 shot on target in the second half?",
+          "probability_int": 20,
+          "probability": 0.2,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "ccac7769-631a-43d3-8013-4aaedbc9d114",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will the second half have 2 or more total goals?",
+          "probability_int": 85,
+          "probability": 0.85,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "2edbae87-e4d0-40f8-9b81-ea52859f26b8",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will Uzbekistan have 4 or more shots on target?",
+          "probability_int": 25,
+          "probability": 0.25,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "dcfa0649-e8cc-48cd-b4ae-aa5037f3daa4",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will Gon\u00e7alo Ramos score a goal (excluding own goals)?",
+          "probability_int": 48,
+          "probability": 0.4794,
+          "source": "odds-api",
+          "n_books": 4,
+          "market_id": "4ff2435c-e906-4a93-a7a9-a4b3d71746a6",
+          "label": "Gon\u00e7alo Ramos to score"
+        }
+      ],
+      "skipped": []
+    },
+    {
+      "match": "England vs Ghana",
+      "kickoff": "2026-06-23T20:00:00.000Z",
+      "predictions": [
+        {
+          "question": "Will Ghana commit more fouls than England?",
+          "probability_int": 48,
+          "probability": 0.4787,
+          "source": "api-football",
+          "n_books": 1,
+          "market_id": "3a6fd001-df6b-46c1-9f9e-4d0e4e4cfd04",
+          "label": "fouls_compare away"
+        },
+        {
+          "question": "Will England win the match?",
+          "probability_int": 78,
+          "probability": 0.7776,
+          "source": "api-football",
+          "n_books": 14,
+          "market_id": "1a5f47ed-33e1-48ff-8830-75995570683c",
+          "label": "England win"
+        },
+        {
+          "question": "Will Ghana have 5 or more corner kicks?",
+          "probability_int": 20,
+          "probability": 0.1971,
+          "source": "api-football",
+          "n_books": 4,
+          "market_id": "4e4cd5fa-2e2e-437b-9f6a-62dead27ec74",
+          "label": "away team_corners Over 4.5"
+        },
+        {
+          "question": "Will both teams score AND the match have 3 or more total goals?",
+          "probability_int": 23,
+          "probability": 0.2267,
+          "source": "derived",
+          "n_books": 0,
+          "market_id": "dd84b0a3-c391-4489-8945-2fac1c7241d1",
+          "label": "AND(0.39,0.58)"
+        },
+        {
+          "question": "At halftime, will both teams have at least 1 shot on target?",
+          "probability_int": 85,
+          "probability": 0.85,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "06e1d4dd-3f44-4ac6-99df-96572c4dd13b",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will both teams have at least 1 shot on target in the second half?",
+          "probability_int": 85,
+          "probability": 0.85,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "a8c63bac-b91c-45b4-adf0-2770346ed218",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will a penalty kick be awarded OR a red card be shown?",
+          "probability_int": 35,
+          "probability": 0.35,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "7cc86d32-71c5-4d65-b62a-4ba2f9259469",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will Ghana have more shots on target than England in the second half?",
+          "probability_int": 20,
+          "probability": 0.2,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "60c9d3f6-4a05-4f45-9f23-9b2e7b0c18be",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will Antoine Semenyo have at least 1 shot on target?",
+          "probability_int": 45,
+          "probability": 0.45,
+          "source": "external",
+          "n_books": 0,
+          "market_id": "e9b10518-8e39-4994-9330-f6d4b43c7a75",
+          "label": "web-estimate"
+        },
+        {
+          "question": "Will Harry Kane score or assist a goal (excluding own goals)?",
+          "probability_int": 57,
+          "probability": 0.5738,
+          "source": "odds-api",
+          "n_books": 5,
+          "market_id": "089b0204-ca7f-49e3-ba78-f4ac586de982",
+          "label": "Harry Kane to score"
+        }
+      ],
+      "skipped": []
+    }
+  ]
+}
