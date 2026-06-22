@@ -117,7 +117,7 @@ def main() -> None:
     _log(f"FIRING {window}-min window for {head} (kickoff in {mins:.1f} min)")
     af, oa = APIFootball(), OddsAPI()
     markets = sp.markets(lobby["id"], sp_match["id"])
-    result = run_match(sp_match, markets, af, oa)
+    result = run_match(sp_match, markets, af, oa, allow_external=False)
 
     by_src: dict[str, int] = {}
     for p in result.predictions:
