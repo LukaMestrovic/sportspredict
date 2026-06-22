@@ -7,7 +7,6 @@ the canonical home/away full team names that the question text references.
 from __future__ import annotations
 
 import time
-from typing import Any
 
 import requests
 
