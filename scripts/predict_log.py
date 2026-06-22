@@ -13,7 +13,7 @@ from pathlib import Path
 
 from bot.apifootball import APIFootball
 from bot.oddsapi import OddsAPI
-from bot.pipeline import run_match, submit_predictions
+from bot.pipeline import run_match, submit_with_ledger
 from bot.sportspredict import SportPredict
 
 TAG = {"api-football": "AF", "odds-api": "OA", "derived": "DRV",
@@ -100,7 +100,9 @@ def main() -> None:
     print("log:", md_path, "|", json_path)
 
     if args.submit:
-        batch = submit_predictions(sp, lobby["id"], results)
+        batch, _run_ids = submit_with_ledger(
+            sp, event["id"], lobby["id"], results,
+        )
         print(f"SUBMITTED {len(batch)} predictions")
 
 

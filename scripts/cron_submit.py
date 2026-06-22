@@ -27,11 +27,10 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from bot import ledger
 from bot.apifootball import APIFootball
 from bot.config import ROOT
 from bot.oddsapi import OddsAPI
-from bot.pipeline import run_match, submit_predictions
+from bot.pipeline import run_match, submit_with_ledger
 from bot.sportspredict import SportPredict
 
 # Submit at these many minutes-before-kickoff (largest first). A window fires on
@@ -134,15 +133,11 @@ def main() -> None:
         _log(f"DRY-RUN {summary} — not submitted")
         return
 
-    run_id = ledger.record_run(
-        event["id"], lobby["id"], result, window, mins,
+    batch, run_ids = submit_with_ledger(
+        sp, event["id"], lobby["id"], [result],
+        window_min=window, minutes_before=mins,
     )
-    try:
-        batch = submit_predictions(sp, lobby["id"], [result])
-    except Exception as exc:
-        ledger.mark_failed(run_id, str(exc))
-        raise
-    ledger.mark_submitted(run_id)
+    run_id = run_ids[0]
 
     # Mark this window and every wider one so a delayed start can't re-fire them.
     for w in WINDOWS:

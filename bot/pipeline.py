@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
-from . import derive, external
+from . import derive, external, ledger
 from .apifootball import APIFootball
 from .oddsapi import OddsAPI
 from .parser import parse_questions
@@ -149,6 +150,39 @@ def submit_predictions(
     return batch
 
 
+def submit_with_ledger(
+    sp: SportPredict,
+    event_id: str,
+    lobby_id: str,
+    results: list[MatchResult],
+    *,
+    window_min: int = -1,
+    minutes_before: float | None = None,
+) -> tuple[list[dict], list[str]]:
+    """Record priced runs, submit them, and durably record the outcome."""
+    now = datetime.now(timezone.utc)
+    run_ids = []
+    for result in results:
+        match_minutes = minutes_before
+        if match_minutes is None:
+            kickoff = datetime.fromisoformat(
+                result.sp_match["opening_time"].replace("Z", "+00:00")
+            )
+            match_minutes = (kickoff - now).total_seconds() / 60.0
+        run_ids.append(ledger.record_run(
+            event_id, lobby_id, result, window_min, match_minutes,
+        ))
+    try:
+        batch = submit_predictions(sp, lobby_id, results)
+    except Exception as exc:
+        for run_id in run_ids:
+            ledger.mark_failed(run_id, str(exc))
+        raise
+    for run_id in run_ids:
+        ledger.mark_submitted(run_id)
+    return batch, run_ids
+
+
 def predict_open_matches(submit: bool = False, limit: int | None = None):
     """Run the pipeline over all open SP matches. Optionally submit predictions."""
     sp = SportPredict()
@@ -166,5 +200,5 @@ def predict_open_matches(submit: bool = False, limit: int | None = None):
         results.append(run_match(sp_match, markets, af, oa))
 
     if submit:
-        submit_predictions(sp, lobby["id"], results)
+        submit_with_ledger(sp, event["id"], lobby["id"], results)
     return results

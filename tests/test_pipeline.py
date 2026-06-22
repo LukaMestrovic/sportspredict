@@ -7,6 +7,7 @@ from bot.pipeline import (
     _COMPOUND_RE,
     run_match,
     submit_predictions,
+    submit_with_ledger,
 )
 
 
@@ -83,6 +84,26 @@ class SubmissionTests(unittest.TestCase):
         self.assertEqual(batch[0], {
             "market_id": "0", "lobby_id": "lobby", "probability": 50,
         })
+
+    def test_recorded_submission_marks_ledger_after_success(self):
+        sp = _SP()
+        result = MatchResult(
+            {"id": "match", "name": "Home vs Away",
+             "opening_time": "2026-06-22T17:00:00Z"},
+            None, "Home", "Away",
+            predictions=[Prediction("m", "question", 0.5, 50, 1, "label")],
+        )
+        with patch("bot.pipeline.ledger.record_run", return_value="run") as record, patch(
+            "bot.pipeline.ledger.mark_submitted"
+        ) as submitted:
+            batch, run_ids = submit_with_ledger(
+                sp, "event", "lobby", [result],
+                window_min=5, minutes_before=4.8,
+            )
+        record.assert_called_once_with("event", "lobby", result, 5, 4.8)
+        submitted.assert_called_once_with("run")
+        self.assertEqual(run_ids, ["run"])
+        self.assertEqual(batch[0]["market_id"], "m")
 
 
 class _AF:
