@@ -80,6 +80,28 @@ python run.py predict --limit 1
 python run.py predict --submit
 ```
 
+### Deployment (autonomous, isolated from your working tree)
+
+```bash
+scripts/deploy.sh          # build the immutable image + install the cron
+tail -f logs/cron.log      # watch it tick
+scripts/run.sh --status    # what is the next match / ETA?
+```
+
+`scripts/deploy.sh` builds a Docker image (`sportspredict-llm:v1`) with the
+**current** source baked in, then installs a per-minute cron that runs that image
+via `scripts/run.sh`. Each tick is a dispatcher: a fast no-op until a match is
+within 30 minutes, then it upserts predictions at the **30-** and **5-minute**
+marks before kickoff.
+
+Because the code is baked into the image, the running bot is a **frozen
+snapshot** — editing the working tree (or running tests, dev predictions, etc.)
+never affects a live tick. To ship changes, re-run `scripts/deploy.sh` (idempotent:
+it rebuilds the image and rewrites only the `sportspredict-llm` cron block). The
+container mounts `cache/` (paid odds + parser cache, cron markers) and `logs/`
+(ledger, audit) so state persists across ticks; secrets are read from `.env` at
+run time and never baked into the image.
+
 ### Validation
 
 ```bash

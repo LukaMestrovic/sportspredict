@@ -1,0 +1,16 @@
+# Build context hygiene: never ship secrets, the venv, or runtime state into the
+# image. The Dockerfile copies only requirements.txt, bot/, scripts/, run.py.
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+cache/
+logs/
+out/
+.git/
+__pycache__/
+*.pyc
+notebooks/
+tests/
+*.pdf
