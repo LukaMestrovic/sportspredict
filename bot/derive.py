@@ -31,6 +31,23 @@ SHOT_HALF_SHARE = {"1H": 0.45, "2H": 0.55, "match": 1.0}
 CARD_SECOND_HALF_SHARE = 0.58
 SHOT_LOGIT_INTERCEPT = -0.18
 
+# A team always fields eleven, so the team's shot timing (more shots late, 0.55
+# in H2) is the right split for team/total half markets. An *individual* is not:
+# players get substituted, and subs cluster in the second half, so a starter is
+# far more reliably on the pitch in H1. We therefore weight each half by team
+# shot-timing × expected on-pitch fraction (≈1.0 in H1, ≈0.8 in H2 for a typical
+# starter), then renormalise so the two halves still partition the full-match
+# rate. This pulls a player's H2 share down from 0.55 to ≈0.49 and corrects the
+# systematic over-pricing of "player does X in the 2nd half", which otherwise
+# silently assumes a full 90 minutes. (Without lineups we can't tell a starter
+# from a sub; this is the conservative population-average correction.)
+_PLAYER_ON_PITCH = {"1H": 1.0, "2H": 0.80}
+PLAYER_HALF_SHARE = {
+    h: (SHOT_HALF_SHARE[h] * _PLAYER_ON_PITCH[h])
+    / sum(SHOT_HALF_SHARE[k] * _PLAYER_ON_PITCH[k] for k in ("1H", "2H"))
+    for h in ("1H", "2H")
+}
+
 _SPLIT_SYS = """Split a compound soccer betting question into its two atomic
 sub-questions and the logical operator joining them. Each sub-question must be a
 standalone yes/no question. Return JSON:
@@ -147,8 +164,20 @@ def price_empirical(question: str, intent: dict | None, ctx: PriceCtx):
             lam = _lambda_for_tail(threshold + 1, 1 - full)
         else:
             lam = _lambda_for_tail(threshold, full)
-        p = _count_probability(lam * SHOT_HALF_SHARE[period], intent)
+        # Player half share (minutes-aware), not the team's: see PLAYER_HALF_SHARE.
+        p = _count_probability(lam * PLAYER_HALF_SHARE[period], intent)
         return _empirical_out(p, f"empirical player SoT {period}")
+
+    # "Player scores in the 1st/2nd half" has no bookmaker line; the full-match
+    # anytime-scorer prop (bet 92) does. Convert it to a goal rate, scale by the
+    # minutes-aware half share, and recompute P(>=1 goal in the half).
+    if (market == "player_goal_scorer" and period in ("1H", "2H")
+            and intent.get("player")):
+        full = _af_price(ctx, {**intent, "period": "match"})
+        if full is None:
+            return None, None
+        lam = -math.log1p(-full) * PLAYER_HALF_SHARE[period]
+        return _empirical_out(1 - math.exp(-lam), f"empirical player scores {period}")
 
     if market == "team_cards" and period in ("1H", "2H"):
         model = _card_model(ctx, period)
