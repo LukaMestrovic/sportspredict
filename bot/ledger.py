@@ -13,7 +13,7 @@ from .parser import PROMPT_VERSION
 
 
 LEDGER_PATH = config.ROOT / "logs" / "prediction_ledger.sqlite3"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def _now() -> str:
@@ -62,6 +62,7 @@ def connect(path: Path = LEDGER_PATH) -> sqlite3.Connection:
             probability_int INTEGER,
             source TEXT,
             n_books INTEGER,
+            book_probabilities_json TEXT,
             market_label TEXT,
             skip_reason TEXT,
             outcome INTEGER,
@@ -85,6 +86,7 @@ def connect(path: Path = LEDGER_PATH) -> sqlite3.Connection:
     for name, declaration in (
         ("result_probability_int", "INTEGER"),
         ("result_brier_score", "REAL"),
+        ("book_probabilities_json", "TEXT"),
     ):
         if name not in columns:
             db.execute(f"ALTER TABLE questions ADD COLUMN {name} {declaration}")
@@ -133,8 +135,8 @@ def record_run(
                 """INSERT INTO questions (
                     run_id, market_id, question, intent_json, market_spec_json,
                     probability, probability_int, source, n_books, market_label,
-                    skip_reason
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    book_probabilities_json, skip_reason
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     run_id, market_id, market["question"],
                     _json(result.intents[market_id])
@@ -146,6 +148,7 @@ def record_run(
                     prediction.source if prediction else None,
                     prediction.n_books if prediction else None,
                     prediction.market_label if prediction else None,
+                    _json(prediction.book_probabilities) if prediction else None,
                     result.skip_reasons.get(market_id),
                 ),
             )

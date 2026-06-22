@@ -143,6 +143,7 @@ def predict(bookmakers: list[dict], spec: dict) -> dict | None:
     if not probs:
         return None
     return {"probability": mean(probs), "n_books": len(probs),
+            "book_probabilities": probs,
             "label": spec.get("label", spec["market"])}
 
 

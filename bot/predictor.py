@@ -129,4 +129,5 @@ def predict(bookmakers: list[dict], spec: dict) -> dict | None:
             and len(probs) < 2 and (p > 0.9 or p < 0.1)):
         return None
     return {"probability": p, "n_books": len(probs),
+            "book_probabilities": probs,
             "label": spec.get("label", "")}

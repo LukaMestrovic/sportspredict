@@ -30,6 +30,7 @@ class Prediction:
     n_books: int
     market_label: str
     source: str = "api-football"  # odds or derivation source that priced it
+    book_probabilities: list[float] = field(default_factory=list)
 
 
 @dataclass
@@ -130,6 +131,7 @@ def _mk_pred(m: dict, out: dict, source: str) -> Prediction:
         market_id=m["id"], question=m["question"],
         probability=out["probability"], probability_int=_clamp_int(out["probability"]),
         n_books=out["n_books"], market_label=out["label"], source=source,
+        book_probabilities=out.get("book_probabilities", []),
     )
 
 

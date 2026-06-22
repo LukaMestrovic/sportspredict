@@ -41,6 +41,9 @@ class LedgerRecordingTests(unittest.TestCase):
         self.assertEqual(questions[0]["probability_int"], 63)
         self.assertEqual(json.loads(questions[0]["intent_json"])["market"], "match_winner")
         self.assertEqual(json.loads(questions[0]["market_spec_json"])["bet_id"], 1)
+        self.assertEqual(
+            json.loads(questions[0]["book_probabilities_json"]), [0.61, 0.65]
+        )
         self.assertEqual(questions[1]["skip_reason"], "no direct market mapping")
 
     def test_submission_status_is_updated(self):
@@ -109,6 +112,7 @@ def _result(probability=0.634, probability_int=63):
     ]
     prediction = Prediction(
         "a", markets[0]["question"], probability, probability_int, 4, "Home win",
+        book_probabilities=[0.61, 0.65],
     )
     return MatchResult(
         sp_match={

@@ -14,6 +14,7 @@ class PlayerPropTests(unittest.TestCase):
             "side": "Over", "line": 0.5, "label": "player SoT",
         })
         self.assertAlmostEqual(out["probability"], 0.46)
+        self.assertEqual(out["book_probabilities"], [0.46])
 
     def test_player_name_match_is_accent_insensitive(self):
         books = [_book(92, [{"value": "Luka Sucic", "odd": "4.00"}])]
