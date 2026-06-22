@@ -29,7 +29,21 @@ from .pricing import PriceCtx, price_intent
 
 SHOT_HALF_SHARE = {"1H": 0.45, "2H": 0.55, "match": 1.0}
 CARD_SECOND_HALF_SHARE = 0.58
-SHOT_LOGIT_INTERCEPT = -0.18
+
+# Shot-model parameters, calibrated on 28 settled WC2026 fixtures that still had
+# pre-match odds (see commit message / analysis). Two findings:
+#  - The inferred total-SoT rate over-estimates the actual total by ~2.5%
+#    (mean λ 8.64 vs 8.43). We de-bias at the source so every shot-derived
+#    market (team/total/both-teams SoT) inherits the correction consistently,
+#    instead of an ad-hoc per-branch logit fudge. (Player SoT is anchored on a
+#    real player prop and is left alone — it is already market-calibrated.)
+#  - Mapping the SoT-1x2 edge to a home/away share: actual home share correlates
+#    strongly with the odds gap (r≈0.76) but the favourite is slightly
+#    over-amplified at coef 0.40; the MSE-optimal slope is ≈0.35 for both the
+#    SoT-1x2 signal and the match-winner fallback (which validated as an equally
+#    good proxy, so it shares the same coefficient — no separate fudge needed).
+SHOT_RATE_DEBIAS = 0.975
+SHOT_SHARE_COEF = 0.35
 
 # A team always fields eleven, so the team's shot timing (more shots late, 0.55
 # in H2) is the right split for team/total half markets. An *individual* is not:
@@ -137,18 +151,16 @@ def price_empirical(question: str, intent: dict | None, ctx: PriceCtx):
             if intent["subject"] == "away":
                 p = _poisson_more(model[1] * share, model[0] * share)
         else:
-            p = _calibrate_shot_probability(_count_probability(
+            p = _count_probability(
                 model[0 if intent["subject"] == "home" else 1] * share, intent
-            ))
+            )
         return _empirical_out(p, f"empirical team SoT {period}")
 
     if market == "total_shots_on_target" and period in ("1H", "2H"):
         model = _shot_model(ctx)
         if not model:
             return None, None
-        p = _calibrate_shot_probability(
-            _count_probability(sum(model) * SHOT_HALF_SHARE[period], intent)
-        )
+        p = _count_probability(sum(model) * SHOT_HALF_SHARE[period], intent)
         return _empirical_out(p, f"empirical total SoT {period}")
 
     if market == "player_shots_on_target" and period in ("1H", "2H"):
@@ -206,6 +218,7 @@ def _shot_model(ctx: PriceCtx) -> tuple[float, float] | None:
     total = _infer_total_rate(ctx.af_books, 87)
     if total is None:
         return None
+    total *= SHOT_RATE_DEBIAS  # correct the measured ~2.5% rate over-estimate
     home_more = _select_probability(ctx, 176, "Home")
     away_more = _select_probability(ctx, 176, "Away")
     if home_more is None or away_more is None:
@@ -213,7 +226,7 @@ def _shot_model(ctx: PriceCtx) -> tuple[float, float] | None:
         away_more = _select_probability(ctx, 1, "Away")
     if home_more is None or away_more is None:
         return None
-    home_share = _clamp(0.5 + 0.40 * (home_more - away_more), 0.20, 0.80)
+    home_share = _clamp(0.5 + SHOT_SHARE_COEF * (home_more - away_more), 0.20, 0.80)
     return total * home_share, total * (1 - home_share)
 
 
@@ -286,7 +299,9 @@ def _penalty_awarded(ctx: PriceCtx) -> float | None:
     })
     if cards is None or goals is None:
         return None
-    return _clamp(0.19 + 0.08 * (cards - 0.5) + 0.04 * (goals - 0.5), 0.08, 0.30)
+    # Base rate shrunk toward the WC2026 sample: 6/40 settled matches had a
+    # penalty awarded (0.150); 0.16 is that estimate lightly pulled to the prior.
+    return _clamp(0.16 + 0.08 * (cards - 0.5) + 0.04 * (goals - 0.5), 0.08, 0.30)
 
 
 def _red_card(ctx: PriceCtx) -> float | None:
@@ -297,7 +312,9 @@ def _red_card(ctx: PriceCtx) -> float | None:
         "market": "total_cards", "subject": "match", "comparator": "gte",
         "threshold": 4, "period": "match",
     })
-    return _clamp(0.08 + 0.08 * (cards - 0.5), 0.03, 0.16) if cards is not None else None
+    # Base rate raised toward the WC2026 sample: 5/40 settled matches had a red
+    # card (0.125, second yellows included); 0.11 is that estimate pulled to prior.
+    return _clamp(0.11 + 0.08 * (cards - 0.5), 0.03, 0.20) if cards is not None else None
 
 
 def _single_sided_event(
@@ -332,12 +349,6 @@ def _count_probability(lam: float, intent: dict) -> float:
     if intent.get("comparator") == "lte":
         return 1 - _poisson_tail(lam, threshold + 1)
     return _poisson_tail(lam, threshold)
-
-
-def _calibrate_shot_probability(probability: float) -> float:
-    probability = _clamp(probability, 1e-6, 1 - 1e-6)
-    logit = math.log(probability / (1 - probability)) + SHOT_LOGIT_INTERCEPT
-    return 1 / (1 + math.exp(-logit))
 
 
 def _lambda_for_tail(threshold: int, probability: float) -> float:

@@ -1,8 +1,8 @@
 import unittest
 
 from bot.derive import (
-    _calibrate_shot_probability, _lambda_for_tail, _poisson_tail,
-    price_empirical,
+    SHOT_RATE_DEBIAS, _infer_total_rate, _lambda_for_tail, _poisson_tail,
+    _shot_model, price_empirical,
 )
 from bot.pricing import PriceCtx
 
@@ -16,8 +16,14 @@ class PoissonModelTests(unittest.TestCase):
     def test_higher_rate_has_higher_tail_probability(self):
         self.assertGreater(_poisson_tail(8, 6), _poisson_tail(5, 6))
 
-    def test_historical_shot_calibration_reduces_raw_probability(self):
-        self.assertAlmostEqual(_calibrate_shot_probability(0.5), 0.4551, places=4)
+    def test_shot_model_applies_rate_debias_at_source(self):
+        # The total SoT rate is de-biased once, at the source, so every
+        # shot-derived market inherits the calibrated rate consistently.
+        books = [_book(), _book()]
+        ctx = PriceCtx(home="Argentina", away="Austria", oa=None, oa_event=None,
+                       af_books=books)
+        raw = _infer_total_rate(books, 87)
+        self.assertAlmostEqual(sum(_shot_model(ctx)), raw * SHOT_RATE_DEBIAS, places=9)
 
 
 class EmpiricalPricingTests(unittest.TestCase):
