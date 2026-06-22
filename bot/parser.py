@@ -4,7 +4,7 @@ Turns a free-text binary question (e.g. "Will Argentina win the match?") into a
 structured intent the matcher can map to an odds market. All of a match's
 questions are parsed in ONE batched call to keep token spend minimal.
 
-Model: gpt-4.1-nano (cheapest capable). See README "Cost" section.
+Model: configurable via ``PARSER_MODEL`` (default ``gpt-4.1``). See README.
 """
 from __future__ import annotations
 
@@ -147,7 +147,7 @@ _TEAM_COUNT_MARKETS = {
 
 
 def _repair_intent(question: str, intent: dict, home: str, away: str) -> dict:
-    """Deterministically repair common nano ambiguities supported by the text."""
+    """Deterministically repair common parser ambiguities supported by the text."""
     intent = dict(intent)
     subject = intent.get("subject")
     if subject not in ("home", "away", "match", "player"):
@@ -158,7 +158,7 @@ def _repair_intent(question: str, intent: dict, home: str, away: str) -> dict:
 
     lower = question.lower()
 
-    # --- deterministic period detection (nano's single biggest misparse) ---
+    # --- deterministic period detection ---
     # Push the period decision out of the LLM for the unambiguous phrasings so
     # half questions can never silently price as full-match lines (or fall to
     # the web layer) across runs.
@@ -220,10 +220,6 @@ def _repair_intent(question: str, intent: dict, home: str, away: str) -> dict:
     if len(mentioned) == 1:
         intent["subject"] = mentioned[0]
     return intent
-
-
-# Backward-compatible name for focused callers/tests.
-_repair_subject = _repair_intent
 
 
 def _team_is_mentioned(question: str, team: str) -> bool:

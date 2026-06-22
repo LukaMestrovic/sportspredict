@@ -1,4 +1,4 @@
-"""Team-name normalization shared by provider fixture/event matching."""
+"""Name normalization shared by provider matching."""
 from __future__ import annotations
 
 import re
@@ -24,10 +24,14 @@ _ALIASES = {
 }
 
 
-def normalize_team(name: str) -> str:
+def _normalize_name(name: str) -> str:
     text = unicodedata.normalize("NFKD", name or "")
     text = "".join(c for c in text if not unicodedata.combining(c)).lower()
-    text = re.sub(r"[^a-z0-9]+", " ", text).strip()
+    return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+
+def normalize_team(name: str) -> str:
+    text = _normalize_name(name)
     text = _ALIASES.get(text, text)
     # Providers disagree about the word order for DR Congo.
     if text in ("dr congo", "congo dr"):
@@ -48,3 +52,15 @@ def split_match_name(name: str) -> tuple[str, str] | None:
 
 def same_team(left: str, right: str) -> bool:
     return normalize_team(left) == normalize_team(right)
+
+
+def player_matches(candidate: str, player: str) -> bool:
+    """Match provider player names despite accents or abbreviated forenames."""
+    candidate = _normalize_name(candidate)
+    player = _normalize_name(player)
+    if not candidate or not player:
+        return False
+    if candidate == player or candidate in player or player in candidate:
+        return True
+    surname = player.split()[-1]
+    return len(surname) >= 4 and surname in candidate.split()

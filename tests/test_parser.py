@@ -1,12 +1,12 @@
 import unittest
 
-from bot.parser import _repair_intent, _repair_subject
+from bot.parser import _repair_intent
 
 
 class SubjectRepairTests(unittest.TestCase):
     def test_named_team_total_is_repaired(self):
         intent = {"market": "total_offsides", "subject": "match"}
-        repaired = _repair_subject(
+        repaired = _repair_intent(
             "Will Austria be caught offside 2 or more times?",
             intent, "Argentina", "Austria",
         )
@@ -15,7 +15,7 @@ class SubjectRepairTests(unittest.TestCase):
 
     def test_provider_word_order_and_punctuation_are_tolerated(self):
         intent = {"market": "total_fouls", "subject": "match"}
-        repaired = _repair_subject(
+        repaired = _repair_intent(
             "Will DR Congo commit 12 or more fouls?",
             intent, "Colombia", "Congo DR",
         )
@@ -23,7 +23,7 @@ class SubjectRepairTests(unittest.TestCase):
 
     def test_match_total_stays_match_scoped(self):
         intent = {"market": "total_cards", "subject": "match"}
-        repaired = _repair_subject(
+        repaired = _repair_intent(
             "Will there be 4 or more total cards shown?",
             intent, "Argentina", "Austria",
         )

@@ -2,7 +2,7 @@ import unittest
 
 from bot.apifootball import APIFootball
 from bot.oddsapi import OddsAPI
-from bot.teams import normalize_team, split_match_name
+from bot.teams import normalize_team, player_matches, split_match_name
 
 
 class TeamNormalizationTests(unittest.TestCase):
@@ -15,6 +15,10 @@ class TeamNormalizationTests(unittest.TestCase):
         self.assertEqual(normalize_team("DR Congo"), normalize_team("Congo DR"))
         self.assertEqual(normalize_team("Curaçao"), normalize_team("Curacao"))
         self.assertEqual(normalize_team("Cape Verde Islands"), normalize_team("CPV"))
+
+    def test_player_names_tolerate_accents_and_abbreviations(self):
+        self.assertTrue(player_matches("L. Sucic", "Luka Sučić"))
+        self.assertFalse(player_matches("Luka Modric", "Luka Sučić"))
 
 
 class ProviderMatchingTests(unittest.TestCase):

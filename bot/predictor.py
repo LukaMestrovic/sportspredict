@@ -7,8 +7,9 @@ fair probability across all bookmakers that quote the contract.
 from __future__ import annotations
 
 import re
-import unicodedata
 from statistics import mean
+
+from .teams import player_matches
 
 
 SINGLE_SIDE_DEVIG = 0.92
@@ -66,21 +67,6 @@ def _devig_ou(values: list[dict], side: str, line: float) -> float | None:
     return fair_over if side == "Over" else 1 - fair_over
 
 
-def _norm(text: str) -> str:
-    text = unicodedata.normalize("NFKD", text or "")
-    return "".join(c for c in text if not unicodedata.combining(c)).lower().strip()
-
-
-def _player_match(candidate: str, player: str) -> bool:
-    candidate, player = _norm(candidate), _norm(player)
-    if not candidate or not player:
-        return False
-    if candidate == player or candidate in player or player in candidate:
-        return True
-    surname = player.split()[-1]
-    return len(surname) >= 4 and surname in candidate.split()
-
-
 def _single_side_probability(odd) -> float | None:
     try:
         return min(0.99, (1.0 / float(odd)) * SINGLE_SIDE_DEVIG)
@@ -91,7 +77,7 @@ def _single_side_probability(odd) -> float | None:
 def _price_player_yes(values: list[dict], player: str) -> float | None:
     if not player:
         return None
-    value = next((v for v in values if _player_match(v.get("value", ""), player)), None)
+    value = next((v for v in values if player_matches(v.get("value", ""), player)), None)
     return _single_side_probability(value["odd"]) if value else None
 
 
@@ -106,7 +92,7 @@ def _price_player_threshold(
         match = re.fullmatch(r"(.+?)\s*-\s*(\d+)\+", value.get("value", "").strip())
         if not match or int(match.group(2)) != target:
             continue
-        if _player_match(match.group(1), player):
+        if player_matches(match.group(1), player):
             over = _single_side_probability(value.get("odd"))
             if over is None:
                 return None

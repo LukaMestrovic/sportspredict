@@ -4,9 +4,9 @@ Used as a FALLBACK when API-Football has no market / no bookmaker coverage.
 It adds player props (anytime scorer, score-or-assist, shots-on-target, cards)
 that API-Football rarely quotes for World Cup fixtures.
 
-**Paid + metered.** Every event-odds response is cached to disk (`bot/cache.py`);
-a match's needed markets are fetched in ONE batched call per match. The `/events`
-listing is free; `/events/{id}/odds` costs (#markets × #regions) credits.
+**Paid + metered.** Every event-odds response is cached to disk (`bot/cache.py`).
+The `/events` listing is free; `/events/{id}/odds` costs
+``#markets × #regions`` credits.
 
 Outcome shapes:
   h2h / corners_1x2 / draw_no_bet : name = team name | "Draw"
@@ -16,14 +16,13 @@ Outcome shapes:
 """
 from __future__ import annotations
 
-import unicodedata
 from statistics import mean
 from typing import Any
 
 import requests
 
 from . import cache, config
-from .teams import same_team
+from .teams import player_matches, same_team
 
 # Single-sided player props (only "Yes"/"Over" quoted) carry bookmaker margin we
 # can't cancel against a complementary outcome; haircut the implied prob.
@@ -80,23 +79,6 @@ class OddsAPI:
                 return []  # some market bundles 422 if none available
 
         return cache.get_or_fetch("oddsapi_odds", key, fetch)
-
-
-def _norm(s: str) -> str:
-    """Lowercase + strip diacritics so 'Sučić' matches 'Sucic'."""
-    s = unicodedata.normalize("NFKD", s or "")
-    return "".join(c for c in s if not unicodedata.combining(c)).lower().strip()
-
-
-def _player_match(description: str, player: str) -> bool:
-    """Tolerant player-name match (accent-insensitive; surname fallback)."""
-    d, p = _norm(description), _norm(player)
-    if not d or not p:
-        return False
-    if p in d or d in p:
-        return True
-    last = p.split()[-1]
-    return len(last) >= 4 and last in d
 
 
 # --- de-vig helpers (operate on Odds API outcome dicts) ---
@@ -167,18 +149,18 @@ def _price_from_market(outs: list[dict], spec: dict) -> float | None:
     if kind == "player_yesno":                   # scorer, score-or-assist, card
         pl = spec["player"]
         y = next((o["price"] for o in outs
-                  if _player_match(o.get("description", ""), pl) and o["name"].lower() == "yes"), None)
+                  if player_matches(o.get("description", ""), pl) and o["name"].lower() == "yes"), None)
         n = next((o["price"] for o in outs
-                  if _player_match(o.get("description", ""), pl) and o["name"].lower() == "no"), None)
+                  if player_matches(o.get("description", ""), pl) and o["name"].lower() == "no"), None)
         return _devig_two_sided(y, n)
     if kind == "player_ou":                      # player shots on target
         pl = spec["player"]
         line = spec["line"]
         ov = next((o["price"] for o in outs
-                   if _player_match(o.get("description", ""), pl) and o["name"].lower() == "over"
+                   if player_matches(o.get("description", ""), pl) and o["name"].lower() == "over"
                    and abs(o.get("point", 1e9) - line) < 1e-6), None)
         un = next((o["price"] for o in outs
-                   if _player_match(o.get("description", ""), pl) and o["name"].lower() == "under"
+                   if player_matches(o.get("description", ""), pl) and o["name"].lower() == "under"
                    and abs(o.get("point", 1e9) - line) < 1e-6), None)
         p = _devig_two_sided(ov, un)
         return p if spec["side"] == "Over" else (1 - p if p else None)
