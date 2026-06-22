@@ -36,5 +36,8 @@ ODDS_REGIONS = os.environ.get("ODDS_REGIONS", "eu,uk")
 WC_LEAGUE_ID = 1
 WC_SEASON = 2026
 
-# Cheapest capable model for structured question parsing.
-PARSER_MODEL = os.environ.get("PARSER_MODEL", "gpt-4.1-nano")
+# Model for structured question parsing. Parser responses are cached to disk
+# (see parser.chat_json), so the model is a one-time tournament cost and we use
+# the most reliable affordable option rather than the cheapest. gpt-4.1 misparses
+# far less than nano on period/market extraction; re-runs then cost $0.
+PARSER_MODEL = os.environ.get("PARSER_MODEL", "gpt-4.1")

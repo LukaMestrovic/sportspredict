@@ -19,7 +19,10 @@ import requests
 from . import cache, config
 
 MODEL = os.environ.get("EXTERNAL_MODEL", "gpt-4.1-mini")
-ENABLED = os.environ.get("EXTERNAL_FALLBACK", "1") != "0"
+# Off by default: the web layer is non-deterministic (a re-run can change a
+# question's source/probability) and the empirical layer covers its cases from
+# bookmaker odds at prediction time. Set EXTERNAL_FALLBACK=1 to re-enable.
+ENABLED = os.environ.get("EXTERNAL_FALLBACK", "0") != "0"
 
 _SYS = (
     "You are a calibrated soccer forecaster for a probability competition. "

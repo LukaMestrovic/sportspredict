@@ -61,6 +61,49 @@ class SubjectRepairTests(unittest.TestCase):
         )
         self.assertEqual(repaired["market"], "team_offsides")
 
+    def test_at_halftime_tied_maps_to_first_half_draw(self):
+        repaired = _repair_intent(
+            "At halftime, will the match be tied?",
+            {"market": "none", "subject": "match", "comparator": "yes",
+             "threshold": None, "period": "match"},
+            "Norway", "Senegal",
+        )
+        self.assertEqual(repaired["market"], "match_draw")
+        self.assertEqual(repaired["subject"], "match")
+        self.assertEqual(repaired["period"], "1H")
+
+    def test_second_half_total_goals_sets_period(self):
+        repaired = _repair_intent(
+            "Will the second half have 2 or more total goals?",
+            {"market": "total_goals", "subject": "match", "comparator": "gte",
+             "threshold": 2, "period": "match"},
+            "Portugal", "Uzbekistan",
+        )
+        self.assertEqual(repaired["market"], "total_goals")
+        self.assertEqual(repaired["period"], "2H")
+
+    def test_outscore_opponent_in_half_is_match_winner(self):
+        repaired = _repair_intent(
+            "Will Senegal score more goals than Norway in the second half?",
+            {"market": "total_goals", "subject": "match", "comparator": "more",
+             "threshold": None, "period": "match"},
+            "Norway", "Senegal",
+        )
+        self.assertEqual(repaired["market"], "match_winner")
+        self.assertEqual(repaired["comparator"], "win")
+        self.assertEqual(repaired["subject"], "away")  # Senegal is the away team
+        self.assertEqual(repaired["period"], "2H")
+
+    def test_highest_scoring_half_keeps_match_period(self):
+        repaired = _repair_intent(
+            "Will the second half have more goals than the first half?",
+            {"market": "highest_scoring_half_2h", "subject": "match",
+             "comparator": "second_half_more", "threshold": None, "period": "match"},
+            "Portugal", "Uzbekistan",
+        )
+        self.assertEqual(repaired["market"], "highest_scoring_half_2h")
+        self.assertEqual(repaired["period"], "match")
+
     def test_offside_phrase_repairs_all_required_fields(self):
         repaired = _repair_intent(
             "Will Austria be caught offside 2 or more times?",

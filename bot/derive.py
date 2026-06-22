@@ -22,11 +22,8 @@ import math
 import re
 from statistics import mean
 
-import requests
-
-from . import config
 from . import predictor as afpred
-from .parser import parse_questions
+from .parser import chat_json, parse_questions
 from .pricing import PriceCtx, price_intent
 
 
@@ -42,17 +39,9 @@ If it is not actually a compound of two events, return {"op": null}."""
 
 
 def _split(question: str) -> dict | None:
-    r = requests.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {config.OPENAI_API_KEY}"},
-        json={"model": config.PARSER_MODEL, "temperature": 0,
-              "response_format": {"type": "json_object"},
-              "messages": [{"role": "system", "content": _SPLIT_SYS},
-                           {"role": "user", "content": question}]},
-        timeout=60,
-    )
-    r.raise_for_status()
-    out = json.loads(r.json()["choices"][0]["message"]["content"])
+    content = chat_json([{"role": "system", "content": _SPLIT_SYS},
+                         {"role": "user", "content": question}])
+    out = json.loads(content)
     return out if out.get("op") in ("AND", "OR") else None
 
 
@@ -88,6 +77,14 @@ def price_empirical(question: str, intent: dict | None, ctx: PriceCtx):
     market = intent.get("market")
     period = intent.get("period", "match")
     lower = question.lower()
+
+    # "More shots on target than the opponent in the 1st/2nd half" has no
+    # bookmaker market (the full-match SoT 1x2, bet 176, is priced directly by
+    # API-Football). Route it to the team-shots "more" model, splitting the
+    # match rate into the half. The match-period case never reaches here.
+    if market == "shots_on_target_compare" and period in ("1H", "2H"):
+        market = "team_shots_on_target"
+        intent = {**intent, "comparator": "more"}
 
     if "penalty kick be awarded" in lower:
         penalty = _penalty_awarded(ctx)

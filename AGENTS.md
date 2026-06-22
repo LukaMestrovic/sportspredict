@@ -23,9 +23,15 @@ git-ignored; keep it that way).
   Compounds are composed from **separately priced components**, not from
   marginal lines of one book.
 - Submit probabilities as integers **1–99**.
-- Keep LLM steps on the cheapest capable model (`PARSER_MODEL`, default
-  `gpt-4.1-nano`); **one batched parser call per match**. Document any per-match
-  cost change in the README "Cost" table.
+- **Determinism is required.** Every LLM call (parser + compound splitter) goes
+  through `parser.chat_json`, which caches on `(PROMPT_VERSION, model, messages)`
+  so the same question always maps to the same intent/source/probability across
+  runs. Never add an uncached LLM call. Bump `PROMPT_VERSION` when you change
+  parser semantics.
+- Parser uses `PARSER_MODEL` (default `gpt-4.1`); **one batched call per match**.
+  Because the call is cached, the model is a one-time cost — favour reliability
+  over the cheapest model. Document any per-match cost change in the README
+  "Cost" table.
 
 ## Quota & caching (important)
 - **The Odds API is paid/metered** and **API-Football is rate-limited (450/min)**.

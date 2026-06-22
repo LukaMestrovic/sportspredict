@@ -9,13 +9,16 @@ Model: gpt-4.1-nano (cheapest capable). See README "Cost" section.
 from __future__ import annotations
 
 import json
-from typing import Any
+import re
 
 import requests
 
-from . import config
+from . import cache, config
 from .matcher import MARKET_KEYS
 from .teams import normalize_team
+
+# Bump to invalidate cached intents after a prompt/model semantics change.
+PROMPT_VERSION = "p2-deterministic"
 
 SYSTEM = """You convert soccer betting questions into structured JSON intents.
 Each question is a YES/NO question about a single match. Output ONLY the
@@ -69,14 +72,32 @@ Return a JSON object: {{"intents": [{{"id": <int>, "market": ..., "subject": ...
 One intent per question, preserving the given id."""
 
 
-def _client_chat(messages: list[dict]) -> str:
+def chat_json(messages: list[dict], model: str | None = None) -> str:
+    """Cached, deterministic JSON chat call (parser + compound splitter).
+
+    The OpenAI response is keyed on (prompt version, model, exact messages) and
+    cached forever (ttl=0). Identical questions therefore return byte-identical
+    intents on every re-run, so a question can never flap between sources or
+    probabilities across runs — and re-runs cost $0. ``temperature=0`` + a fixed
+    ``seed`` make the first (cache-miss) call as reproducible as the API allows.
+    """
+    model = model or config.PARSER_MODEL
+    key = json.dumps(
+        {"v": PROMPT_VERSION, "model": model, "messages": messages},
+        sort_keys=True,
+    )
+    return cache.get_or_fetch("llm", key, lambda: _client_chat(messages, model), ttl=0)
+
+
+def _client_chat(messages: list[dict], model: str) -> str:
     r = requests.post(
         "https://api.openai.com/v1/chat/completions",
         headers={"Authorization": f"Bearer {config.OPENAI_API_KEY}"},
         json={
-            "model": config.PARSER_MODEL,
+            "model": model,
             "messages": messages,
             "temperature": 0,
+            "seed": 7,
             "response_format": {"type": "json_object"},
         },
         timeout=60,
@@ -101,7 +122,7 @@ def parse_questions(
         f"Home team: {home}\nAway team: {away}\n\n"
         f"Questions:\n{json.dumps(numbered, indent=0)}"
     )
-    content = _client_chat(
+    content = chat_json(
         [
             {"role": "system", "content": SYSTEM.format(keys="\n".join(MARKET_KEYS))},
             {"role": "user", "content": user},
@@ -136,6 +157,40 @@ def _repair_intent(question: str, intent: dict, home: str, away: str) -> dict:
             intent["subject"] = "away"
 
     lower = question.lower()
+
+    # --- deterministic period detection (nano's single biggest misparse) ---
+    # Push the period decision out of the LLM for the unambiguous phrasings so
+    # half questions can never silently price as full-match lines (or fall to
+    # the web layer) across runs.
+    has_1h = bool(re.search(r"\bfirst half\b|\b1st half\b", lower))
+    has_2h = bool(re.search(r"\bsecond half\b|\b2nd half\b", lower))
+    has_ht = bool(re.search(r"\bhalftime\b|\bhalf[-\s]?time\b", lower))
+    if has_1h and has_2h:
+        # A comparison spanning both halves is the highest-scoring-half contract,
+        # a full-match market — not a single-period line.
+        intent["period"] = "match"
+    elif has_2h:
+        intent["period"] = "2H"
+    elif has_1h or has_ht:
+        intent["period"] = "1H"
+
+    # "At halftime, will the match be tied/level/a draw" -> 1st-half draw.
+    if has_ht and re.search(r"\btied?\b|\bdraw\b|\blevel\b|\ball square\b", lower):
+        intent.update(market="match_draw", subject="match",
+                      comparator="yes", period="1H")
+
+    # "<team> to score more goals than <team> [in the half]" is an outscore /
+    # match-winner contract (full match -> bet 1, a half -> half winner), never
+    # a totals line. The both-halves case above is excluded.
+    if "more goals than" in lower and not (has_1h and has_2h):
+        before = lower.split("more goals than", 1)[0]
+        intent["market"] = "match_winner"
+        intent["comparator"] = "win"
+        for side, team in (("home", home), ("away", away)):
+            if _team_is_mentioned(before, team):
+                intent["subject"] = side
+                break
+
     if "score or assist" in lower:
         intent["market"] = "player_score_or_assist"
     if "caught offside" in lower:

@@ -12,7 +12,7 @@ The **Parser** (LLM) turns each question into a structured intent; the intent is
 then priced by the first source in the cascade that can cover it:
 
 ```
-                    ┌─ Parser (LLM, gpt-4.1-nano) ─ structured intent
+                    ┌─ Parser (LLM, gpt-4.1, cached) ─ structured intent
    question ───────▶│
                     └─ price via cascade ▼
    ┌────────────────────────────────────────────────────────────────┐
@@ -23,9 +23,13 @@ then priced by the first source in the cascade that can cover it:
    └────────────────────────────────────────────────────────────────┘
 ```
 
-1. **Parser** ([bot/parser.py](bot/parser.py)) — `gpt-4.1-nano` reads each question
+1. **Parser** ([bot/parser.py](bot/parser.py)) — `gpt-4.1` reads each question
    and emits an intent (market, subject team/player, comparator, threshold,
-   period). All of a match's questions go in **one batched call**.
+   period). All of a match's questions go in **one batched call**. The call is
+   **cached on `(model, prompt version, questions)`**, so a question maps to the
+   same intent — and therefore the same source and probability — on every re-run
+   (re-runs cost $0). Unambiguous period/market phrasings are resolved by
+   deterministic rules in `_repair_intent`, not left to the model.
 2. **Matcher** ([bot/matcher.py](bot/matcher.py)) — maps an intent to a specific
    provider market (API-Football bet ID or Odds API key) from
    [soccer_live_odds_market_catalog.pdf](soccer_live_odds_market_catalog.pdf),
@@ -120,16 +124,19 @@ SportPredict is free; API-Football is a flat-rate subscription. Metered costs:
 
 | Source | Unit cost | Per match (first run) | Whole tournament* |
 |---|---|---|---|
-| Parser `gpt-4.1-nano` | $0.10/$0.40 per 1M tok | ~$0.0002 (1 batched call) | ~$0.02 |
-| Compound splitter `nano` | same | ~$0.0001 (few compounds) | ~$0.01 |
+| Parser `gpt-4.1` (cached) | $2.00/$8.00 per 1M tok | ~$0.004 (1 batched call) | ~$0.46 |
+| Compound splitter `gpt-4.1` (cached) | same | ~$0.001 (few compounds) | ~$0.10 |
 | Odds API | flat sub, billed `markets×regions` | cached after first fetch | within plan |
-| External web search `gpt-4.1-mini` | ~$0.035 / question | ~$0.20 (≈6 questions) | **~$15–20** |
+| External web search `gpt-4.1-mini` | ~$0.035 / question | **off by default** | **$0** (opt-in) |
 
-*104 matches. **Everything is cached**, so re-runs and re-prices add ~$0. The
-external web layer dominates spend; it only fires for questions no odds source
-covers (~half, mostly shots-on-target / 2nd-half props) and each unique question
-is searched once. Set `EXTERNAL_FALLBACK=0` to cap spend at a few cents (the bot
-then skips those instead).
+*104 matches. **Every LLM call and odds response is cached**, so the figures
+above are one-time; re-runs and re-prices add ~$0. Caching the parser on
+`(model, prompt, questions)` also makes question→source mapping deterministic
+across runs. The web layer is **off by default** (`EXTERNAL_FALLBACK=0`) — it is
+non-deterministic and the empirical layer covers its cases from bookmaker odds at
+prediction time. Total tournament LLM spend is well under **$1**; enable the web
+layer (`EXTERNAL_FALLBACK=1`) only if you accept ~$15–20 and a non-deterministic
+last resort.
 
 ## Supported markets
 
@@ -154,16 +161,21 @@ API and web layer disabled:
 | 3 | Empirical derive | 50 | team/half shots, half cards, first 2H scorer, penalty/red |
 | — | Skipped | 81 | required signals unavailable or direct mapped contracts not yet quoted |
 
-So 237/318 are priced without either paid fallback; the rest reach the
-external estimate (turn it off with `EXTERNAL_FALLBACK=0` to skip them instead).
-A lone-book
+So 237/318 are priced without either paid fallback. The remainder are skipped on
+this audited *far-future* set because their direct contracts (or empirical
+signals) are not quoted yet; at prediction time (~30 min before kickoff) those
+deep markets are live, so the empirical layer prices them. A lone-book
 API-Football quote on a normally-deep market is treated as a likely mis-map and
 only trusted if it isn't an extreme — it otherwise cascades onward.
 
-The cascade is deterministic and auditable up to layer 3: compounds are detected
-by explicit conjunctions; half-period and comparison questions
-map to their exact half/1x2 contracts rather than a full-match line. Only what no
-odds source can price reaches the (priced-but-approximate) external estimate.
+The cascade is **deterministic and auditable end-to-end**: the parser is cached
+so each question maps to a fixed intent across runs; compounds are detected by
+explicit conjunctions; half-period and comparison questions map to their exact
+half/1x2 contracts (or, where no contract exists, to a fixed empirical model)
+rather than a full-match line. The web layer is **off by default**, so nothing
+reaches a non-deterministic estimate unless explicitly opted in
+(`EXTERNAL_FALLBACK=1`); with it off, an unpriceable question is skipped, never
+guessed.
 
 Derivation uses **independence** to combine components — `P(A AND B)=P(A)·P(B)`,
 `P(A OR B)=P(A)+P(B)−P(A)·P(B)` — an approximation, but far better than skipping.
@@ -178,6 +190,10 @@ calls The Odds API, so it adds no paid odds credits.
   Poisson rate. Split it between teams with
   `home_share = clamp(0.5 + 0.40·(P(home more) − P(away more)), 0.2, 0.8)` from
   shots-on-target 1x2. Allocate 45% to the first half and 55% to the second.
+- **Half shots-on-target comparison:** "more shots on target than the opponent
+  in the 1st/2nd half" has no bookmaker market (the full-match SoT 1x2 is priced
+  directly). Split each team's match SoT rate into the half (45%/55%) and price
+  the lead with competing Poisson counts.
 - **Shot-count calibration:** apply `logit(p_cal) = logit(p_raw) − 0.18`. On 224
   recent settled team/threshold checks (3+ through 6+), mean Brier was **0.164**
   versus **0.250** for a coin flip. Raw probabilities were about four points

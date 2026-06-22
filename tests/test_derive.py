@@ -53,6 +53,17 @@ class EmpiricalPricingTests(unittest.TestCase):
         )
         self.assertGreater(p, 0.5)
 
+    def test_shots_on_target_compare_half_routes_to_more_model(self):
+        # The parser emits `shots_on_target_compare` for "more SoT than"; with no
+        # bookmaker half market it must reach the team-shots "more" model, not WEB.
+        p = self.price(
+            "Will Argentina have more shots on target than Austria in the second half?",
+            market="shots_on_target_compare", subject="home", comparator="more",
+            threshold=None, period="2H",
+        )
+        self.assertGreater(p, 0.5)  # home is favoured in the fixture
+        self.assertLess(p, 1.0)
+
     def test_both_teams_shot_probability_is_bounded(self):
         p = self.price(
             "Will both teams have at least 1 shot on target in the second half?",
