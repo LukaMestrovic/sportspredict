@@ -14,6 +14,8 @@ venv/
 /tmp/
 *.log
 out/
+# cron submission audit trail (runtime, per-machine)
+logs/cron_submissions.jsonl
 
 # paid odds-api cache
 cache/
