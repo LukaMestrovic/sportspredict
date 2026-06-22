@@ -70,10 +70,37 @@ If it is not actually a compound of two events, return {"op": null}."""
 
 
 def _split(question: str) -> dict | None:
+    deterministic = _split_template(question)
+    if deterministic:
+        return deterministic
     content = chat_json([{"role": "system", "content": _SPLIT_SYS},
                          {"role": "user", "content": question}])
     out = json.loads(content)
     return out if out.get("op") in ("AND", "OR") else None
+
+
+def _split_template(question: str) -> dict | None:
+    """Split the stable competition compound forms without an LLM call."""
+    explicit = re.fullmatch(
+        r"Will (.+?)\s+(AND|OR)\s+(.+?)\?", question.strip()
+    )
+    if explicit:
+        a, op, b = explicit.groups()
+        return {"op": op, "a": f"Will {a}?", "b": f"Will {b}?"}
+
+    first_goal = re.fullmatch(
+        r"Will (.+?) score the first goal of the game and "
+        r"(.+?) score in the (first|second) half\?",
+        question.strip(), re.IGNORECASE,
+    )
+    if first_goal:
+        first, second, period = first_goal.groups()
+        return {
+            "op": "AND",
+            "a": f"Will {first} score the first goal of the game?",
+            "b": f"Will {second} score in the {period} half?",
+        }
+    return None
 
 
 def _price_sub(question: str, ctx: PriceCtx) -> float | None:

@@ -1,8 +1,9 @@
 import unittest
+from unittest.mock import patch
 
 from bot.derive import (
     SHOT_RATE_DEBIAS, _infer_total_rate, _lambda_for_tail, _poisson_tail,
-    _shot_model, price_empirical,
+    _shot_model, _split, price_empirical,
 )
 from bot.pricing import PriceCtx
 
@@ -24,6 +25,32 @@ class PoissonModelTests(unittest.TestCase):
                        af_books=books)
         raw = _infer_total_rate(books, 87)
         self.assertAlmostEqual(sum(_shot_model(ctx)), raw * SHOT_RATE_DEBIAS, places=9)
+
+
+class CompoundSplitTests(unittest.TestCase):
+    def test_recurring_uppercase_compound_does_not_call_llm(self):
+        with patch("bot.derive.chat_json") as chat:
+            split = _split(
+                "Will both teams score AND the match have 3 or more total goals?"
+            )
+        chat.assert_not_called()
+        self.assertEqual(split, {
+            "op": "AND",
+            "a": "Will both teams score?",
+            "b": "Will the match have 3 or more total goals?",
+        })
+
+    def test_recurring_first_goal_compound_does_not_call_llm(self):
+        question = (
+            "Will Jordan score the first goal of the game and Algeria score "
+            "in the second half?"
+        )
+        with patch("bot.derive.chat_json") as chat:
+            split = _split(question)
+        chat.assert_not_called()
+        self.assertEqual(split["op"], "AND")
+        self.assertEqual(split["a"], "Will Jordan score the first goal of the game?")
+        self.assertEqual(split["b"], "Will Algeria score in the second half?")
 
 
 class EmpiricalPricingTests(unittest.TestCase):

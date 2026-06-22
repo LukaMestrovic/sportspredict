@@ -1,6 +1,95 @@
 import unittest
+import json
+from unittest.mock import patch
 
-from bot.parser import _repair_intent
+from bot.parser import _repair_intent, parse_questions
+
+
+class DeterministicTemplateTests(unittest.TestCase):
+    def test_recurring_templates_do_not_call_the_llm(self):
+        cases = [
+            ("Will Austria be caught offside 2 or more times?",
+             "team_offsides", "away", "gte", 2, "match"),
+            ("Will the second half have more goals than the first half?",
+             "highest_scoring_half_2h", "match", "second_half_more", None, "match"),
+            ("Will Austria finish with more corner kicks than Argentina?",
+             "corners_compare", "away", "more", None, "match"),
+            ("Will Argentina win the match?",
+             "match_winner", "home", "win", None, "match"),
+            ("Will the match have 2 or fewer total goals?",
+             "total_goals", "match", "lte", 2, "match"),
+            ("Will there be 4 or more total cards shown?",
+             "total_cards", "match", "gte", 4, "match"),
+            ("Will Argentina score in the second half?",
+             "team_score_2h", "home", "yes", None, "2H"),
+            ("Will Marcel Sabitzer have at least 1 shot on target?",
+             "player_shots_on_target", "player", "gte", 1, "match"),
+            ("Will Austria have more shots on target than Argentina in the second half?",
+             "shots_on_target_compare", "away", "more", None, "2H"),
+            ("At halftime, will Austria have more corner kicks than Argentina?",
+             "corners_compare", "away", "more", None, "1H"),
+            ("Will Sadio Mané score a goal (excluding own goals)?",
+             "player_goal_scorer", "player", "yes", None, "match"),
+            ("Will there be 9 or more total corner kicks?",
+             "total_corners", "match", "gte", 9, "match"),
+        ]
+        questions = [
+            {"id": str(i), "question": case[0]} for i, case in enumerate(cases)
+        ]
+        with patch("bot.parser.chat_json") as chat:
+            parsed = parse_questions(questions, "Argentina", "Austria")
+        chat.assert_not_called()
+
+        for i, (_, market, subject, comparator, threshold, period) in enumerate(cases):
+            intent = parsed[str(i)]
+            self.assertEqual(
+                (intent["market"], intent["subject"], intent["comparator"],
+                 intent["threshold"], intent["period"]),
+                (market, subject, comparator, threshold, period),
+            )
+
+    def test_only_unfamiliar_questions_are_sent_to_the_llm(self):
+        questions = [
+            {"id": "known", "question": "Will Argentina win the match?"},
+            {"id": "new", "question": "Could something unusual occur?"},
+        ]
+        response = json.dumps({"intents": [{
+            "id": 0, "market": "none", "subject": "match",
+            "player": None, "comparator": "yes", "threshold": None,
+            "period": "match",
+        }]})
+        with patch("bot.parser.config.OPENAI_API_KEY", "key"), patch(
+            "bot.parser.chat_json", return_value=response
+        ) as chat:
+            parsed = parse_questions(questions, "Argentina", "Austria")
+
+        sent = chat.call_args.args[0][1]["content"]
+        self.assertIn("Could something unusual occur?", sent)
+        self.assertNotIn("Will Argentina win the match?", sent)
+        self.assertEqual(parsed["known"]["market"], "match_winner")
+        self.assertEqual(parsed["new"]["market"], "none")
+
+    def test_known_templates_work_without_an_api_key(self):
+        with patch("bot.parser.config.OPENAI_API_KEY", ""), patch(
+            "bot.parser.chat_json"
+        ) as chat:
+            parsed = parse_questions(
+                [{"id": "x", "question": "Will Argentina win the match?"}],
+                "Argentina", "Austria",
+            )
+        chat.assert_not_called()
+        self.assertEqual(parsed["x"]["subject"], "home")
+
+    def test_team_code_in_question_is_not_parsed_as_a_player(self):
+        with patch("bot.parser.chat_json") as chat:
+            parsed = parse_questions(
+                [{"id": "x", "question":
+                  "Will USA have 6 or more shots on target?"}],
+                "USA", "Australia",
+            )
+        chat.assert_not_called()
+        self.assertEqual(parsed["x"]["market"], "team_shots_on_target")
+        self.assertEqual(parsed["x"]["subject"], "home")
 
 
 class SubjectRepairTests(unittest.TestCase):

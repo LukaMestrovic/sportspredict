@@ -18,7 +18,7 @@ from .matcher import MARKET_KEYS
 from .teams import normalize_team
 
 # Bump to invalidate cached intents after a prompt/model semantics change.
-PROMPT_VERSION = "p2-deterministic"
+PROMPT_VERSION = "p3-hybrid-deterministic"
 
 SYSTEM = """You convert soccer betting questions into structured JSON intents.
 Each question is a YES/NO question about a single match. Output ONLY the
@@ -110,14 +110,27 @@ def _client_chat(messages: list[dict], model: str) -> str:
 def parse_questions(
     questions: list[dict], home: str, away: str
 ) -> dict[str, dict]:
-    """Parse all questions for one match.
+    """Parse recurring templates locally, then batch unfamiliar questions.
 
     questions: [{id, question}]. Returns {market_id: intent}.
     """
-    if not config.OPENAI_API_KEY:
-        raise RuntimeError("OPENAI_API_KEY not set — parser requires it")
+    out: dict[str, dict] = {}
+    unfamiliar: list[dict] = []
+    for question in questions:
+        intent = _parse_template(question["question"], home, away)
+        if intent:
+            out[question["id"]] = _repair_intent(
+                question["question"], intent, home, away
+            )
+        else:
+            unfamiliar.append(question)
 
-    numbered = [{"id": i, "question": q["question"]} for i, q in enumerate(questions)]
+    if not unfamiliar:
+        return out
+    if not config.OPENAI_API_KEY:
+        raise RuntimeError("OPENAI_API_KEY not set — unfamiliar question requires parser")
+
+    numbered = [{"id": i, "question": q["question"]} for i, q in enumerate(unfamiliar)]
     user = (
         f"Home team: {home}\nAway team: {away}\n\n"
         f"Questions:\n{json.dumps(numbered, indent=0)}"
@@ -129,15 +142,176 @@ def parse_questions(
         ]
     )
     parsed = json.loads(content)
-    out: dict[str, dict] = {}
     for intent in parsed.get("intents", []):
         idx = intent.get("id")
-        if isinstance(idx, int) and 0 <= idx < len(questions):
-            question = questions[idx]
+        if isinstance(idx, int) and 0 <= idx < len(unfamiliar):
+            question = unfamiliar[idx]
             out[question["id"]] = _repair_intent(
                 question["question"], intent, home, away
             )
     return out
+
+
+_COUNT_MARKETS = {
+    "goal": ("total_goals", "team_total_goals"),
+    "corner": ("total_corners", "team_corners"),
+    "card": ("total_cards", "team_cards"),
+    "offside": ("total_offsides", "team_offsides"),
+    "foul": ("total_fouls", "team_fouls"),
+    "shot on target": ("total_shots_on_target", "team_shots_on_target"),
+}
+_COMPARE_MARKETS = {
+    "goal": "match_winner",
+    "corner": "corners_compare",
+    "card": "cards_compare",
+    "offside": "offsides_compare",
+    "foul": "fouls_compare",
+    "shot on target": "shots_on_target_compare",
+}
+
+
+def _intent(
+    market: str,
+    subject: str = "match",
+    comparator: str = "yes",
+    threshold: int | None = None,
+    period: str = "match",
+    player: str | None = None,
+) -> dict:
+    return {
+        "market": market,
+        "subject": subject,
+        "player": player,
+        "comparator": comparator,
+        "threshold": threshold,
+        "period": period,
+    }
+
+
+def _parse_template(question: str, home: str, away: str) -> dict | None:
+    """Recognize stable Probability Cup question families conservatively."""
+    lower = question.strip().lower()
+    if not lower.startswith(("will ", "at halftime,")):
+        return None
+    period = _period_from_text(lower)
+    subject = _mentioned_team(question, home, away)
+    before_more = question.lower().split("more", 1)[0]
+    compare_subject = subject or _mentioned_team(before_more, home, away)
+
+    # Compound decomposition happens in derive; the top-level parser only needs
+    # to keep these questions out of the unfamiliar-question LLM batch.
+    if (re.search(r"\b(?:AND|OR)\b", question)
+            or "score the first goal of the game and" in lower):
+        return _intent("none")
+    if ("penalty kick be awarded" in lower or "red card be shown" in lower
+            or "both teams" in lower and "shot on target" in lower):
+        return _intent("none", period=period)
+
+    if lower.startswith("at halftime,") and re.search(
+        r"\b(?:tied?|a draw|level|all square)\b", lower
+    ):
+        return _intent("match_draw", period="1H")
+    if "second half have more goals than the first half" in lower:
+        return _intent(
+            "highest_scoring_half_2h", comparator="second_half_more"
+        )
+    if "both teams score" in lower:
+        return _intent("btts", period=period)
+
+    if subject:
+        side, team = subject
+        if lower.endswith(" win the match?"):
+            return _intent("match_winner", side, "win")
+        if "score the first goal of the game" in lower:
+            return _intent("first_team_to_score", side)
+        if re.search(r"\bscore(?: at least 1 goal| in the (?:first|second) half)\?", lower):
+            market = {"1H": "team_score_1h", "2H": "team_score_2h"}.get(
+                period, "team_score"
+            )
+            return _intent(market, side, period=period)
+
+        metric = _metric_in(lower)
+        count = _threshold_in(lower)
+        if metric and count:
+            return _intent(
+                _COUNT_MARKETS[metric][1], side, count[0], count[1], period
+            )
+
+    if compare_subject and "score more goals than" in lower:
+        return _intent("match_winner", compare_subject[0], "win", period=period)
+    metric = _metric_in(lower)
+    if compare_subject and metric and re.search(r"\bmore\b", lower):
+        return _intent(
+            _COMPARE_MARKETS[metric], compare_subject[0], "more", period=period
+        )
+
+    count = _threshold_in(lower)
+    if metric and count and lower.startswith(("will the ", "will there ")):
+        return _intent(_COUNT_MARKETS[metric][0], comparator=count[0],
+                       threshold=count[1], period=period)
+
+    # Player templates are distinguished from match totals by their leading
+    # proper-name phrase and by the absence of either team name.
+    if not subject:
+        patterns = (
+            ("player_score_or_assist", r"will (.+?) score or assist a goal\?"),
+            ("player_goal_scorer", r"will (.+?) score (?:a )?goal\b.*\?"),
+            ("player_card", r"will (.+?) (?:be booked|receive (?:a|at least 1) card)\?"),
+        )
+        for market, pattern in patterns:
+            player_match = re.fullmatch(pattern, question.strip(), re.IGNORECASE)
+            if player_match:
+                return _intent(market, "player", player=player_match.group(1))
+        player_match = re.fullmatch(
+            r"will (.+?) (?:have|record) (.+?shots? on target.*?)\?",
+            question.strip(), re.IGNORECASE,
+        )
+        if player_match:
+            count = _threshold_in(player_match.group(2).lower())
+            if count:
+                return _intent(
+                    "player_shots_on_target", "player", count[0], count[1],
+                    period, player_match.group(1),
+                )
+    return None
+
+
+def _period_from_text(lower: str) -> str:
+    has_1h = "first half" in lower or "1st half" in lower or "halftime" in lower
+    has_2h = "second half" in lower or "2nd half" in lower
+    if has_1h and has_2h:
+        return "match"
+    if has_2h:
+        return "2H"
+    return "1H" if has_1h else "match"
+
+
+def _mentioned_team(question: str, home: str, away: str) -> tuple[str, str] | None:
+    mentioned = [
+        (side, team) for side, team in (("home", home), ("away", away))
+        if _team_is_mentioned(question, team)
+    ]
+    return mentioned[0] if len(mentioned) == 1 else None
+
+
+def _metric_in(lower: str) -> str | None:
+    if re.search(r"\bshots? on target\b", lower):
+        return "shot on target"
+    return next((metric for metric in _COUNT_MARKETS if metric in lower), None)
+
+
+def _threshold_in(lower: str) -> tuple[str, int] | None:
+    patterns = (
+        ("gte", r"(?:at least\s+)?(\d+)\s+(?:or more|or greater)"),
+        ("gte", r"at least\s+(\d+)"),
+        ("lte", r"(?:at most\s+)?(\d+)\s+or (?:fewer|less)"),
+        ("lte", r"at most\s+(\d+)"),
+    )
+    for comparator, pattern in patterns:
+        match = re.search(pattern, lower)
+        if match:
+            return comparator, int(match.group(1))
+    return None
 
 
 _TEAM_COUNT_MARKETS = {
@@ -223,6 +397,17 @@ def _repair_intent(question: str, intent: dict, home: str, away: str) -> dict:
 
 
 def _team_is_mentioned(question: str, team: str) -> bool:
-    question_tokens = set(normalize_team(question).split())
+    normalized_question = normalize_team(question)
+    question_words = normalized_question.split()
+    question_tokens = set(question_words)
     team_tokens = set(normalize_team(team).split())
-    return bool(team_tokens) and team_tokens <= question_tokens
+    if bool(team_tokens) and team_tokens <= question_tokens:
+        return True
+    # Alias normalization (USA -> United States, DR Congo -> Congo DR) applies
+    # to whole names. Check short spans so aliases embedded in prose work too.
+    target = normalize_team(team)
+    return any(
+        normalize_team(" ".join(question_words[start:start + size])) == target
+        for size in range(1, 5)
+        for start in range(len(question_words) - size + 1)
+    )
