@@ -141,7 +141,12 @@ def price_empirical(question: str, intent: dict | None, ctx: PriceCtx):
         if full is None or intent.get("threshold") is None:
             return None, None
         threshold = int(intent["threshold"])
-        lam = _lambda_for_tail(threshold, full)
+        # `full` is P(X>=T) for gte but P(X<=T) for lte; invert from the tail
+        # that actually matches the contract, else the recovered rate is wrong.
+        if intent.get("comparator") == "lte":
+            lam = _lambda_for_tail(threshold + 1, 1 - full)
+        else:
+            lam = _lambda_for_tail(threshold, full)
         p = _count_probability(lam * SHOT_HALF_SHARE[period], intent)
         return _empirical_out(p, f"empirical player SoT {period}")
 
@@ -288,9 +293,16 @@ def _single_sided_event(
 
 
 def _count_probability(lam: float, intent: dict) -> float:
+    """P(count satisfies the intent) under Poisson(lam).
+
+    Mirrors the bookmaker convention (parser "N or fewer"; matcher
+    _line_from_threshold): gte T -> P(X >= T); lte T -> P(X <= T), inclusive of
+    T. P(X <= T) = 1 - P(X >= T+1), so the lte tail starts one bucket higher.
+    """
     threshold = int(intent.get("threshold") or 1)
-    over = _poisson_tail(lam, threshold)
-    return 1 - over if intent.get("comparator") == "lte" else over
+    if intent.get("comparator") == "lte":
+        return 1 - _poisson_tail(lam, threshold + 1)
+    return _poisson_tail(lam, threshold)
 
 
 def _calibrate_shot_probability(probability: float) -> float:
