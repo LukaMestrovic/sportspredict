@@ -29,8 +29,12 @@ SP_BASE = "https://api.sportspredict.com/api/v1"
 AF_BASE = "https://v3.football.api-sports.io"
 ODDS_BASE = "https://api.the-odds-api.com/v4"
 ODDS_SPORT = "soccer_fifa_world_cup"
-# Regions to query on the (paid) Odds API. More regions = more books but more cost.
-ODDS_REGIONS = os.environ.get("ODDS_REGIONS", "eu,uk")
+# Regions to query on the (paid) Odds API. More regions = more books but more
+# cost (billed markets × regions). US is included because some player props —
+# notably score-or-assist — are quoted only by US books (DraftKings, FanDuel),
+# and the extra books tighten the de-vig average on the markets EU/UK already
+# cover.
+ODDS_REGIONS = os.environ.get("ODDS_REGIONS", "eu,uk,us")
 
 # FIFA World Cup 2026 in API-Football.
 WC_LEAGUE_ID = 1
