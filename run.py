@@ -26,7 +26,7 @@ def main() -> None:
             head = f"{r.home} vs {r.away}" if r.home else r.sp_match["name"]
             print(f"\n=== {head} ===")
             for p in r.predictions:
-                tag = {"api-football": "AF", "odds-api": "OA",
+                tag = {"api-football": "AF", "odds-api": "OA", "af+oa": "AF+OA",
                        "derived": "DRV", "empirical": "EMP",
                        "external": "WEB"}.get(p.source, "??")
                 books = f" {p.n_books}b" if p.n_books else ""

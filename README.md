@@ -35,11 +35,16 @@ priced by the first source in the cascade that can cover it:
    [soccer_live_odds_market_catalog.pdf](soccer_live_odds_market_catalog.pdf),
    including full-match and 1st/2nd-half contracts.
 3. **Pricing cascade** ([bot/pricing.py](bot/pricing.py), [bot/pipeline.py](bot/pipeline.py)):
-   - **API-Football** ([bot/predictor.py](bot/predictor.py)) — de-vig the coherent
-     outcome set per book, average the fair probability across books.
-   - **The Odds API** ([bot/oddsapi.py](bot/oddsapi.py)) — fallback adding player
-     anytime-scorer, score-or-assist, shots-on-target and cards that
-     API-Football rarely quotes.
+   - **API-Football + The Odds API** ([bot/predictor.py](bot/predictor.py),
+     [bot/oddsapi.py](bot/oddsapi.py)) — for any market both quote, de-vig each
+     provider's books per contract and **average across all of them** for the
+     deepest consensus (e.g. a match result pools ~60+ books). API-Football is
+     free and the only source for many lines (offsides, fouls, half periods,
+     team compares); the Odds API adds far deeper books on core lines plus the
+     player props API-Football rarely quotes. Player YES/NO props (anytime
+     scorer, score-or-assist, card) are priced from the Odds API alone — it is
+     lineup-aware, so a benched player it no longer quotes is skipped rather
+     than priced off a stale lone API-Football book.
    - **Derive** ([bot/derive.py](bot/derive.py)) — split a compound ("A AND/OR B"),
      price each component through the cascade and combine it; or estimate an
      unsupported contract from correlated API-Football markets.
@@ -184,7 +189,7 @@ SportPredict is free; API-Football is a flat-rate subscription. Metered costs:
 |---|---|---|---|
 | Parser `gpt-4.1` (cached fallback) | $2.00/$8.00 per 1M tok | $0 known; ≤$0.004 unfamiliar | ≤$0.46 |
 | Compound splitter `gpt-4.1` (cached fallback) | same | $0 known; ≤$0.001 unfamiliar | ≤$0.10 |
-| Odds API | flat sub, billed `markets×regions` | normal cache; refreshed at 30/5 min | within plan |
+| Odds API | billed `markets×regions` (even empty markets) | ~3–4 markets × 3 regions ≈ 9–12 credits/run, ×2 windows ≈ **18–24 credits** | within plan |
 | External web search `gpt-4.1-mini` | ~$0.035 / question | **off by default** | **$0** (opt-in) |
 
 *104 matches. **Every LLM call is cached**, and ordinary odds re-runs reuse the

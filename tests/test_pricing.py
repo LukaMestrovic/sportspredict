@@ -43,6 +43,65 @@ def _af_scorer_books(player, odd):
     }]
 
 
+def _af_h2h_books(prices):
+    """prices: list of {Home,Draw,Away: odd} dicts, one per book (bet id 1)."""
+    return [{
+        "name": f"book{i}",
+        "bets": [{"id": 1, "values": [
+            {"value": k, "odd": str(v)} for k, v in row.items()]}],
+    } for i, row in enumerate(prices)]
+
+
+def _oa_h2h_books(home, away, prices):
+    """prices: list of {home,away,'Draw': odd} dicts, one per book (h2h market)."""
+    return [{
+        "key": f"oabook{i}",
+        "markets": [{"key": "h2h", "outcomes": [
+            {"name": name, "price": row[name]} for name in (home, "Draw", away)]}],
+    } for i, row in enumerate(prices)]
+
+
+class _MarketOddsAPI:
+    """event_odds returns canned books keyed by the requested market."""
+
+    def __init__(self, by_market):
+        self._by_market = by_market
+
+    def event_odds(self, _event_id, markets):
+        return self._by_market.get(markets[0], [])
+
+
+def _win_intent():
+    return {"market": "match_winner", "subject": "home", "comparator": "win",
+            "threshold": None, "period": "match"}
+
+
+class CombineBooksTests(unittest.TestCase):
+    def test_core_market_pools_books_from_both_providers(self):
+        af = _af_h2h_books([
+            {"Home": 1.90, "Draw": 3.4, "Away": 4.2},
+            {"Home": 1.95, "Draw": 3.3, "Away": 4.1},
+        ])
+        oa = _MarketOddsAPI({"h2h": _oa_h2h_books("Portugal", "Uzbekistan", [
+            {"Portugal": 1.91, "Draw": 3.5, "Uzbekistan": 4.0},
+            {"Portugal": 1.88, "Draw": 3.6, "Uzbekistan": 4.1},
+            {"Portugal": 1.92, "Draw": 3.4, "Uzbekistan": 4.2},
+        ])})
+        ctx = PriceCtx(home="Portugal", away="Uzbekistan", af_books=af,
+                       oa=oa, oa_event={"id": "e"})
+        out, src, _ = price_intent(_win_intent(), ctx)
+        self.assertEqual(src, "af+oa")
+        self.assertEqual(out["n_books"], 5)  # 2 AF + 3 OA pooled
+
+    def test_falls_back_to_single_provider_when_only_one_quotes(self):
+        af = _af_h2h_books([{"Home": 1.90, "Draw": 3.4, "Away": 4.2}])
+        ctx = PriceCtx(home="Portugal", away="Uzbekistan", af_books=af,
+                       oa=_MarketOddsAPI({}), oa_event={"id": "e"})
+        out, src, _ = price_intent(_win_intent(), ctx)
+        self.assertEqual(src, "api-football")
+        self.assertEqual(out["n_books"], 1)
+
+
 class PlayerPropCascadeTests(unittest.TestCase):
     def test_starter_priced_from_odds_api_consensus(self):
         oa = _FakeOddsAPI(_scorer_books({"Bruno Fernandes": 3.5}))
