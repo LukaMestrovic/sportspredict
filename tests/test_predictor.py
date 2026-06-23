@@ -13,8 +13,8 @@ class PlayerPropTests(unittest.TestCase):
             "type": "player_threshold", "bet_id": 242, "player": "Marcel Sabitzer",
             "side": "Over", "line": 0.5, "label": "player SoT",
         })
-        self.assertAlmostEqual(out["probability"], 0.46)
-        self.assertEqual(out["book_probabilities"], [0.46])
+        self.assertAlmostEqual(out["probability"], 0.425)  # 0.50 * SINGLE_SIDE_DEVIG
+        self.assertEqual(out["book_probabilities"], [0.425])
 
     def test_player_name_match_is_accent_insensitive(self):
         books = [_book(92, [{"value": "Luka Sucic", "odd": "4.00"}])]
@@ -22,7 +22,7 @@ class PlayerPropTests(unittest.TestCase):
             "type": "player_yes", "bet_id": 92, "player": "Luka Sučić",
             "label": "player scorer",
         })
-        self.assertAlmostEqual(out["probability"], 0.23)
+        self.assertAlmostEqual(out["probability"], 0.2125)  # 0.25 * SINGLE_SIDE_DEVIG
 
     def test_single_book_extreme_player_price_is_not_discarded(self):
         books = [_book(251, [{"value": "Harry Kane", "odd": "13.50"}])]

@@ -12,7 +12,14 @@ from statistics import mean
 from .teams import player_matches
 
 
-SINGLE_SIDE_DEVIG = 0.92
+# Single-sided (player-prop) quotes carry only the YES leg, so we cannot de-vig
+# against a coherent NO. Player props book a much heavier margin than the 1X2 /
+# totals lines — and it is concentrated on the popular YES side — so a flat 8%
+# haircut left the bot over-pricing "player to do X" (settled audit: player
+# shots-on-target YES biased +0.10, the crowd +0.08). 0.85 reflects the ~15%
+# single-side overround typical of player props; it is anchored to that market
+# convention, not fit to the sample, and only touches player-prop pricing.
+SINGLE_SIDE_DEVIG = 0.85
 
 
 def _parse_line(value: str) -> float | None:

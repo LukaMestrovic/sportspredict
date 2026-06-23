@@ -103,12 +103,12 @@ def _split_template(question: str) -> dict | None:
     return None
 
 
-def _price_sub(question: str, ctx: PriceCtx) -> float | None:
+def _price_sub(question: str, ctx: PriceCtx) -> tuple[float | None, dict | None]:
     intent = parse_questions([{"id": "x", "question": question}], ctx.home, ctx.away).get("x")
     if not intent:
-        return None
+        return None, None
     out, _src, _spec = price_intent(intent, ctx)
-    return out["probability"] if out else None
+    return (out["probability"] if out else None), intent
 
 
 def price_compound(question: str, ctx: PriceCtx):
@@ -116,13 +116,76 @@ def price_compound(question: str, ctx: PriceCtx):
     split = _split(question)
     if not split:
         return None, None
-    pa = _price_sub(split["a"], ctx)
-    pb = _price_sub(split["b"], ctx)
+    pa, ia = _price_sub(split["a"], ctx)
+    pb, ib = _price_sub(split["b"], ctx)
     if pa is None or pb is None:
         return None, None
+
+    # Correlation-aware special case: "both teams score AND N+ total goals".
+    # Independence (P(BTTS)*P(N+)) badly under-prices this because BTTS already
+    # forces total>=2, so the two legs are strongly positively correlated (audit:
+    # bot -0.15 biased vs the crowd's -0.01). We instead anchor on the market
+    # BTTS prob and multiply by the *conditional* P(total>=N | BTTS) from a goals
+    # model — see _btts_and_total_goals.
+    if split["op"] == "AND":
+        corr = _btts_and_total_goals(pa, ia, pb, ib, ctx)
+        if corr is not None:
+            p, label = corr, f"AND-corr({pa:.2f},{pb:.2f})"
+            return {"probability": p, "n_books": 0, "label": label}, "derived"
+
     p = pa * pb if split["op"] == "AND" else pa + pb - pa * pb
     label = f"{split['op']}({pa:.2f},{pb:.2f})"
     return {"probability": p, "n_books": 0, "label": label}, "derived"
+
+
+def _btts_and_total_goals(pa, ia, pb, ib, ctx: PriceCtx) -> float | None:
+    """P(BTTS AND total goals >= N), correcting the BTTS/total correlation.
+
+    One leg must be BTTS, the other a full-match total-goals >= N line. We keep
+    the market's de-vigged BTTS probability as the anchor and replace the naive
+    independence factor with P(total >= N | BTTS) computed from an independent
+    two-Poisson goals model (rate from the totals market, split symmetrically —
+    the conditional is insensitive to the split). BTTS implies total >= 2, so for
+    N <= 2 the answer is just P(BTTS); the correlation only bites at N = 3, where
+    the lone sub-2 BTTS scoreline (1-1) is removed.
+    """
+    btts_p = total_intent = total_p = None
+    for p, intent in ((pa, ia), (pb, ib)):
+        if not intent:
+            return None
+        if intent.get("market") == "btts" and intent.get("period", "match") == "match":
+            btts_p = p
+        elif (intent.get("market") == "total_goals"
+              and intent.get("subject") == "match"
+              and intent.get("comparator") == "gte"
+              and intent.get("period", "match") == "match"):
+            total_intent, total_p = intent, p
+    if btts_p is None or total_intent is None:
+        return None
+    threshold = int(total_intent.get("threshold") or 0)
+    if threshold <= 2:
+        return _clamp(btts_p, 0.01, 0.99)  # BTTS already implies total >= 2
+
+    # Goal rate implied by the very total line we condition on (keeps the model
+    # consistent with the market), split evenly between the two teams.
+    lam_total = _lambda_for_tail(threshold, total_p) if total_p else None
+    if not lam_total or lam_total <= 0:
+        return None
+    half = lam_total / 2.0
+    p_btts_model = p_joint = 0.0
+    for h in range(0, 16):
+        for a in range(0, 16):
+            ph = math.exp(-half) * half ** h / math.factorial(h)
+            paa = math.exp(-half) * half ** a / math.factorial(a)
+            if h >= 1 and a >= 1:
+                joint = ph * paa
+                p_btts_model += joint
+                if h + a >= threshold:
+                    p_joint += joint
+    if p_btts_model <= 0:
+        return None
+    conditional = p_joint / p_btts_model            # P(total >= N | BTTS)
+    return _clamp(btts_p * conditional, 0.01, 0.99)
 
 
 def price_empirical(question: str, intent: dict | None, ctx: PriceCtx):

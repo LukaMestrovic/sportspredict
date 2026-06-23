@@ -139,6 +139,41 @@ class EmpiricalPricingTests(unittest.TestCase):
         self.assertLess(union, 0.5)
 
 
+class CorrelatedCompoundTests(unittest.TestCase):
+    def setUp(self):
+        self.ctx = PriceCtx(home="Argentina", away="Austria", oa=None,
+                            oa_event=None, af_books=[_book()])
+        self.btts = {"market": "btts", "subject": "match", "comparator": "yes",
+                     "period": "match"}
+
+    def total(self, threshold):
+        return {"market": "total_goals", "subject": "match", "comparator": "gte",
+                "threshold": threshold, "period": "match"}
+
+    def test_btts_and_3plus_beats_independence_and_is_bounded(self):
+        from bot.derive import _btts_and_total_goals
+        pa, pb = 0.55, 0.50
+        corr = _btts_and_total_goals(pa, self.btts, pb, self.total(3), self.ctx)
+        self.assertIsNotNone(corr)
+        # Positive correlation lifts it well above naive independence ...
+        self.assertGreater(corr, pa * pb)
+        # ... but it can never exceed P(BTTS) (BTTS is the necessary condition).
+        self.assertLess(corr, pa)
+
+    def test_threshold_two_is_just_btts(self):
+        # BTTS already implies total >= 2, so no correlation correction needed.
+        from bot.derive import _btts_and_total_goals
+        p = _btts_and_total_goals(0.55, self.btts, 0.70, self.total(2), self.ctx)
+        self.assertAlmostEqual(p, 0.55)
+
+    def test_returns_none_when_not_btts_plus_total(self):
+        from bot.derive import _btts_and_total_goals
+        other = {"market": "match_winner", "subject": "home", "comparator": "win",
+                 "period": "match"}
+        self.assertIsNone(
+            _btts_and_total_goals(0.5, other, 0.5, self.total(3), self.ctx))
+
+
 def _book():
     return {"bets": [
         {"id": 1, "values": [
