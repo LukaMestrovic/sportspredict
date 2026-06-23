@@ -80,6 +80,20 @@ class APIFootball:
             )
         return self._odds_cache[fixture_id]
 
+    def lineups(self, fixture_id: int) -> list[dict]:
+        """Confirmed starting XI + bench per team (cached 10 min, refreshable).
+
+        API-Football populates this ~20-40 min before kickoff; it returns an
+        empty list until each side posts its sheet. Refreshed at submission
+        windows like odds so a 30-minute tick sees the freshest lineup.
+        """
+        def fetch():
+            return self._get("/fixtures/lineups", fixture=fixture_id)["response"]
+        return cache.get_or_fetch(
+            "af_lineups", str(fixture_id), fetch, ttl=600,
+            refresh=self.refresh_odds,
+        )
+
     def settled_statistics(self, fixture_id: int) -> list[dict]:
         """Final fixture statistics, cached forever because they are immutable."""
         return cache.get_or_fetch(

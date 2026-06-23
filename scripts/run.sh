@@ -37,7 +37,7 @@ set -a; . "$ROOT/.env"; set +a
 mkdir -p "$ROOT/cache" "$ROOT/logs"
 exec docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -e SPORTSPREDICT_KEY -e APIFOOTBALL_KEY -e ODDS_API_KEY -e OPENAI_API_KEY \
-  -e PARSER_MODEL -e ODDS_REGIONS \
+  -e PARSER_MODEL -e ODDS_REGIONS -e CALIBRATE_ENABLED -e CALIBRATE_MODEL \
   -v "$ROOT/cache:/app/cache" \
   -v "$ROOT/logs:/app/logs" \
   "$IMAGE:$TAG" "$@"

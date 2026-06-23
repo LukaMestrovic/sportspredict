@@ -17,10 +17,11 @@ priced by the first source in the cascade that can cover it:
                     └─ price via cascade ▼
    ┌────────────────────────────────────────────────────────────────┐
    │ 1. API-Football odds   de-vig bookmaker market (primary)        │
-   │ 2. The Odds API        player props + core markets AF lacks     │  → prob
+   │ 2. The Odds API        player props + core markets AF lacks     │  → anchor
    │ 3. Derive              compounds + empirical signal models       │   (1–99)
    │ 4. External (web)      web-grounded LLM estimate (last resort)   │
    └────────────────────────────────────────────────────────────────┘
+                    └─ 5. Calibrate (opt-in) ─ LLM tilts the anchor ▼ prob (1–99)
 ```
 
 1. **Parser** ([bot/parser.py](bot/parser.py)) — recurring competition templates
@@ -70,7 +71,10 @@ cp .env.example .env     # then fill in your keys
 | `SPORTSPREDICT_KEY` | SportPredict Probability Cup API (`sp_live_…`) |
 | `APIFOOTBALL_KEY`   | API-Football v3 (api-sports.io direct host) |
 | `ODDS_API_KEY`      | The Odds API (the-odds-api.com) — **paid/metered**, cached |
-| `OPENAI_API_KEY`    | LLM parser + compound splitter + external web estimate |
+| `OPENAI_API_KEY`    | LLM parser + compound splitter + external web estimate + calibration layer |
+
+Optional calibration-layer env (off by default): `CALIBRATE_ENABLED=1` enables the
+LLM calibration layer; `CALIBRATE_MODEL` picks the model (default `gpt-5-mini`).
 
 ## Usage
 
@@ -80,6 +84,9 @@ python run.py predict
 
 # Only the first open match (cheap end-to-end check)
 python run.py predict --limit 1
+
+# Preview the LLM calibration layer on the next match (tilts anchors, no submit)
+python run.py predict --limit 1 --calibrate
 
 # Predict and submit to SportPredict
 python run.py predict --submit
@@ -96,8 +103,9 @@ scripts/run.sh --status    # what is the next match / ETA?
 `scripts/deploy.sh` builds a Docker image (`sportspredict-llm:v1`) with the
 **current** source baked in, then installs a per-minute cron that runs that image
 via `scripts/run.sh`. Each tick is a dispatcher: a fast no-op until a match is
-within 30 minutes, then it upserts predictions at the **30-** and **5-minute**
-marks before kickoff.
+within 30 minutes, then it upserts predictions once at the **30-minute** mark
+before kickoff — where the lineups are out and (if `CALIBRATE_ENABLED=1`) the LLM
+calibration layer fires its single per-match call with ~30 minutes of headroom.
 
 Because the code is baked into the image, the running bot is a **frozen
 snapshot** — editing the working tree (or running tests, dev predictions, etc.)
@@ -141,12 +149,22 @@ window, including:
 - parser/model version, structured intent and attempted provider market spec;
 - raw API-Football and Odds API snapshots observed for the run;
 - each bookmaker's de-vigged probability, final probability, source and label;
+- the calibration anchor, applied tilt, per-question LLM rationale and the
+  match-level research briefing (when the calibration layer ran);
 - skipped questions and their reasons; and
-- eventual binary outcome and Brier score.
+- eventual binary outcome and Brier score (calibrated **and** anchor, so the two
+  can be compared after settlement).
 
-Scheduled runs are tagged `30` or `5`; manual submissions use `-1`. A failed
-API submission remains in the ledger with status `failed` and does not create a
-cron marker.
+Scheduled runs are tagged `30`; manual submissions use `-1`. A failed API
+submission remains in the ledger with status `failed` and does not create a cron
+marker.
+
+Review one match after kickoff — every prediction, the anchor → calibrated move,
+the tilt, the outcome, anchor-vs-calibrated Brier, and the LLM's reasoning:
+
+```bash
+python -m scripts.settle_ledger --match "Portugal"   # by id or name substring
+```
 
 Settle completed real questions and print overall, per-window and per-source
 performance:
@@ -173,10 +191,10 @@ The Odds API is **paid and metered**; API-Football is flat-rate but rate-limited
 - **API-Football** — fixtures (1 h) and per-fixture odds (6 h) cached, with
   rate-limit backoff; final statistics used by backtests are cached permanently.
 
-The autonomous submitter deliberately bypasses the odds TTL once at both the
-30-minute and 5-minute windows. Each refresh replaces the disk entry and is
-deduplicated in memory within that run, so the final submission sees late market
-movement and newly opened props without repeated identical provider calls.
+The autonomous submitter deliberately bypasses the odds TTL once at the
+30-minute window. Each refresh replaces the disk entry and is deduplicated in
+memory within that run, so the submission sees the latest market movement and
+newly opened props without repeated identical provider calls.
 
 `ODDS_REGIONS` (default `eu,uk`) controls breadth vs cost; `EXTERNAL_FALLBACK=0`
 disables the paid web layer entirely.
@@ -189,17 +207,20 @@ SportPredict is free; API-Football is a flat-rate subscription. Metered costs:
 |---|---|---|---|
 | Parser `gpt-4.1` (cached fallback) | $2.00/$8.00 per 1M tok | $0 known; ≤$0.004 unfamiliar | ≤$0.46 |
 | Compound splitter `gpt-4.1` (cached fallback) | same | $0 known; ≤$0.001 unfamiliar | ≤$0.10 |
-| Odds API | billed `markets×regions` (even empty markets) | ~3–4 markets × 3 regions ≈ 9–12 credits/run, ×2 windows ≈ **18–24 credits** | within plan |
+| Odds API | billed `markets×regions` (even empty markets) | ~3–4 markets × 3 regions ≈ **9–12 credits** (single 30-min window) | within plan |
 | External web search `gpt-4.1-mini` | ~$0.035 / question | **off by default** | **$0** (opt-in) |
+| Calibration layer `gpt-5-mini` (1 cached call/match, multi-source web research) | ~$0.08 / match | **off by default** | **~$7–9** (opt-in; ~$45 on `gpt-5.5`) |
 
 *104 matches. **Every LLM call is cached**, and ordinary odds re-runs reuse the
-disk cache; only the two scheduled submission windows deliberately refresh
+disk cache; only the single scheduled submission window deliberately refreshes
 odds. Caching the parser on `(model, prompt, questions)` also makes unfamiliar
 question→source mapping deterministic across runs. The web layer is **off by
 default** (`EXTERNAL_FALLBACK=0`) — it is non-deterministic and the empirical
 layer covers its cases from bookmaker odds at prediction time. Total tournament
-LLM spend is well under **$1**; enable the web layer (`EXTERNAL_FALLBACK=1`) only
-if you accept ~$15–20 and a non-deterministic last resort.
+LLM spend (parser + splitter) is well under **$1**; the web layer
+(`EXTERNAL_FALLBACK=1`) adds ~$15–20, and the calibration layer
+(`CALIBRATE_ENABLED=1`) adds ~$7–9 on `gpt-5-mini` (the web-search calls dominate;
+~$45 on `gpt-5.5`).
 
 ## Supported markets
 
@@ -270,6 +291,47 @@ calls The Odds API, so it adds no paid odds credits.
 - **Penalty/red card:** calibrate the closest single-sided penalty/red quotes;
   their OR union subtracts an enlarged intersection for positive correlation.
 
+## Calibration layer (opt-in LLM edge)
+
+[bot/calibrate.py](bot/calibrate.py) runs **after** the cascade has anchored every
+question. Fired once per match at the 30-minute window (gated by
+`CALIBRATE_ENABLED`), it makes a **single** web-grounded `gpt-5-mini` call that
+sees every anchor *and the exact method behind it* — source, book count, the
+per-book de-vigged probabilities, their spread, a market **tier** and the hard
+**max-move** cap — plus the confirmed starting XI, assigned **referee** and
+**venue** from API-Football. Its instructions are a designed, versioned template at
+[prompts/calibration_prompt.md](prompts/calibration_prompt.md) (edit it freely —
+the cache re-keys on the prompt hash). The model researches, in priority order:
+confirmed/probable **lineups & late news**; **other/sharper books** (Pinnacle,
+Betfair Exchange); **prediction markets** (Polymarket, Kalshi); **weather** (skipped
+for roofed venues); and tactical previews / pressers / form / motivation / referee
+tendencies. It first forms a one-paragraph **match-read** (lead/chase, tempo,
+temperature, key roles) and tilts every question consistently with it, returning
+small signed **tilts**.
+
+The LLM only supplies judgement; the math and guardrails are deterministic:
+
+- tilts apply in **logit space** (same convention as the shot-count correction);
+- boldness is **tier-gated** — the realised move is hard-capped by a per-book-count
+  cap, large for a lone or model-derived anchor (e.g. a scratched striker still
+  quoted ~51% by one stale book → corrected toward a floor), tiny for a deep
+  multi-book consensus we should not fight (`n≥8 → ±6` pts);
+- soft tilts on liquid markets are further shrunk by the book spread;
+- the anchor, tilt, realised delta and one-line rationale are stored per question.
+
+**Determinism / cost / leakage.** One call per match, cached forever on
+`(version, model, match_id)` — re-runs are free and return the *frozen pre-match*
+research, and `calibrate()` refuses to run once kickoff has passed, so it cannot
+leak a result. Any error/timeout degrades to the raw anchors. ~$7–9 for the
+tournament on `gpt-5-mini` (the multi-source web searches dominate); the layer is
+**off by default**. Preview it without
+submitting via `python run.py predict --limit 1 --calibrate`, and review the
+tilts vs. outcomes after a match with `python -m scripts.settle_ledger --match …`.
+Because lineups/news are purged after kickoff this layer can only be **forward-**
+**tested**: `scripts.settle_ledger` reports calibrated- vs. anchor-Brier from the
+frozen ledger rows, so confirm it beats the anchors before widening caps or
+upgrading to `gpt-5.5`.
+
 ## Notebook: bot vs. crowd
 
 [notebooks/bot_vs_crowd.ipynb](notebooks/bot_vs_crowd.ipynb) scores the bot
@@ -307,14 +369,17 @@ bot/
   pricing.py       price one intent through the AF → Odds API cascade
   derive.py        compounds + empirical correlated-signal models
   external.py      web-grounded LLM estimate (last resort)
+  calibrate.py     opt-in LLM calibration layer (tilts anchors at T-30)
   pipeline.py      orchestration: AF → Odds API → derive/empirical → external
-run.py             CLI: predict / submit
+run.py             CLI: predict / submit / --calibrate preview
 validate.py        settled-match backtest (vs realized outcomes)
 scripts/
   predict_log.py   local JSON/Markdown prediction snapshots
-  cron_submit.py   scheduled 30- and 5-minute submissions
+  cron_submit.py   scheduled 30-minute submission + calibration
   settle_ledger.py settle real questions and report live Brier scores
   run.sh           cron-safe virtualenv wrapper
+prompts/
+  calibration_prompt.md  designed instruction template for the calibration call
 notebooks/
   bot_vs_crowd.ipynb   bot vs crowd-mean post-mortem on settled markets
 ```

@@ -19,6 +19,8 @@ git-ignored; keep it that way).
   1. API-Football odds → 2. The Odds API (player props + core) →
   3. derive (compose compounds) → 4. external web estimate (last resort).
   Try cheap/auditable sources first; only fall through when a layer can't price.
+  The cascade output is the **anchor**; an optional 5th layer (`bot/calibrate.py`,
+  off by default) tilts it — never re-prices it.
 - De-vig only coherent outcome sets from the **same bookmaker and contract**.
   Compounds are composed from **separately priced components**, not from
   marginal lines of one book.
@@ -32,7 +34,14 @@ git-ignored; keep it that way).
   through `parser.chat_json`, which caches on `(PROMPT_VERSION, model, messages)`
   so the same question always maps to the same intent/source/probability across
   runs. Never add an uncached LLM call. Bump `PROMPT_VERSION` when you change
-  parser semantics.
+  parser semantics. The web layers (`external.py`, `calibrate.py`) are the
+  **documented exception** — non-deterministic on first call, but still cached
+  (ttl=0) so re-runs are stable. The calibration prompt lives in
+  `prompts/calibration_prompt.md`; **editing it auto-invalidates the cache** (a
+  prompt hash is in the cache key), so iterate the prompt freely and only bump
+  `CALIB_PROMPT_VERSION` when the **briefing schema / output contract** changes.
+  The calibration LLM only emits a signed tilt + rationale; the logit nudge,
+  per-book cap and clamps stay deterministic in `calibrate.py`.
 - Recurring question and compound templates are parsed deterministically. The
   parser uses `PARSER_MODEL` (default `gpt-4.1`) for unfamiliar wording only,
   with **at most one batched fallback call per match**. Because the call is
@@ -45,13 +54,15 @@ git-ignored; keep it that way).
   `cache/` (git-ignored). Never add an uncached odds fetch in a hot loop.
 - The Odds API bills `markets × regions`: request only needed markets; the cache
   key is per `(event, market, regions)`. `ODDS_REGIONS` tunes breadth vs cost.
-- Scheduled 30- and 5-minute submissions intentionally refresh odds once per
-  window. Keep refreshes deduplicated within the run so identical Odds API
-  market requests never incur repeated credits.
-- The external web layer (`gpt-4.1-mini` + web search, ~$0.035/question) is the
-  main spend. It is cached per question and gated by `EXTERNAL_FALLBACK` (set
-  `=0` to disable). Don't run it on settled matches in backtests — a web search
-  can leak the result.
+- The scheduled 30-minute submission intentionally refreshes odds once. Keep
+  refreshes deduplicated within the run so identical Odds API market requests
+  never incur repeated credits.
+- The external web layer (`gpt-4.1-mini` + web search, ~$0.035/question) and the
+  calibration layer (`gpt-5-mini` + web search, ~$0.025/match) are web-grounded
+  spend. Both are cached (per question / per match) and gated by env
+  (`EXTERNAL_FALLBACK`, `CALIBRATE_ENABLED`). Don't run either on settled matches
+  — a web search can leak the result. `calibrate()` already refuses to run once
+  kickoff has passed, and the forward-test reads frozen ledger rows only.
 
 ## Keys / env
 `config.py` loads `.env`. Required: `SPORTSPREDICT_KEY`, `APIFOOTBALL_KEY`,

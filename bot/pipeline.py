@@ -32,6 +32,11 @@ class Prediction:
     market_label: str
     source: str = "api-football"  # odds or derivation source that priced it
     book_probabilities: list[float] = field(default_factory=list)
+    # Set by the calibration layer (bot/calibrate.py) when it tilts an anchor.
+    anchor_probability_int: int | None = None   # pre-calibration anchor
+    tilt_points: float | None = None            # raw signed tilt the LLM asked for
+    applied_delta: int | None = None            # realised move (calibrated - anchor)
+    calibration_rationale: str | None = None    # one-line LLM reason for the tilt
 
 
 @dataclass
@@ -48,6 +53,8 @@ class MatchResult:
     skip_reasons: dict[str, str] = field(default_factory=dict)
     af_books: list[dict] = field(default_factory=list)
     oa_observations: list[dict] = field(default_factory=list)
+    calibration_briefing: str | None = None       # LLM research summary (match-level)
+    calibration_sources: list = field(default_factory=list)  # URLs the LLM cited
 
 
 def _clamp_int(p: float) -> int:
@@ -238,8 +245,16 @@ def submit_with_ledger(
     return summary, run_ids
 
 
-def predict_open_matches(submit: bool = False, limit: int | None = None):
-    """Run the pipeline over all open SP matches. Optionally submit predictions."""
+def predict_open_matches(
+    submit: bool = False, limit: int | None = None, calibrate_layer: bool = False
+):
+    """Run the pipeline over all open SP matches. Optionally submit predictions.
+
+    ``calibrate_layer`` force-runs the LLM calibration layer (preview/test path);
+    it fetches the lineup and tilts each anchored prediction in place. Production
+    submission applies calibration from the cron, gated by ``CALIBRATE_ENABLED``.
+    """
+    from . import calibrate
     sp = SportPredict()
     af = APIFootball()
     oa = OddsAPI()
@@ -252,7 +267,15 @@ def predict_open_matches(submit: bool = False, limit: int | None = None):
     results = []
     for sp_match in matches:
         markets = sp.markets(lobby["id"], sp_match["id"])
-        results.append(run_match(sp_match, markets, af, oa))
+        result = run_match(sp_match, markets, af, oa)
+        if calibrate_layer and result.fixture and result.predictions:
+            kickoff = datetime.fromisoformat(
+                sp_match["opening_time"].replace("Z", "+00:00")
+            )
+            mins = (kickoff - datetime.now(timezone.utc)).total_seconds() / 60.0
+            fixture_id = result.fixture["fixture"]["id"]
+            calibrate.calibrate(result, af.lineups(fixture_id), mins, force=True)
+        results.append(result)
 
     if submit:
         submit_with_ledger(sp, event["id"], lobby["id"], results)

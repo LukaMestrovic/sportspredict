@@ -24,6 +24,7 @@ RUN pip install -r requirements.txt
 # (paid odds cache, parser cache, cron markers, ledger) persists across ticks.
 COPY bot/ /app/bot/
 COPY scripts/ /app/scripts/
+COPY prompts/ /app/prompts/
 COPY run.py validate.py /app/
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

@@ -13,7 +13,7 @@ from .parser import PROMPT_VERSION
 
 
 LEDGER_PATH = config.ROOT / "logs" / "prediction_ledger.sqlite3"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def _now() -> str:
@@ -49,7 +49,8 @@ def connect(path: Path = LEDGER_PATH) -> sqlite3.Connection:
             submitted_at TEXT,
             error TEXT,
             af_odds_json TEXT NOT NULL,
-            oa_odds_json TEXT NOT NULL
+            oa_odds_json TEXT NOT NULL,
+            calibration_briefing_json TEXT
         );
 
         CREATE TABLE IF NOT EXISTS questions (
@@ -65,6 +66,11 @@ def connect(path: Path = LEDGER_PATH) -> sqlite3.Connection:
             book_probabilities_json TEXT,
             market_label TEXT,
             skip_reason TEXT,
+            anchor_probability_int INTEGER,
+            tilt_points REAL,
+            applied_delta INTEGER,
+            calibration_rationale TEXT,
+            anchor_brier_score REAL,
             outcome INTEGER,
             brier_score REAL,
             settled_at TEXT,
@@ -87,9 +93,19 @@ def connect(path: Path = LEDGER_PATH) -> sqlite3.Connection:
         ("result_probability_int", "INTEGER"),
         ("result_brier_score", "REAL"),
         ("book_probabilities_json", "TEXT"),
+        ("anchor_probability_int", "INTEGER"),
+        ("tilt_points", "REAL"),
+        ("applied_delta", "INTEGER"),
+        ("calibration_rationale", "TEXT"),
+        ("anchor_brier_score", "REAL"),
     ):
         if name not in columns:
             db.execute(f"ALTER TABLE questions ADD COLUMN {name} {declaration}")
+    run_columns = {
+        row[1] for row in db.execute("PRAGMA table_info(runs)").fetchall()
+    }
+    if "calibration_briefing_json" not in run_columns:
+        db.execute("ALTER TABLE runs ADD COLUMN calibration_briefing_json TEXT")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     return db
 
@@ -114,18 +130,25 @@ def record_run(
     predictions = {p.market_id: p for p in result.predictions}
 
     with closing(connect(path)) as db, db:
+        briefing = getattr(result, "calibration_briefing", None)
+        calibration_json = _json({
+            "briefing": briefing,
+            "sources": getattr(result, "calibration_sources", []),
+        }) if briefing else None
         db.execute(
             """INSERT INTO runs (
                 id, recorded_at, event_id, lobby_id, match_id, fixture_id,
                 match_name, home, away, kickoff, window_min, minutes_before,
-                parser_version, parser_model, status, af_odds_json, oa_odds_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'priced', ?, ?)""",
+                parser_version, parser_model, status, af_odds_json, oa_odds_json,
+                calibration_briefing_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'priced', ?, ?, ?)""",
             (
                 run_id, recorded_at, event_id, lobby_id, result.sp_match["id"],
                 fixture_id, result.sp_match.get("name", result.sp_match["id"]),
                 result.home, result.away, result.sp_match["opening_time"],
                 window_min, minutes_before, PROMPT_VERSION, config.PARSER_MODEL,
                 _json(result.af_books), _json(result.oa_observations),
+                calibration_json,
             ),
         )
         for market in result.markets:
@@ -135,8 +158,10 @@ def record_run(
                 """INSERT INTO questions (
                     run_id, market_id, question, intent_json, market_spec_json,
                     probability, probability_int, source, n_books, market_label,
-                    book_probabilities_json, skip_reason
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    book_probabilities_json, skip_reason,
+                    anchor_probability_int, tilt_points, applied_delta,
+                    calibration_rationale
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     run_id, market_id, market["question"],
                     _json(result.intents[market_id])
@@ -150,6 +175,12 @@ def record_run(
                     prediction.market_label if prediction else None,
                     _json(prediction.book_probabilities) if prediction else None,
                     result.skip_reasons.get(market_id),
+                    getattr(prediction, "anchor_probability_int", None)
+                    if prediction else None,
+                    getattr(prediction, "tilt_points", None) if prediction else None,
+                    getattr(prediction, "applied_delta", None) if prediction else None,
+                    getattr(prediction, "calibration_rationale", None)
+                    if prediction else None,
                 ),
             )
     return run_id
@@ -213,7 +244,7 @@ def settle_results(
                 continue
             result = result_by_market.get(market_id, {})
             rows = db.execute(
-                """SELECT q.run_id, q.probability_int
+                """SELECT q.run_id, q.probability_int, q.anchor_probability_int
                    FROM questions q JOIN runs r ON r.id = q.run_id
                    WHERE q.market_id = ? AND q.outcome IS NULL
                      AND q.probability_int IS NOT NULL
@@ -223,14 +254,19 @@ def settle_results(
             for row in rows:
                 probability = row["probability_int"] / 100.0
                 brier = (probability - outcome) ** 2
+                anchor_int = row["anchor_probability_int"]
+                anchor_brier = (
+                    (anchor_int / 100.0 - outcome) ** 2
+                    if anchor_int is not None else None
+                )
                 db.execute(
                     """UPDATE questions SET
-                        outcome = ?, brier_score = ?, settled_at = ?,
-                        result_id = ?, result_created_at = ?,
+                        outcome = ?, brier_score = ?, anchor_brier_score = ?,
+                        settled_at = ?, result_id = ?, result_created_at = ?,
                         result_probability_int = ?, result_brier_score = ?
                        WHERE run_id = ? AND market_id = ?""",
                     (
-                        outcome, brier, settled_at, result.get("id"),
+                        outcome, brier, anchor_brier, settled_at, result.get("id"),
                         result.get("created_date"),
                         result.get("probability_submitted"),
                         result.get("brier_score"), row["run_id"], market_id,
@@ -260,7 +296,10 @@ def performance(*, path: Path = LEDGER_PATH) -> list[dict]:
                 f"""SELECT {window_expr} AS window_min,
                             {source_expr} AS source,
                             COUNT(*) AS predictions,
-                            AVG(q.brier_score) AS mean_brier
+                            AVG(q.brier_score) AS mean_brier,
+                            AVG(q.anchor_brier_score) AS mean_anchor_brier,
+                            SUM(CASE WHEN COALESCE(q.applied_delta, 0) != 0
+                                     THEN 1 ELSE 0 END) AS tilted
                      FROM questions q JOIN runs r ON r.id = q.run_id
                      WHERE q.outcome IS NOT NULL
                      GROUP BY {window_expr}, {source_expr}
@@ -268,3 +307,27 @@ def performance(*, path: Path = LEDGER_PATH) -> list[dict]:
             ).fetchall()
             summaries.extend({"group": group, **dict(row)} for row in rows)
     return summaries
+
+
+def match_detail(query: str, *, path: Path = LEDGER_PATH) -> dict:
+    """Latest submitted run for a match (by match_id or name substring).
+
+    Returns ``{"run": {...}, "questions": [...]}`` for post-match review of every
+    prediction and its calibration reasoning, or ``{}`` if none is found.
+    """
+    with closing(connect(path)) as db, db:
+        like = f"%{query}%"
+        run = db.execute(
+            """SELECT * FROM runs
+               WHERE (match_id = ? OR match_name LIKE ? OR home LIKE ? OR away LIKE ?)
+                 AND status = 'submitted'
+               ORDER BY recorded_at DESC LIMIT 1""",
+            (query, like, like, like),
+        ).fetchone()
+        if run is None:
+            return {}
+        rows = db.execute(
+            "SELECT * FROM questions WHERE run_id = ? ORDER BY market_id",
+            (run["id"],),
+        ).fetchall()
+    return {"run": dict(run), "questions": [dict(r) for r in rows]}

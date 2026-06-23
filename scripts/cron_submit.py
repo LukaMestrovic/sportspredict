@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 """Autonomous submitter: cron runs this every minute; it submits the next
-match's predictions at the 30-minute and 5-minute marks before kickoff.
+match's predictions at the 30-minute mark before kickoff.
 
 Design
 ------
 Cron can't fire "30 min before a variable kickoff", so this is a *dispatcher*:
 run it once a minute and let it decide. Each tick it finds the soonest open
-match and submits once per window (30, then 5) using marker files so it never
+match and submits once at the 30-minute window using a marker file so it never
 re-submits on the intervening ticks. A file lock prevents overlapping ticks
 (a fire calls the LLM/odds and can outlast one minute) from double-submitting.
 
-Determinism is preserved: recurring templates are local, LLM fallbacks are
-cached, and the web layer stays off (EXTERNAL_FALLBACK=0). Each window forces
-one fresh provider observation so the 5-minute run sees late movement and deep
-markets that were unavailable at 30 minutes.
+At T-30 the lineups are out and there is ~1800s of headroom, so the calibration
+layer (bot/calibrate.py, gated by CALIBRATE_ENABLED) fires its single per-match
+LLM call here, between pricing and submission, tilting the anchors in place.
+
+Determinism is preserved for the anchors: recurring templates are local, LLM
+fallbacks are cached, and the web layer stays off (EXTERNAL_FALLBACK=0). The
+window forces one fresh provider observation so the run sees the latest market.
 
 Manual checks:
   python -m scripts.cron_submit --dry-run   # decide + price, never submit/mark
@@ -27,6 +30,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from bot import calibrate
 from bot.apifootball import APIFootball
 from bot.config import ROOT
 from bot.oddsapi import OddsAPI
@@ -35,7 +39,9 @@ from bot.sportspredict import SportPredict
 
 # Submit at these many minutes-before-kickoff (largest first). A window fires on
 # the first tick at or under its threshold, then is marked done for that match.
-WINDOWS = (30, 5)
+# Single window: at T-30 the XI is out and the calibration layer has ample
+# headroom; a later re-submit would only add market drift already re-priced here.
+WINDOWS = (30,)
 # Ignore matches further out than this so most ticks exit cheaply.
 LOOKAHEAD_MIN = WINDOWS[0] + 1
 
@@ -123,11 +129,21 @@ def main() -> None:
     markets = sp.markets(lobby["id"], sp_match["id"])
     result = run_match(sp_match, markets, af, oa, allow_external=False)
 
+    # LLM calibration: one web-grounded call (cached per match), tilts anchors in
+    # place. Gated by CALIBRATE_ENABLED; any error degrades to the raw anchors.
+    if calibrate.ENABLED and result.fixture and result.predictions:
+        try:
+            fixture_id = result.fixture["fixture"]["id"]
+            calibrate.calibrate(result, af.lineups(fixture_id), mins)
+        except Exception as exc:  # never let calibration block a submission
+            _log(f"  calibration error (using raw anchors): {exc}")
+
     by_src: dict[str, int] = {}
     for p in result.predictions:
         by_src[p.source] = by_src.get(p.source, 0) + 1
+    tilted = sum(1 for p in result.predictions if getattr(p, "applied_delta", 0))
     summary = (f"{head}: {len(result.predictions)} priced, "
-               f"{len(result.skipped)} skipped, by-source={by_src}")
+               f"{len(result.skipped)} skipped, {tilted} tilted, by-source={by_src}")
 
     if args.dry_run:
         _log(f"DRY-RUN {summary} — not submitted")
@@ -168,8 +184,12 @@ def _write_audit(head, kickoff, window, mins, outcome, by_src, result, run_id) -
         "failed": outcome["failed"],
         "errors": outcome["errors"][:5],
         "by_source": by_src,
+        "calibration_briefing": getattr(result, "calibration_briefing", None),
+        "calibration_sources": getattr(result, "calibration_sources", []),
         "predictions": [
             {"question": p.question, "probability": p.probability_int,
+             "anchor": p.anchor_probability_int, "tilt": p.tilt_points,
+             "rationale": p.calibration_rationale,
              "source": p.source, "market_id": p.market_id}
             for p in result.predictions
         ],
