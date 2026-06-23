@@ -128,6 +128,16 @@ def _devig_two_sided(yes: float | None, no: float | None) -> float | None:
     return yi / (yi + ni)
 
 
+def market_present(bookmakers: list[dict], market_key: str) -> bool:
+    """True if any book quotes `market_key` for the event, even when our specific
+    player/line is absent. Distinguishes "market offered but this player not in
+    the lineup" from "market not offered at all"."""
+    return any(
+        m.get("key") == market_key
+        for bm in bookmakers for m in bm.get("markets", [])
+    )
+
+
 def predict(bookmakers: list[dict], spec: dict) -> dict | None:
     """spec kinds: h2h | totals | yesno | player_yesno | player_ou. Returns
     {probability, n_books, label} averaged across books, or None to skip."""
