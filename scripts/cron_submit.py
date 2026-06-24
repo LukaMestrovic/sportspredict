@@ -160,6 +160,7 @@ def main() -> None:
         if w >= window:
             _marker(sp_match["id"], kickoff, w).touch()
     _write_audit(head, kickoff, window, mins, outcome, by_src, result, run_id)
+    _write_calibration_report(head, kickoff, mins, result, run_id)
     landed = outcome["submitted"] + outcome["updated"] + outcome["unchanged"]
     _log(f"UPSERT {head}: created={outcome['submitted']} updated={outcome['updated']} "
          f"unchanged={outcome['unchanged']} failed={outcome['failed']} "
@@ -198,6 +199,46 @@ def _write_audit(head, kickoff, window, mins, outcome, by_src, result, run_id) -
     path.parent.mkdir(exist_ok=True)
     with open(path, "a") as f:
         f.write(json.dumps(rec) + "\n")
+
+
+def _write_calibration_report(head, kickoff, mins, result, run_id) -> None:
+    """Human-readable per-match calibration summary in logs/calibration_runs/.
+
+    Mirrors the manual preview runner: the match-read briefing, the sources, and
+    a per-question anchor->calibrated / tilt / cap / rationale table — so each
+    cron fire leaves a reviewable record alongside the ledger and the JSONL audit.
+    """
+    lines = [
+        f"=== {head} ===",
+        f"kickoff {kickoff.isoformat()}  (T-{mins:.0f} min)  model={calibrate.MODEL}  "
+        f"ledger_run={run_id}",
+    ]
+    if getattr(result, "calibration_briefing", None):
+        lines.append(f"\n[match-read + briefing] {result.calibration_briefing}")
+    if getattr(result, "calibration_sources", None):
+        lines.append("[sources] " + ", ".join(result.calibration_sources[:10]))
+    lines.append("")
+    lines.append(f"{'anchor→cal':>11} {'tilt':>5} {'cap':>4} {'src':>6} {'n':>3}  question")
+    for p in result.predictions:
+        moved = p.anchor_probability_int not in (None, p.probability_int)
+        move = (f"{p.anchor_probability_int}→{p.probability_int}" if moved
+                else f"{p.probability_int}")
+        tilt = f"{p.tilt_points:+g}" if p.tilt_points else "·"
+        cap = calibrate.cap_for_books(p.n_books or 0)
+        lines.append(f"{move:>11} {tilt:>5} {cap:>4} {(p.source or '?')[:6]:>6} "
+                     f"{p.n_books or 0:>3}  {p.question}")
+        if p.calibration_rationale:
+            lines.append(f"{'':>13}↳ {p.calibration_rationale}")
+    tilted = sum(1 for p in result.predictions if getattr(p, "applied_delta", 0))
+    lines.append(f"\n{len(result.predictions)} priced, {len(result.skipped)} skipped, "
+                 f"{tilted} tilted")
+    lines.append(f"USAGE: {json.dumps(calibrate.LAST_USAGE)}")
+
+    outdir = ROOT / "logs" / "calibration_runs"
+    outdir.mkdir(parents=True, exist_ok=True)
+    slug = head.replace(" ", "_").replace("/", "_")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    (outdir / f"{slug}_{stamp}.md").write_text("\n".join(lines) + "\n")
 
 
 if __name__ == "__main__":
