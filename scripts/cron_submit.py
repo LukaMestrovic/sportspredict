@@ -99,26 +99,44 @@ def main() -> None:
         _log("no upcoming open matches")
         return
 
-    sp_match, kickoff = upcoming[0]
-    mins = (kickoff - now).total_seconds() / 60.0
-    head = sp_match.get("name", sp_match["id"])
+    # The soonest match drives --status and the "too far" early exit, but a single
+    # kickoff slot can hold several matches (e.g. two 22:00 games). We must process
+    # EVERY due match each tick — keying only on upcoming[0] would starve all but
+    # one match per slot (the others never become upcoming[0] before they drop out
+    # of the future-only list at kickoff).
+    next_match, next_kickoff = upcoming[0]
+    next_mins = (next_kickoff - now).total_seconds() / 60.0
+    next_head = next_match.get("name", next_match["id"])
 
     if args.status:
-        fired = [w for w in WINDOWS if _marker(sp_match["id"], kickoff, w).exists()]
-        _log(f"next: {head}  kickoff {kickoff.isoformat()}  "
-             f"in {mins:.1f} min  already-submitted={fired or 'none'}")
+        fired = [w for w in WINDOWS
+                 if _marker(next_match["id"], next_kickoff, w).exists()]
+        _log(f"next: {next_head}  kickoff {next_kickoff.isoformat()}  "
+             f"in {next_mins:.1f} min  already-submitted={fired or 'none'}")
         return
 
-    if mins > LOOKAHEAD_MIN:
-        _log(f"next: {head} in {mins:.1f} min — too far, nothing to do")
+    due = [(m, k) for m, k in upcoming
+           if (k - now).total_seconds() / 60.0 <= LOOKAHEAD_MIN]
+    if not due:
+        _log(f"next: {next_head} in {next_mins:.1f} min — too far, nothing to do")
         return
+
+    for sp_match, kickoff in due:
+        _process_match(sp_match, kickoff, now, sp, event, lobby, args)
+
+
+def _process_match(sp_match, kickoff, now, sp, event, lobby, args) -> None:
+    """Price -> calibrate -> submit -> mark one due match. Each match owns its own
+    per-window markers, so simultaneous kickoffs are handled independently."""
+    mins = (kickoff - now).total_seconds() / 60.0
+    head = sp_match.get("name", sp_match["id"])
 
     # Pick the tightest un-fired window we've reached. Marking every window at or
     # above the one we fire collapses a missed earlier mark into a single submit.
     window = next((w for w in sorted(WINDOWS) if mins <= w
                    and not _marker(sp_match["id"], kickoff, w).exists()), None)
     if window is None:
-        _log(f"next: {head} in {mins:.1f} min — windows already submitted")
+        _log(f"{head} in {mins:.1f} min — windows already submitted")
         return
 
     _log(f"FIRING {window}-min window for {head} (kickoff in {mins:.1f} min)")
