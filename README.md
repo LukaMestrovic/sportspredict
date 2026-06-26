@@ -275,6 +275,12 @@ file. These estimates are auditable context for the LLM, not submitted prices.
   and use competing Poisson processes, including the chance of no second-half goal.
 - **Penalty/red card:** calibrate the closest single-sided penalty/red quotes;
   their OR union subtracts an enlarged intersection for positive correlation.
+  In live LLM evidence, the two supported penalty markets ("penalty kick
+  awarded" and "penalty kick awarded OR red card shown") also receive optional
+  `simulator_model_estimates` from `../sportspredict-hybrid`: the bridge runs
+  that repo's own virtualenv, imports its `src/` tree ahead of any installed
+  package so local hybrid edits are picked up immediately, and passes the
+  learned-rate simulator output to the LLM as context only.
 
 ## LLM pricing layer
 

@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
-from . import config, derive
+from . import config, derive, hybrid_penalty
 from . import oddsapi as oapi
 from . import predictor as afpred
 from .matcher import match_intent, match_intent_oddsapi
@@ -37,6 +37,12 @@ def build_match_evidence(
     direct_by_market: dict[str, list[dict]] = {}
     spec_by_market: dict[str, dict | None] = {}
     estimates_by_market: dict[str, list[dict]] = {}
+    simulator_by_market = hybrid_penalty.simulator_estimates(
+        result.markets,
+        ctx,
+        kickoff=result.sp_match.get("opening_time"),
+        referee=_fixture_referee(result),
+    )
 
     for market in result.markets:
         mid = market["id"]
@@ -68,9 +74,13 @@ def build_match_evidence(
             "direct_odds": direct,
             "related_odds": related,
             "deterministic_estimates": estimates_by_market[mid],
+            "simulator_model_estimates": (
+                [simulator_by_market[mid]] if mid in simulator_by_market else []
+            ),
             "audit_requirement": (
                 "The final LLM response must explain which provided odds, online "
-                "odds, and non-odds factors were used or downweighted."
+                "odds, simulator/model context, and non-odds factors were used "
+                "or downweighted."
             ),
         })
 
@@ -79,7 +89,7 @@ def build_match_evidence(
         all_obs.extend(item["direct_odds"])
         all_obs.extend(item["related_odds"])
     evidence = {
-        "schema_version": 1,
+        "schema_version": 2,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "match": _match_meta(result, lineups, minutes_before),
         "questions": [
@@ -138,6 +148,11 @@ def _match_meta(result, lineups, minutes_before: float | None) -> dict:
         "referee": fixture.get("referee"),
         "lineups": summarize_lineups(lineups),
     }
+
+
+def _fixture_referee(result) -> str | None:
+    fixture = (result.fixture or {}).get("fixture", {}) if result.fixture else {}
+    return fixture.get("referee")
 
 
 def summarize_lineups(lineups: list[dict] | None) -> dict | None:

@@ -1,6 +1,8 @@
 import unittest
+from unittest.mock import patch
 
 from bot.evidence import build_match_evidence
+from bot.hybrid_penalty import penalty_market_kind
 from bot.pipeline import MatchResult
 from bot.pricing import PriceCtx
 
@@ -68,6 +70,59 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(q["direct_odds"], [])
         self.assertTrue(q["related_odds"])
         self.assertTrue(all(obs["why_relevant"] for obs in q["related_odds"]))
+
+    def test_penalty_question_receives_hybrid_simulator_context(self):
+        result = _result({
+            "pen": {"market": "none", "subject": "match",
+                    "comparator": "yes", "threshold": None, "period": "match"},
+        }, question="Will a penalty kick be awarded in the match?")
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+        sim = {
+            "source": "sportspredict-hybrid",
+            "model": "LearnedRateModel",
+            "probability": 0.241,
+            "probability_pct": 24.1,
+            "note": "context only",
+        }
+
+        with patch("bot.evidence.hybrid_penalty.simulator_estimates",
+                   return_value={"pen": sim}) as estimates:
+            evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+        estimates.assert_called_once()
+        q = evidence["question_evidence"][0]
+        self.assertEqual(evidence["schema_version"], 2)
+        self.assertEqual(q["simulator_model_estimates"], [sim])
+        self.assertIn("simulator/model context", q["audit_requirement"])
+
+    def test_non_penalty_question_gets_empty_simulator_context(self):
+        result = _result({
+            "win": {"market": "match_winner", "subject": "home",
+                    "comparator": "win", "threshold": None, "period": "match"},
+        })
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+
+        with patch("bot.evidence.hybrid_penalty.simulator_estimates",
+                   return_value={}) as estimates:
+            evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+        estimates.assert_called_once()
+        self.assertEqual(evidence["question_evidence"][0]["simulator_model_estimates"], [])
+
+
+class HybridPenaltyTests(unittest.TestCase):
+    def test_penalty_market_kind_is_limited_to_requested_wordings(self):
+        self.assertEqual(
+            penalty_market_kind("Will a penalty kick be awarded in the match?"),
+            "penalty_awarded",
+        )
+        self.assertEqual(
+            penalty_market_kind(
+                "Will a penalty kick be awarded OR a red card be shown in the match?"
+            ),
+            "penalty_or_red",
+        )
+        self.assertIsNone(penalty_market_kind("Will there be a red card?"))
 
 
 def _result(intents, question="Will Home win the match?"):
