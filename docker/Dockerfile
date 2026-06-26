@@ -10,14 +10,23 @@ FROM python:3.14-slim AS runtime
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    SPORTSPREDICT_HYBRID_ROOT=/sportspredict-hybrid \
+    SPORTSPREDICT_HYBRID_PYTHON=/usr/local/bin/python
 
 WORKDIR /app
 
-# The only third-party dependency is requests — SportPredict, API-Football, the
-# Odds API and OpenAI are all reached over raw HTTPS.
+# The LLM bot itself only needs requests; the optional hybrid simulator bridge
+# installs its heavier stack from the deployment snapshot below.
 COPY requirements.txt /app/
 RUN pip install -r requirements.txt
+
+# Bake a deployment-time snapshot of the sibling hybrid simulator. The deploy
+# script creates .deploy/hybrid_snapshot from ../sportspredict-hybrid immediately
+# before docker build, so later edits to either checkout cannot affect a running
+# cron tick until a new image is built.
+COPY .deploy/hybrid_snapshot/ /sportspredict-hybrid/
+RUN pip install --find-links /sportspredict-hybrid/wheels /sportspredict-hybrid
 
 # Bake the source. No .env, no secrets (enforced by .dockerignore). cache/ and
 # logs/ are intentionally absent — they are bind-mounted at run time so state

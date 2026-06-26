@@ -11,6 +11,8 @@ cd "$(dirname "$0")/.."
 ROOT="$PWD"
 IMAGE="${SPLLM_IMAGE:-sportspredict-llm}"
 TAG="${SPLLM_TAG:-v1}"
+HYBRID_ROOT="${SPORTSPREDICT_HYBRID_ROOT:-$ROOT/../sportspredict-hybrid}"
+HYBRID_SNAPSHOT="$ROOT/.deploy/hybrid_snapshot"
 
 # 1) Require the live keys.
 if [ ! -f .env ]; then
@@ -18,11 +20,68 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-# 2) Build the immutable image (source baked in; secrets never baked).
+# 2) Snapshot the sibling hybrid simulator so the deployed image is isolated
+#    from later edits in BOTH working trees. Keep this explicit: no raw caches,
+#    no secrets, only source/config/model artifacts needed by the bridge.
+if [ ! -d "$HYBRID_ROOT/src/sphybrid" ]; then
+  echo "FATAL: hybrid checkout not found at $HYBRID_ROOT (set SPORTSPREDICT_HYBRID_ROOT)." >&2
+  exit 1
+fi
+for required in \
+  "$HYBRID_ROOT/pyproject.toml" \
+  "$HYBRID_ROOT/README.md" \
+  "$HYBRID_ROOT/wheels/sportspredict-0.1.0-py3-none-any.whl" \
+  "$HYBRID_ROOT/data/processed/rate_model.joblib" \
+  "$HYBRID_ROOT/data/processed/rate_model.json" \
+  "$HYBRID_ROOT/data/processed/team_ratings.parquet"
+do
+  if [ ! -f "$required" ]; then
+    echo "FATAL: required hybrid deploy artifact missing: $required" >&2
+    exit 1
+  fi
+done
+
+echo ">> snapshot hybrid simulator from $HYBRID_ROOT ..."
+rm -rf "$HYBRID_SNAPSHOT"
+mkdir -p "$HYBRID_SNAPSHOT/data/processed" "$HYBRID_SNAPSHOT/data/raw"
+cp -a "$HYBRID_ROOT/pyproject.toml" "$HYBRID_ROOT/README.md" "$HYBRID_SNAPSHOT/"
+cp -a "$HYBRID_ROOT/src" "$HYBRID_ROOT/config" "$HYBRID_ROOT/wheels" "$HYBRID_SNAPSHOT/"
+cp -a \
+  "$HYBRID_ROOT/data/processed/rate_model.joblib" \
+  "$HYBRID_ROOT/data/processed/rate_model.json" \
+  "$HYBRID_ROOT/data/processed/team_ratings.parquet" \
+  "$HYBRID_SNAPSHOT/data/processed/"
+if [ -f "$HYBRID_ROOT/data/raw/elo.csv" ]; then
+  cp -a "$HYBRID_ROOT/data/raw/elo.csv" "$HYBRID_SNAPSHOT/data/raw/"
+fi
+
+# 3) Build the immutable image (source baked in; secrets never baked).
 echo ">> docker build $IMAGE:$TAG ..."
 docker build -f docker/Dockerfile -t "$IMAGE:$TAG" .
 
-# 3) Smoke-test the image without submitting: it must reach SportPredict and
+# 4) Smoke-test the baked hybrid bridge without any secrets. This proves the
+#    deployed image uses its internal /sportspredict-hybrid snapshot, not either
+#    live working tree.
+echo ">> smoke-test image hybrid bridge ..."
+docker run --rm --entrypoint python -e SPORTSPREDICT_HYBRID_N_SIMS=200 \
+  "$IMAGE:$TAG" -c '
+from bot.hybrid_model import simulator_estimates
+from bot.parser import parse_questions
+from bot.pricing import PriceCtx
+markets = [
+    {"id": "pen", "question": "Will a penalty kick be awarded in the match?"},
+    {"id": "sot", "question": "Will Argentina have more shots on target than Austria in the second half?"},
+]
+ctx = PriceCtx("Argentina", "Austria", [], None, None)
+intents = parse_questions(markets, "Argentina", "Austria")
+out = simulator_estimates(markets, ctx, intents=intents, kickoff="2026-06-22T17:00:00Z")
+assert set(out) == {"pen", "sot"}, out
+assert {item["model"] for item in out.values()} == {"LearnedRateModel"}, out
+assert out["pen"]["probability"] > 0 and out["sot"]["probability"] > 0, out
+print("hybrid bridge OK:", {k: (v["kind"], v["probability_pct"]) for k, v in sorted(out.items())})
+'
+
+# 5) Smoke-test the image without submitting: it must reach SportPredict and
 #    report the next match. Keys are read from .env by reference, never argv.
 echo ">> smoke-test image (--status, no submit) ..."
 set -a; . ./.env; set +a
@@ -31,7 +90,7 @@ docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -v "$ROOT/cache:/app/cache" -v "$ROOT/logs:/app/logs" \
   "$IMAGE:$TAG" --status
 
-# 4) Install the cron schedule (idempotent: replace any sportspredict-llm block).
+# 6) Install the cron schedule (idempotent: replace any sportspredict-llm block).
 echo ">> installing cron schedule ..."
 begin="# >>> sportspredict-llm v1 >>>"
 end="# <<< sportspredict-llm v1 <<<"

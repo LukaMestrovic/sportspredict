@@ -14,6 +14,7 @@ venv/
 /tmp/
 *.log
 out/
+.deploy/
 # generated prediction review snapshots
 logs/predictions_*.json
 logs/predictions_*.md

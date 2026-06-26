@@ -25,10 +25,13 @@ TIMEOUT_SECONDS = 90
 _BRIDGE_CODE = r"""
 import json
 import sys
+from pathlib import Path
 
 payload = json.load(sys.stdin)
 
-from sportspredict.config import default_settings
+import yaml
+
+from sportspredict.config import Settings
 from sportspredict.compete.runner import MatchContextBuilder
 from sportspredict.features.context import MatchContext
 
@@ -39,7 +42,12 @@ except Exception:
 
 from sphybrid.engine import build_engine
 
-settings = default_settings()
+root = Path.cwd()
+with open(root / "config" / "settings.yaml") as fh:
+    raw_settings = yaml.safe_load(fh)
+with open(root / "config" / "market_rules.yaml") as fh:
+    market_rules = yaml.safe_load(fh)
+settings = Settings(raw=raw_settings, market_rules=market_rules, root=root)
 elo_table = {}
 elo_path = settings.path("data/raw/elo.csv")
 if load_elo_table is not None:
@@ -137,9 +145,9 @@ def simulator_estimates(
         return {}
 
     root = _hybrid_root(hybrid_root)
-    python = root / ".venv" / "bin" / "python"
+    python = _hybrid_python(root)
     source = root / "src"
-    if not (python.exists() and source.exists()):
+    if not (python and source.exists()):
         return {}
 
     payload = {
@@ -270,6 +278,15 @@ def _hybrid_root(root: Path | None = None) -> Path:
     if root is not None:
         return root.expanduser().resolve()
     return (Path(raw) if raw else DEFAULT_HYBRID_ROOT).expanduser().resolve()
+
+
+def _hybrid_python(root: Path) -> Path | None:
+    raw = os.environ.get("SPORTSPREDICT_HYBRID_PYTHON")
+    if raw:
+        path = Path(raw).expanduser()
+        return path if path.exists() else None
+    path = root / ".venv" / "bin" / "python"
+    return path if path.exists() else None
 
 
 def _n_sims_override() -> int | None:
