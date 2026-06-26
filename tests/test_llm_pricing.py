@@ -15,7 +15,7 @@ class LLMFinalPricingTests(unittest.TestCase):
         llm_pricing._ask = self._orig_ask
 
     def test_complete_market_audit_creates_prediction_and_report(self):
-        llm_pricing._ask = lambda evidence: {
+        llm_pricing._ask = lambda evidence, **_kw: {
             "briefing": "Home should control territory.",
             "sources": ["https://example.com/preview"],
             "markets": [_audit("m1", 57)],
@@ -41,7 +41,7 @@ class LLMFinalPricingTests(unittest.TestCase):
     def test_missing_audit_field_skips_market(self):
         bad = _audit("m1", 57)
         bad.pop("online_odds_found")
-        llm_pricing._ask = lambda evidence: {"markets": [bad]}
+        llm_pricing._ask = lambda evidence, **_kw: {"markets": [bad]}
         result = llm_pricing.price_match(_result(), _evidence(), None, 30.0, force=True)
         self.assertEqual(result.predictions, [])
         self.assertEqual(result.skip_reasons["m1"],
@@ -49,11 +49,24 @@ class LLMFinalPricingTests(unittest.TestCase):
 
     def test_leak_guard_refuses_after_kickoff(self):
         calls = []
-        llm_pricing._ask = lambda evidence: calls.append(1) or {"markets": [_audit("m1", 57)]}
+        llm_pricing._ask = (
+            lambda evidence, **_kw: calls.append(1) or {"markets": [_audit("m1", 57)]}
+        )
         result = llm_pricing.price_match(_result(), _evidence(), None, -1.0, force=True)
         self.assertEqual(calls, [])
         self.assertEqual(result.predictions, [])
         self.assertEqual(result.skip_reasons["m1"], "LLM pricing refused after kickoff")
+
+    def test_refresh_flag_reaches_cache_layer(self):
+        seen = []
+        llm_pricing._ask = (
+            lambda evidence, **kw: seen.append(kw.get("refresh"))
+            or {"markets": [_audit("m1", 57)]}
+        )
+        llm_pricing.price_match(
+            _result(), _evidence(), None, 30.0, force=True, refresh=True,
+        )
+        self.assertEqual(seen, [True])
 
 
 def _audit(market_id, probability):

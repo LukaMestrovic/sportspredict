@@ -105,10 +105,16 @@ def main() -> None:
     next_head = next_match.get("name", next_match["id"])
 
     if args.status:
-        fired = [w for w in WINDOWS
-                 if _marker(next_match["id"], next_kickoff, w).exists()]
-        _log(f"next: {next_head}  kickoff {next_kickoff.isoformat()}  "
-             f"in {next_mins:.1f} min  already-submitted={fired or 'none'}")
+        slot = [(m, k) for m, k in upcoming if k == next_kickoff]
+        names = ", ".join(m.get("name", m["id"]) for m, _k in slot)
+        submitted = {
+            m.get("name", m["id"]): [
+                w for w in WINDOWS if _marker(m["id"], k, w).exists()
+            ] or "none"
+            for m, k in slot
+        }
+        _log(f"next slot: {names}  kickoff {next_kickoff.isoformat()}  "
+             f"in {next_mins:.1f} min  already-submitted={submitted}")
         return
 
     due = [(m, k) for m, k in upcoming
@@ -150,7 +156,8 @@ def _process_match(sp_match, kickoff, now, sp, event, lobby, args) -> None:
         _log(f"  lineup fetch warning: {exc}")
     result = run_match(
         sp_match, markets, af, oa, allow_external=False,
-        llm_pricing_enabled=True, lineups=lineups, minutes_before=mins,
+        llm_pricing_enabled=True, llm_pricing_refresh=True,
+        lineups=lineups, minutes_before=mins,
     )
 
     by_src: dict[str, int] = {}

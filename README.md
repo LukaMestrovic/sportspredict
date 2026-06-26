@@ -98,8 +98,12 @@ scripts/run.sh --status    # what is the next match / ETA?
 via `scripts/run.sh`. Each tick is a dispatcher: a fast no-op until a match is
 within 30 minutes, then it upserts predictions once at the **30-minute** mark
 before kickoff — where the lineups are out and the LLM pricing layer has ~30
-minutes of headroom to research online odds and context. Each fire writes an
-evidence JSON and full Markdown/JSON audit under `logs/llm_pricing_runs/`.
+minutes of headroom to research online odds and context. Each scheduled fire
+refreshes provider odds, fetches the latest available lineups, forces a fresh LLM
+pricing/web-search call for that window, and writes an evidence JSON plus full
+Markdown/JSON audit under `logs/llm_pricing_runs/`. Manual development runs
+still use the cached LLM price for repeatability unless the prompt/model/cache
+key changes.
 
 Because the code is baked into the image, the running bot is a **frozen
 snapshot** — editing the working tree (or running tests, dev predictions, etc.)

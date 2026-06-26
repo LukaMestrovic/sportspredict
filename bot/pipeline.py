@@ -82,6 +82,7 @@ def run_match(
     *,
     allow_external: bool = True,
     llm_pricing_enabled: bool = True,
+    llm_pricing_refresh: bool = False,
     lineups: list[dict] | None = None,
     minutes_before: float | None = None,
 ) -> MatchResult:
@@ -136,7 +137,9 @@ def run_match(
             for item in bundle.get("question_evidence", [])
         }
         res.oa_observations = list(getattr(ctx.oa, "observations", [])) if ctx.oa else []
-        llm_pricing.price_match(res, bundle, path, minutes_before)
+        llm_pricing.price_match(
+            res, bundle, path, minutes_before, refresh=llm_pricing_refresh,
+        )
         return res
 
     kickoff = sp_match["opening_time"]

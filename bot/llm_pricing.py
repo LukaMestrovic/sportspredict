@@ -140,9 +140,11 @@ def _call_llm(evidence: dict) -> dict:
     raise last_exc  # type: ignore[misc]
 
 
-def _ask(evidence: dict) -> dict:
+def _ask(evidence: dict, *, refresh: bool = False) -> dict:
     key = _cache_key(evidence["match"]["match_id"])
-    return cache.get_or_fetch("llm_pricing", key, lambda: _call_llm(evidence), ttl=0)
+    return cache.get_or_fetch(
+        "llm_pricing", key, lambda: _call_llm(evidence), ttl=0, refresh=refresh,
+    )
 
 
 def price_match(
@@ -152,6 +154,7 @@ def price_match(
     minutes_before: float | None,
     *,
     force: bool = False,
+    refresh: bool = False,
 ):
     """Populate ``result.predictions`` with validated final LLM probabilities."""
     if not (force or ENABLED) or not config.OPENAI_API_KEY:
@@ -162,7 +165,7 @@ def price_match(
         return result
 
     try:
-        response = _ask(evidence) or {}
+        response = _ask(evidence, refresh=refresh) or {}
     except Exception as exc:
         _skip_all(result, f"LLM pricing failed: {exc}")
         return result

@@ -13,6 +13,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -76,6 +77,64 @@ class DispatchTest(unittest.TestCase):
     def test_nothing_due_processes_nothing(self):
         self._run([self._match("A vs B", 120), self._match("C vs D", 200)])
         self.assertEqual(self.processed, [])
+
+
+class ProcessMatchTest(unittest.TestCase):
+    def setUp(self):
+        self._orig = (
+            cron_submit.APIFootball, cron_submit.OddsAPI, cron_submit.run_match,
+            cron_submit.submit_with_ledger,
+        )
+
+    def tearDown(self):
+        (
+            cron_submit.APIFootball, cron_submit.OddsAPI, cron_submit.run_match,
+            cron_submit.submit_with_ledger,
+        ) = self._orig
+
+    def test_cron_fire_refreshes_odds_lineups_and_llm_pricing(self):
+        seen = {}
+
+        class _AF:
+            def __init__(self, *, refresh_odds=False):
+                seen["af_refresh"] = refresh_odds
+
+            def find_fixture(self, opening_time, name):
+                return {"fixture": {"id": 42}}
+
+            def lineups(self, fixture_id):
+                seen["lineups_fixture_id"] = fixture_id
+                return [{"team": {"name": "A"}}]
+
+        class _OA:
+            def __init__(self, *, refresh_odds=False):
+                seen["oa_refresh"] = refresh_odds
+
+        def _run_match(*args, **kwargs):
+            seen["run_match_kwargs"] = kwargs
+            return SimpleNamespace(predictions=[], skipped=[])
+
+        cron_submit.APIFootball = _AF
+        cron_submit.OddsAPI = _OA
+        cron_submit.run_match = _run_match
+        sp = SimpleNamespace(markets=lambda lobby_id, match_id: [])
+        kickoff = datetime.now(timezone.utc) + timedelta(minutes=30)
+        cron_submit._process_match(
+            {"id": "m1", "name": "A vs B",
+             "opening_time": kickoff.strftime("%Y-%m-%dT%H:%M:%S.000Z")},
+            kickoff,
+            datetime.now(timezone.utc),
+            sp,
+            {"id": "event"},
+            {"id": "lobby"},
+            SimpleNamespace(dry_run=True),
+        )
+
+        self.assertTrue(seen["af_refresh"])
+        self.assertTrue(seen["oa_refresh"])
+        self.assertEqual(seen["lineups_fixture_id"], 42)
+        self.assertTrue(seen["run_match_kwargs"]["llm_pricing_enabled"])
+        self.assertTrue(seen["run_match_kwargs"]["llm_pricing_refresh"])
 
 
 if __name__ == "__main__":

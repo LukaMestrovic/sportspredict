@@ -59,8 +59,10 @@ git-ignored; keep it that way).
   refreshes deduplicated within the run so identical Odds API market requests
   never incur repeated credits.
 - The final LLM pricing layer (`gpt-5.5` + web search by default) is
-  web-grounded spend. It is cached per match and can be disabled with
-  `LLM_PRICING_ENABLED=0` for deterministic validation. Don't run it on settled
+  web-grounded spend. It is cached per match for manual repeatability and can be
+  disabled with `LLM_PRICING_ENABLED=0` for deterministic validation. Scheduled
+  T-30 cron fires deliberately refresh provider odds and force a fresh LLM
+  pricing/web-search call for that submission window. Don't run it on settled
   matches — a web search can leak the result. `llm_pricing.price_match()` refuses
   to run once kickoff has passed, and ledger review reads frozen rows only.
 
