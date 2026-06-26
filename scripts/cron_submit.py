@@ -73,13 +73,16 @@ def main() -> None:
 
     # Single-instance lock: if a previous tick's fire is still running, skip.
     LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
-    lock = open(LOCK_PATH, "w")
-    try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        _log("skip: previous run still in progress")
-        return
+    with open(LOCK_PATH, "w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            _log("skip: previous run still in progress")
+            return
+        _dispatch(args)
 
+
+def _dispatch(args) -> None:
     sp = SportPredict()
     event = sp.event()
     lobby = sp.lobby(event["id"])

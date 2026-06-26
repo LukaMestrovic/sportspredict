@@ -1,10 +1,10 @@
 import unittest
 from unittest.mock import patch
 
+from bot.derive import is_compound_question
 from bot.pipeline import (
     MatchResult,
     Prediction,
-    _COMPOUND_RE,
     run_match,
     submit_predictions,
     submit_with_ledger,
@@ -13,24 +13,24 @@ from bot.pipeline import (
 
 class CompoundDetectionTests(unittest.TestCase):
     def test_uppercase_logical_operator(self):
-        self.assertIsNotNone(_COMPOUND_RE.search("Will A happen OR B happen?"))
+        self.assertTrue(is_compound_question("Will A happen OR B happen?"))
 
     def test_lowercase_logical_operator(self):
         question = (
             "Will Jordan score the first goal of the game and Algeria score "
             "in the second half?"
         )
-        self.assertIsNotNone(_COMPOUND_RE.search(question))
+        self.assertTrue(is_compound_question(question))
 
     def test_non_compound_player_exclusion_is_ignored(self):
-        self.assertIsNone(_COMPOUND_RE.search("Will Harry Kane score (excluding own goals)?"))
+        self.assertFalse(is_compound_question("Will Harry Kane score (excluding own goals)?"))
 
     def test_threshold_or_is_not_a_logical_operator(self):
-        self.assertIsNone(_COMPOUND_RE.search("Will Austria be caught offside 2 or more times?"))
+        self.assertFalse(is_compound_question("Will Austria be caught offside 2 or more times?"))
 
     def test_team_name_and_is_not_a_logical_operator(self):
         question = "Will Bosnia and Herzegovina receive more cards than Qatar?"
-        self.assertIsNone(_COMPOUND_RE.search(question))
+        self.assertFalse(is_compound_question(question))
 
 
 class SkipReasonTests(unittest.TestCase):

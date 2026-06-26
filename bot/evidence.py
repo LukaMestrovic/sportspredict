@@ -284,7 +284,7 @@ def _compound_component_intents(question: str, home: str, away: str) -> list[tup
 def _deterministic_estimates(question: str, intent: dict | None, ctx: PriceCtx) -> list[dict]:
     estimates = []
     try:
-        if re.search(r"\b(?:AND|OR)\b|\bscore the first goal of the game and\b", question):
+        if derive.is_compound_question(question):
             out, source = derive.price_compound(question, ctx)
         else:
             out, source = derive.price_empirical(question, intent, ctx)

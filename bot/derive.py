@@ -29,6 +29,7 @@ from .pricing import PriceCtx, price_intent
 
 SHOT_HALF_SHARE = {"1H": 0.45, "2H": 0.55, "match": 1.0}
 CARD_SECOND_HALF_SHARE = 0.58
+_COMPOUND_RE = re.compile(r"\b(?:AND|OR)\b|\bscore the first goal of the game and\b")
 
 # Shot-model parameters, calibrated on 28 settled WC2026 fixtures that still had
 # pre-match odds (see commit message / analysis). Two findings:
@@ -67,6 +68,11 @@ sub-questions and the logical operator joining them. Each sub-question must be a
 standalone yes/no question. Return JSON:
 {"op": "AND"|"OR", "a": "<sub-question 1>", "b": "<sub-question 2>"}
 If it is not actually a compound of two events, return {"op": null}."""
+
+
+def is_compound_question(question: str) -> bool:
+    """Return whether a question uses one of the supported compound forms."""
+    return bool(_COMPOUND_RE.search(question))
 
 
 def _split(question: str) -> dict | None:

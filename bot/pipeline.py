@@ -7,8 +7,6 @@ The older deterministic cascade is retained only for explicit validation/backtes
 calls that must not run web-grounded LLM pricing after kickoff.
 """
 from __future__ import annotations
-
-import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -18,10 +16,6 @@ from .oddsapi import OddsAPI
 from .parser import parse_questions
 from .pricing import PriceCtx, price_intent
 from .sportspredict import SportPredict
-
-
-_COMPOUND_RE = re.compile(r"\b(?:AND|OR)\b|\bscore the first goal of the game and\b")
-
 
 @dataclass
 class Prediction:
@@ -148,7 +142,7 @@ def run_match(
         intent = intents.get(m["id"])
         out = src = spec = None
         skip_reason = "no source could price it"
-        if _COMPOUND_RE.search(q):
+        if derive.is_compound_question(q):
             # 1) compound -> derive from the two component markets
             out, src = derive.price_compound(q, ctx)
             if not out:
