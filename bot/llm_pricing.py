@@ -22,7 +22,7 @@ from .pipeline import Prediction
 
 
 LLM_PRICING_VERSION = "lp1-auditable-final"
-MODEL = os.environ.get("LLM_PRICING_MODEL", os.environ.get("CALIBRATE_MODEL", "gpt-5-mini"))
+MODEL = os.environ.get("LLM_PRICING_MODEL", "gpt-5-mini")
 PROMPT_PATH = config.ROOT / "prompts" / "llm_pricing_prompt.md"
 ENABLED = os.environ.get("LLM_PRICING_ENABLED", "1") != "0"
 TIMEOUT = 300

@@ -3,55 +3,47 @@
 A minimal **v0** LLM-based bot that predicts event probabilities for the
 **SportPredict × Jump Trading Probability Cup** (FIFA World Cup 2026).
 
-It reads the binary questions SportPredict asks for each upcoming match and
-prices each through a **layered fallback cascade**, so almost nothing is skipped.
+It reads the binary questions SportPredict asks for each upcoming match, builds a
+per-match odds/context evidence file, and asks one web-grounded LLM call to
+produce final probabilities plus a full audit trail for every submitted market.
 
 ## Architecture
 
-The **Parser** turns each question into a structured intent; the intent is then
-priced by the first source in the cascade that can cover it:
+The **Parser** turns each question into a structured intent. The bot then
+collects direct and related bookmaker odds into an auditable evidence JSON; the
+LLM receives that file in its prompt, searches for additional online odds and
+match context, and returns final YES probabilities.
 
 ```
-                    ┌─ Templates, then cached LLM fallback ─ structured intent
-   question ───────▶│
-                    └─ price via cascade ▼
-   ┌────────────────────────────────────────────────────────────────┐
-   │ 1. API-Football odds   de-vig bookmaker market (primary)        │
-   │ 2. The Odds API        player props + core markets AF lacks     │  → anchor
-   │ 3. Derive              compounds + empirical signal models       │   (1–99)
-   │ 4. External (web)      web-grounded LLM estimate (last resort)   │
-   └────────────────────────────────────────────────────────────────┘
-                    └─ 5. Calibrate (opt-in) ─ LLM tilts the anchor ▼ prob (1–99)
+   question ─▶ parser ─▶ evidence JSON ─▶ web-grounded LLM final pricing ─▶ 1–99
+                         ▲
+                         └─ API-Football, The Odds API, related markets,
+                            deterministic estimates, lineups, venue, referee
 ```
 
 1. **Parser** ([bot/parser.py](bot/parser.py)) — recurring competition templates
    are parsed deterministically. Only unfamiliar wording is sent to `gpt-4.1`,
    in at most **one batched call per match**. That fallback is cached on
-   `(model, prompt version, questions)`, so a question maps to the same intent —
-   and therefore the same source and probability — on every re-run. Known
+   `(model, prompt version, questions)`, so a question maps to the same intent
+   on every re-run. Known
    compound forms are also split locally; novel compounds use the same cached
    LLM path.
 2. **Matcher** ([bot/matcher.py](bot/matcher.py)) — maps an intent to a specific
    provider market (API-Football bet ID or Odds API key) from
    [soccer_live_odds_market_catalog.pdf](soccer_live_odds_market_catalog.pdf),
    including full-match and 1st/2nd-half contracts.
-3. **Pricing cascade** ([bot/pricing.py](bot/pricing.py), [bot/pipeline.py](bot/pipeline.py)):
-   - **API-Football + The Odds API** ([bot/predictor.py](bot/predictor.py),
-     [bot/oddsapi.py](bot/oddsapi.py)) — for any market both quote, de-vig each
-     provider's books per contract and **average across all of them** for the
-     deepest consensus (e.g. a match result pools ~60+ books). API-Football is
-     free and the only source for many lines (offsides, fouls, half periods,
-     team compares); the Odds API adds far deeper books on core lines plus the
-     player props API-Football rarely quotes. Player YES/NO props (anytime
-     scorer, score-or-assist, card) are priced from the Odds API alone — it is
-     lineup-aware, so a benched player it no longer quotes is skipped rather
-     than priced off a stale lone API-Football book.
-   - **Derive** ([bot/derive.py](bot/derive.py)) — split a compound ("A AND/OR B"),
-     price each component through the cascade and combine it; or estimate an
-     unsupported contract from correlated API-Football markets.
-   - **External** ([bot/external.py](bot/external.py)) — last resort: a web-grounded
-     LLM estimate (prediction markets, news, stats) for questions no odds source
-     covers (e.g. team/half shots-on-target totals, 2nd-half comparisons).
+3. **Evidence builder** ([bot/evidence.py](bot/evidence.py)) — writes one JSON
+   file per match under `logs/llm_pricing_runs/`. Direct mapped markets include
+   every per-book de-vigged probability, source, bookmaker, raw odds and de-vig
+   method. Questions without direct odds receive relevant related odds and
+   labeled deterministic estimates, not hidden anchors.
+4. **LLM pricing** ([bot/llm_pricing.py](bot/llm_pricing.py)) — one cached
+   web-grounded call per match. The model must price every SportPredict market
+   from the evidence JSON plus online research, including Kalshi, Polymarket,
+   Pinnacle, Betfair and betting platforms where available. Every returned
+   market must include final probability, provided odds used, online odds found,
+   non-odds factors, downweighted evidence, sources and a concise public
+   reasoning summary. Markets missing that audit are skipped.
 
 Provider fixtures/events are linked by **kickoff datetime and both teams**;
 kickoff alone is not unique when group-stage matches start simultaneously. The
@@ -71,10 +63,11 @@ cp .env.example .env     # then fill in your keys
 | `SPORTSPREDICT_KEY` | SportPredict Probability Cup API (`sp_live_…`) |
 | `APIFOOTBALL_KEY`   | API-Football v3 (api-sports.io direct host) |
 | `ODDS_API_KEY`      | The Odds API (the-odds-api.com) — **paid/metered**, cached |
-| `OPENAI_API_KEY`    | LLM parser + compound splitter + external web estimate + calibration layer |
+| `OPENAI_API_KEY`    | parser fallback + compound splitter + final LLM pricing |
 
-Optional calibration-layer env (off by default): `CALIBRATE_ENABLED=1` enables the
-LLM calibration layer; `CALIBRATE_MODEL` picks the model (default `gpt-5-mini`).
+Optional LLM pricing env: `LLM_PRICING_MODEL` picks the model (default
+`gpt-5-mini`); `LLM_PRICING_ENABLED=0` disables final LLM pricing for local
+deterministic/backtest-style runs.
 
 ## Usage
 
@@ -85,8 +78,8 @@ python run.py predict
 # Only the first open match (cheap end-to-end check)
 python run.py predict --limit 1
 
-# Preview the LLM calibration layer on the next match (tilts anchors, no submit)
-python run.py predict --limit 1 --calibrate
+# Deterministic backtest-style preview (no final LLM pricing)
+python run.py predict --limit 1 --no-llm
 
 # Predict and submit to SportPredict
 python run.py predict --submit
@@ -104,8 +97,9 @@ scripts/run.sh --status    # what is the next match / ETA?
 **current** source baked in, then installs a per-minute cron that runs that image
 via `scripts/run.sh`. Each tick is a dispatcher: a fast no-op until a match is
 within 30 minutes, then it upserts predictions once at the **30-minute** mark
-before kickoff — where the lineups are out and (if `CALIBRATE_ENABLED=1`) the LLM
-calibration layer fires its single per-match call with ~30 minutes of headroom.
+before kickoff — where the lineups are out and the LLM pricing layer has ~30
+minutes of headroom to research online odds and context. Each fire writes an
+evidence JSON and full Markdown/JSON audit under `logs/llm_pricing_runs/`.
 
 Because the code is baked into the image, the running bot is a **frozen
 snapshot** — editing the working tree (or running tests, dev predictions, etc.)
@@ -121,11 +115,12 @@ run time and never baked into the image.
 python validate.py --days 7
 ```
 
-Runs the production API-Football and empirical pricing path against every
+Runs the deterministic API-Football/empirical validation path against every
 **settled** WC2026 fixture from the last 7 days: reconstructs SportPredict-style
 questions, settles them from the final score and match statistics, and reports
-the Brier score. The paid Odds API is not queried and web fallback is forcibly
-disabled to prevent result leakage. Latest run:
+the Brier score. Final LLM pricing is disabled here to prevent web-search result
+leakage, so validation measures the local evidence/model machinery rather than
+the live LLM pricing layer. Latest historical run before the redesign:
 
 ```
 Fixtures:           27
@@ -148,19 +143,18 @@ window, including:
 - event, lobby, match, fixture, kickoff, observation and submission times;
 - parser/model version, structured intent and attempted provider market spec;
 - raw API-Football and Odds API snapshots observed for the run;
-- each bookmaker's de-vigged probability, final probability, source and label;
-- the calibration anchor, applied tilt, per-question LLM rationale and the
-  match-level research briefing (when the calibration layer ran);
+- evidence JSON path/hash and the full LLM audit/report paths;
+- each bookmaker's de-vigged probability observed by the run;
+- final probability, source, per-question LLM audit JSON and reasoning summary;
 - skipped questions and their reasons; and
-- eventual binary outcome and Brier score (calibrated **and** anchor, so the two
-  can be compared after settlement).
+- eventual binary outcome and Brier score.
 
 Scheduled runs are tagged `30`; manual submissions use `-1`. A failed API
 submission remains in the ledger with status `failed` and does not create a cron
 marker.
 
-Review one match after kickoff — every prediction, the anchor → calibrated move,
-the tilt, the outcome, anchor-vs-calibrated Brier, and the LLM's reasoning:
+Review one match after kickoff — every prediction, outcome, Brier score, audit
+paths and LLM reasoning summary:
 
 ```bash
 python -m scripts.settle_ledger --match "Portugal"   # by id or name substring
@@ -196,8 +190,9 @@ The autonomous submitter deliberately bypasses the odds TTL once at the
 memory within that run, so the submission sees the latest market movement and
 newly opened props without repeated identical provider calls.
 
-`ODDS_REGIONS` (default `eu,uk`) controls breadth vs cost; `EXTERNAL_FALLBACK=0`
-disables the paid web layer entirely.
+`ODDS_REGIONS` (default `eu,uk,us`) controls breadth vs cost;
+`LLM_PRICING_ENABLED=0` disables the final web-grounded pricing layer for local
+deterministic checks.
 
 ## Cost
 
@@ -208,19 +203,15 @@ SportPredict is free; API-Football is a flat-rate subscription. Metered costs:
 | Parser `gpt-4.1` (cached fallback) | $2.00/$8.00 per 1M tok | $0 known; ≤$0.004 unfamiliar | ≤$0.46 |
 | Compound splitter `gpt-4.1` (cached fallback) | same | $0 known; ≤$0.001 unfamiliar | ≤$0.10 |
 | Odds API | billed `markets×regions` (even empty markets) | ~3–4 markets × 3 regions ≈ **9–12 credits** (single 30-min window) | within plan |
-| External web search `gpt-4.1-mini` | ~$0.035 / question | **off by default** | **$0** (opt-in) |
-| Calibration layer `gpt-5-mini` (1 cached call/match, multi-source web research) | ~$0.08 / match | **off by default** | **~$7–9** (opt-in; ~$45 on `gpt-5.5`) |
+| Final LLM pricing `gpt-5-mini` (1 cached call/match, multi-source web research) | ~$0.08 / match | **~$0.08** | **~$7–9** (`gpt-5-mini`; ~$45 on `gpt-5.5`) |
 
 *104 matches. **Every LLM call is cached**, and ordinary odds re-runs reuse the
 disk cache; only the single scheduled submission window deliberately refreshes
 odds. Caching the parser on `(model, prompt, questions)` also makes unfamiliar
-question→source mapping deterministic across runs. The web layer is **off by
-default** (`EXTERNAL_FALLBACK=0`) — it is non-deterministic and the empirical
-layer covers its cases from bookmaker odds at prediction time. Total tournament
-LLM spend (parser + splitter) is well under **$1**; the web layer
-(`EXTERNAL_FALLBACK=1`) adds ~$15–20, and the calibration layer
-(`CALIBRATE_ENABLED=1`) adds ~$7–9 on `gpt-5-mini` (the web-search calls dominate;
-~$45 on `gpt-5.5`).
+question→intent mapping deterministic across runs. Final LLM pricing is one
+cached web-grounded call per match; re-runs reuse the frozen pre-match audit.
+Parser + splitter spend is well under **$1**; final pricing adds roughly $7–9 on
+`gpt-5-mini` for the full tournament.
 
 ## Supported markets
 
@@ -229,46 +220,34 @@ goals, total & team corners, corners 1x2, total & team cards, team-to-score;
 plus half draws, card comparisons, and (full match) offsides totals,
 offsides/fouls/shots-on-target 1x2, total shots on target, highest-scoring-half;
 player anytime-scorer, score-or-assist, shots-on-target, cards (both providers);
-compounds (derived). Anything else routes to the external estimate.
+compounds, penalties/red cards and unusual questions through related evidence.
+If the LLM does not return a complete audit for a market, that market is skipped
+rather than submitted without reviewability.
 
-## Coverage cascade
+## Evidence and Audit
 
-Each question is priced by the first layer that can cover it. On the audited
-live set (**318 questions / 32 matches**, 2026-06-22), with both the paid Odds
-API and web layer disabled:
+Every live match writes an evidence JSON before the LLM call. For directly
+mapped questions, it lists every provider/bookmaker probability for the exact
+contract. For questions without direct odds, it lists relevant related
+probabilities: component legs for compounds, team/match totals, compare markets,
+player props, half/full-match cousins and other match context odds. Existing
+derive/empirical models are retained as labeled context only, never as hidden
+final anchors.
 
-| Layer | Source | Priced | Typical questions |
-|---|---|---:|---|
-| 1 | API-Football | 170 | match/half result, totals, corners/cards/offsides/fouls, total shots on target, player props |
-| 2 | The Odds API | not queried | preserved the paid quota during this audit |
-| 3 | Compound derive | 17 | "BTTS **AND** 3+ goals", first-score **and** half-score |
-| 3 | Empirical derive | 50 | team/half shots, half cards, first 2H scorer, penalty/red |
-| — | Skipped | 81 | required signals unavailable or direct mapped contracts not yet quoted |
+The LLM response is also persisted as JSON and Markdown. For each market it must
+state:
 
-So 237/318 are priced without either paid fallback. The remainder are skipped on
-this audited *far-future* set because their direct contracts (or empirical
-signals) are not quoted yet; at prediction time (~30 min before kickoff) those
-deep markets are live, so the empirical layer prices them. A lone-book
-API-Football quote on a normally-deep market is treated as a likely mis-map and
-only trusted if it isn't an extreme — it otherwise cascades onward.
+- final `probability_int`;
+- provided odds used, with how and why;
+- online odds found independently, with probability conversion method and URL;
+- tactics, weather, lineup, referee, motivation and other non-odds factors used;
+- evidence ignored/downweighted; and
+- a concise reasoning summary.
 
-The cascade is **deterministic and auditable end-to-end**: the parser is cached
-so each question maps to a fixed intent across runs; compounds are detected by
-explicit conjunctions; half-period and comparison questions map to their exact
-half/1x2 contracts (or, where no contract exists, to a fixed empirical model)
-rather than a full-match line. The web layer is **off by default**, so nothing
-reaches a non-deterministic estimate unless explicitly opted in
-(`EXTERNAL_FALLBACK=1`); with it off, an unpriceable question is skipped, never
-guessed.
+### Deterministic model context
 
-Derivation uses **independence** to combine components — `P(A AND B)=P(A)·P(B)`,
-`P(A OR B)=P(A)+P(B)−P(A)·P(B)` — an approximation, but far better than skipping.
-
-### Empirical derivation
-
-Unsupported contracts are estimated only after direct pricing fails. This layer
-uses the API-Football bookmaker payload already loaded for the match and never
-calls The Odds API, so it adds no paid odds credits.
+Some unsupported contracts still get deterministic estimates inside the evidence
+file. These estimates are auditable context for the LLM, not submitted prices.
 
 - **Shots on target:** invert a quoted match-total O/U probability into a
   Poisson rate. Split it between teams with
@@ -291,46 +270,23 @@ calls The Odds API, so it adds no paid odds credits.
 - **Penalty/red card:** calibrate the closest single-sided penalty/red quotes;
   their OR union subtracts an enlarged intersection for positive correlation.
 
-## Calibration layer (opt-in LLM edge)
+## LLM pricing layer
 
-[bot/calibrate.py](bot/calibrate.py) runs **after** the cascade has anchored every
-question. Fired once per match at the 30-minute window (gated by
-`CALIBRATE_ENABLED`), it makes a **single** web-grounded `gpt-5-mini` call that
-sees every anchor *and the exact method behind it* — source, book count, the
-per-book de-vigged probabilities, their spread, a market **tier** and the hard
-**max-move** cap — plus the confirmed starting XI, assigned **referee** and
-**venue** from API-Football. Its instructions are a designed, versioned template at
-[prompts/calibration_prompt.md](prompts/calibration_prompt.md) (edit it freely —
-the cache re-keys on the prompt hash). The model researches, in priority order:
-confirmed/probable **lineups & late news**; **other/sharper books** (Pinnacle,
-Betfair Exchange); **prediction markets** (Polymarket, Kalshi); **weather** (skipped
-for roofed venues); and tactical previews / pressers / form / motivation / referee
-tendencies. It first forms a one-paragraph **match-read** (lead/chase, tempo,
-temperature, key roles) and tilts every question consistently with it, returning
-small signed **tilts**.
+[bot/llm_pricing.py](bot/llm_pricing.py) makes one web-grounded call per match.
+Its instruction template lives at
+[prompts/llm_pricing_prompt.md](prompts/llm_pricing_prompt.md); editing the
+prompt changes the prompt hash and re-keys future calls. The cache key is
+`(version, model, match_id, prompt_hash)`, so a re-run uses the frozen pre-match
+audit rather than researching after the result is known. The layer refuses to run
+once kickoff has passed.
 
-The LLM only supplies judgement; the math and guardrails are deterministic:
+The model is not allowed to emit hidden adjustments. It must return a complete
+public audit for every `market_id`; otherwise that market is skipped. Review the
+full evidence and audit after a run with:
 
-- tilts apply in **logit space** (same convention as the shot-count correction);
-- boldness is **tier-gated** — the realised move is hard-capped by a per-book-count
-  cap, large for a lone or model-derived anchor (e.g. a scratched striker still
-  quoted ~51% by one stale book → corrected toward a floor), tiny for a deep
-  multi-book consensus we should not fight (`n≥8 → ±6` pts);
-- soft tilts on liquid markets are further shrunk by the book spread;
-- the anchor, tilt, realised delta and one-line rationale are stored per question.
-
-**Determinism / cost / leakage.** One call per match, cached forever on
-`(version, model, match_id)` — re-runs are free and return the *frozen pre-match*
-research, and `calibrate()` refuses to run once kickoff has passed, so it cannot
-leak a result. Any error/timeout degrades to the raw anchors. ~$7–9 for the
-tournament on `gpt-5-mini` (the multi-source web searches dominate); the layer is
-**off by default**. Preview it without
-submitting via `python run.py predict --limit 1 --calibrate`, and review the
-tilts vs. outcomes after a match with `python -m scripts.settle_ledger --match …`.
-Because lineups/news are purged after kickoff this layer can only be **forward-**
-**tested**: `scripts.settle_ledger` reports calibrated- vs. anchor-Brier from the
-frozen ledger rows, so confirm it beats the anchors before widening caps or
-upgrading to `gpt-5.5`.
+```bash
+python -m scripts.settle_ledger --match "Portugal"
+```
 
 ## Notebook: bot vs. crowd
 
@@ -338,8 +294,8 @@ upgrading to `gpt-5.5`.
 against the **crowd mean** on settled markets. The crowd consensus is hidden by
 the bot REST API but exposed for settled markets by the SportPredict *web* API
 (`POST /probability/match-crowd-stats` → `prediction_average` + `current_value`;
-see [bot/web.py](bot/web.py)). Latest run (12 most-recent settled matches; odds
-cascade through layer 3, web layer off to avoid result leakage on past matches):
+see [bot/web.py](bot/web.py)). Latest historical deterministic run
+(12 most-recent settled matches; final LLM pricing off to avoid result leakage):
 
 ```
 Head-to-head questions: 61
@@ -362,24 +318,25 @@ bot/
   sportspredict.py SportPredict REST client (/api/v1)
   web.py           SportPredict web API (/api) — crowd stats for settled markets
   apifootball.py   API-Football client + cached fixtures/odds/statistics
-  oddsapi.py       The Odds API client (fallback) + de-vig
+  oddsapi.py       The Odds API client + de-vig + per-book observations
   parser.py        deterministic templates + cached LLM fallback → intent
   matcher.py       intent → API-Football / Odds API market spec (catalog)
-  predictor.py     API-Football odds → de-vigged probability
-  pricing.py       price one intent through the AF → Odds API cascade
-  derive.py        compounds + empirical correlated-signal models
-  external.py      web-grounded LLM estimate (last resort)
-  calibrate.py     opt-in LLM calibration layer (tilts anchors at T-30)
-  pipeline.py      orchestration: AF → Odds API → derive/empirical → external
-run.py             CLI: predict / submit / --calibrate preview
+  predictor.py     API-Football odds → de-vigged observations
+  evidence.py      one JSON evidence bundle per match
+  llm_pricing.py   web-grounded final probabilities + per-market audit
+  pricing.py       deterministic intent pricing (validation/evidence helper)
+  derive.py        compounds + empirical correlated-signal context
+  external.py      legacy web estimate helper for deterministic disabled mode
+  pipeline.py      orchestration: parse → evidence → LLM pricing → submit
+run.py             CLI: predict / submit / --no-llm deterministic preview
 validate.py        settled-match backtest (vs realized outcomes)
 scripts/
   predict_log.py   local JSON/Markdown prediction snapshots
-  cron_submit.py   scheduled 30-minute submission + calibration
+  cron_submit.py   scheduled 30-minute submission + LLM audit
   settle_ledger.py settle real questions and report live Brier scores
   run.sh           cron-safe virtualenv wrapper
 prompts/
-  calibration_prompt.md  designed instruction template for the calibration call
+  llm_pricing_prompt.md  designed instruction template for final pricing
 notebooks/
   bot_vs_crowd.ipynb   bot vs crowd-mean post-mortem on settled markets
 ```

@@ -35,8 +35,8 @@ from bot.sportspredict import SportPredict
 
 # Submit at these many minutes-before-kickoff (largest first). A window fires on
 # the first tick at or under its threshold, then is marked done for that match.
-# Single window: at T-30 the XI is out and the calibration layer has ample
-# headroom; a later re-submit would only add market drift already re-priced here.
+# Single window: at T-30 the XI is out and the LLM pricing layer has ample
+# headroom; a later re-submit would only add market drift already researched here.
 WINDOWS = (30,)
 # Ignore matches further out than this so most ticks exit cheaply.
 LOOKAHEAD_MIN = WINDOWS[0] + 1
@@ -122,7 +122,7 @@ def main() -> None:
 
 
 def _process_match(sp_match, kickoff, now, sp, event, lobby, args) -> None:
-    """Price -> calibrate -> submit -> mark one due match. Each match owns its own
+    """Price -> submit -> mark one due match. Each match owns its own
     per-window markers, so simultaneous kickoffs are handled independently."""
     mins = (kickoff - now).total_seconds() / 60.0
     head = sp_match.get("name", sp_match["id"])

@@ -13,14 +13,16 @@ git-ignored; keep it that way).
 ## Conventions
 - Pure standard library + `requests` for the bot. No heavy frameworks. (The
   analysis notebook may use pandas/matplotlib — keep those deps out of `bot/`.)
-- The LLM only extracts intent; all market mapping and math is deterministic and
-  auditable in `matcher.py` / `predictor.py` / `oddsapi.py` / `derive.py`.
-- **Pricing cascade** (`bot/pricing.py`, `bot/pipeline.py`):
-  1. API-Football odds → 2. The Odds API (player props + core) →
-  3. derive (compose compounds) → 4. external web estimate (last resort).
-  Try cheap/auditable sources first; only fall through when a layer can't price.
-  The cascade output is the **anchor**; an optional 5th layer (`bot/calibrate.py`,
-  off by default) tilts it — never re-prices it.
+- The parser LLM only extracts intent. The live pricing LLM prices final markets
+  from a deterministic evidence JSON plus web research. All provider market
+  mapping and bookmaker probability conversion stays deterministic and auditable
+  in `matcher.py` / `predictor.py` / `oddsapi.py` / `derive.py` / `evidence.py`.
+- **Live pricing flow** (`bot/evidence.py`, `bot/llm_pricing.py`,
+  `bot/pipeline.py`): collect direct and related API-Football / Odds API odds
+  into one evidence JSON per match, include deterministic estimates only as
+  labeled context, then make one cached web-grounded LLM call that returns final
+  probabilities and a complete per-market audit. There are no pre-LLM anchors or
+  hidden tilt math in the live submission path.
 - De-vig only coherent outcome sets from the **same bookmaker and contract**.
   Compounds are composed from **separately priced components**, not from
   marginal lines of one book.
@@ -32,16 +34,15 @@ git-ignored; keep it that way).
   (`python -m scripts.settle_ledger`), never by web search or score inference.
 - **Determinism is required.** Every LLM call (parser + compound splitter) goes
   through `parser.chat_json`, which caches on `(PROMPT_VERSION, model, messages)`
-  so the same question always maps to the same intent/source/probability across
+  so the same question always maps to the same intent across
   runs. Never add an uncached LLM call. Bump `PROMPT_VERSION` when you change
-  parser semantics. The web layers (`external.py`, `calibrate.py`) are the
-  **documented exception** — non-deterministic on first call, but still cached
-  (ttl=0) so re-runs are stable. The calibration prompt lives in
-  `prompts/calibration_prompt.md`; **editing it auto-invalidates the cache** (a
-  prompt hash is in the cache key), so iterate the prompt freely and only bump
-  `CALIB_PROMPT_VERSION` when the **briefing schema / output contract** changes.
-  The calibration LLM only emits a signed tilt + rationale; the logit nudge,
-  per-book cap and clamps stay deterministic in `calibrate.py`.
+  parser semantics. The web-grounded pricing layer (`llm_pricing.py`) is the
+  documented exception — non-deterministic on first call, but still cached
+  (ttl=0) so re-runs are stable. The pricing prompt lives in
+  `prompts/llm_pricing_prompt.md`; editing it auto-invalidates the cache through
+  the prompt hash. Bump `LLM_PRICING_VERSION` when the output contract changes.
+  The pricing LLM must return final `probability_int` values and complete audit
+  fields for every submitted market; if a market lacks audit detail, skip it.
 - Recurring question and compound templates are parsed deterministically. The
   parser uses `PARSER_MODEL` (default `gpt-4.1`) for unfamiliar wording only,
   with **at most one batched fallback call per match**. Because the call is
@@ -57,12 +58,11 @@ git-ignored; keep it that way).
 - The scheduled 30-minute submission intentionally refreshes odds once. Keep
   refreshes deduplicated within the run so identical Odds API market requests
   never incur repeated credits.
-- The external web layer (`gpt-4.1-mini` + web search, ~$0.035/question) and the
-  calibration layer (`gpt-5-mini` + web search, ~$0.025/match) are web-grounded
-  spend. Both are cached (per question / per match) and gated by env
-  (`EXTERNAL_FALLBACK`, `CALIBRATE_ENABLED`). Don't run either on settled matches
-  — a web search can leak the result. `calibrate()` already refuses to run once
-  kickoff has passed, and the forward-test reads frozen ledger rows only.
+- The final LLM pricing layer (`gpt-5-mini` + web search by default) is
+  web-grounded spend. It is cached per match and can be disabled with
+  `LLM_PRICING_ENABLED=0` for deterministic validation. Don't run it on settled
+  matches — a web search can leak the result. `llm_pricing.price_match()` refuses
+  to run once kickoff has passed, and ledger review reads frozen rows only.
 
 ## Keys / env
 `config.py` loads `.env`. Required: `SPORTSPREDICT_KEY`, `APIFOOTBALL_KEY`,
