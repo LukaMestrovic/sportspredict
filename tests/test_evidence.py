@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from bot.evidence import build_match_evidence
-from bot.hybrid_penalty import penalty_market_kind
+from bot.hybrid_model import model_estimate_kind
 from bot.pipeline import MatchResult
 from bot.pricing import PriceCtx
 
@@ -85,15 +85,38 @@ class EvidenceTests(unittest.TestCase):
             "note": "context only",
         }
 
-        with patch("bot.evidence.hybrid_penalty.simulator_estimates",
+        with patch("bot.evidence.hybrid_model.simulator_estimates",
                    return_value={"pen": sim}) as estimates:
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
         estimates.assert_called_once()
+        self.assertEqual(estimates.call_args.kwargs["intents"], result.intents)
         q = evidence["question_evidence"][0]
         self.assertEqual(evidence["schema_version"], 2)
         self.assertEqual(q["simulator_model_estimates"], [sim])
         self.assertIn("simulator/model context", q["audit_requirement"])
+
+    def test_sot_question_receives_hybrid_simulator_context(self):
+        result = _result({
+            "sot": {"market": "shots_on_target_compare", "subject": "home",
+                    "comparator": "more", "threshold": None, "period": "2H"},
+        }, question="Will Home have more shots on target than Away in the second half?")
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+        sim = {
+            "source": "sportspredict-hybrid",
+            "model": "LearnedRateModel",
+            "kind": "team_more_shots_on_target_2h",
+            "probability": 0.531,
+            "probability_pct": 53.1,
+            "note": "context only",
+        }
+
+        with patch("bot.evidence.hybrid_model.simulator_estimates",
+                   return_value={"sot": sim}) as estimates:
+            evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+        estimates.assert_called_once()
+        self.assertEqual(evidence["question_evidence"][0]["simulator_model_estimates"], [sim])
 
     def test_non_penalty_question_gets_empty_simulator_context(self):
         result = _result({
@@ -102,7 +125,7 @@ class EvidenceTests(unittest.TestCase):
         })
         ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
 
-        with patch("bot.evidence.hybrid_penalty.simulator_estimates",
+        with patch("bot.evidence.hybrid_model.simulator_estimates",
                    return_value={}) as estimates:
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
@@ -110,19 +133,52 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(evidence["question_evidence"][0]["simulator_model_estimates"], [])
 
 
-class HybridPenaltyTests(unittest.TestCase):
+class HybridModelTests(unittest.TestCase):
     def test_penalty_market_kind_is_limited_to_requested_wordings(self):
         self.assertEqual(
-            penalty_market_kind("Will a penalty kick be awarded in the match?"),
+            model_estimate_kind("Will a penalty kick be awarded in the match?"),
             "penalty_awarded",
         )
         self.assertEqual(
-            penalty_market_kind(
+            model_estimate_kind(
                 "Will a penalty kick be awarded OR a red card be shown in the match?"
             ),
             "penalty_or_red",
         )
-        self.assertIsNone(penalty_market_kind("Will there be a red card?"))
+        self.assertIsNone(model_estimate_kind("Will there be a red card?"))
+
+    def test_sot_market_kind_is_limited_to_requested_wordings(self):
+        self.assertEqual(
+            model_estimate_kind(
+                "Will Home have more shots on target than Away in the second half?",
+                {"market": "shots_on_target_compare", "subject": "home",
+                 "comparator": "more", "period": "2H"},
+            ),
+            "team_more_shots_on_target_2h",
+        )
+        self.assertEqual(
+            model_estimate_kind(
+                "Will Home have 6 or more shots on target?",
+                {"market": "team_shots_on_target", "subject": "home",
+                 "comparator": "gte", "threshold": 6, "period": "match"},
+            ),
+            "team_shots_on_target_threshold",
+        )
+        self.assertEqual(
+            model_estimate_kind(
+                "At halftime, will both teams have at least 1 shot on target?",
+                {"market": "none", "subject": "match",
+                 "comparator": "yes", "threshold": None, "period": "1H"},
+            ),
+            "both_teams_shot_on_target_1h",
+        )
+        self.assertIsNone(
+            model_estimate_kind(
+                "Will Marcel Sabitzer have at least 1 shot on target?",
+                {"market": "player_shots_on_target", "subject": "player",
+                 "comparator": "gte", "threshold": 1, "period": "match"},
+            )
+        )
 
 
 def _result(intents, question="Will Home win the match?"):

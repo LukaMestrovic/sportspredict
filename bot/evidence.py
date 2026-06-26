@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
-from . import config, derive, hybrid_penalty
+from . import config, derive, hybrid_model
 from . import oddsapi as oapi
 from . import predictor as afpred
 from .matcher import match_intent, match_intent_oddsapi
@@ -37,9 +37,10 @@ def build_match_evidence(
     direct_by_market: dict[str, list[dict]] = {}
     spec_by_market: dict[str, dict | None] = {}
     estimates_by_market: dict[str, list[dict]] = {}
-    simulator_by_market = hybrid_penalty.simulator_estimates(
+    simulator_by_market = hybrid_model.simulator_estimates(
         result.markets,
         ctx,
+        intents=result.intents,
         kickoff=result.sp_match.get("opening_time"),
         referee=_fixture_referee(result),
     )

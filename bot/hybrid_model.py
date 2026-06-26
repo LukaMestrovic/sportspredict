@@ -3,7 +3,7 @@
 The LLM bot intentionally keeps its runtime dependencies tiny. The hybrid bot
 has the heavier learned-rate simulator stack, so this module calls it in its own
 virtualenv when that sibling checkout is available and returns auditable context
-for the penalty markets that have no direct bookmaker contract here.
+for selected unsupported or model-sensitive markets.
 """
 from __future__ import annotations
 
@@ -114,21 +114,25 @@ def simulator_estimates(
     markets: Iterable[dict],
     ctx: PriceCtx,
     *,
+    intents: dict[str, dict] | None = None,
     kickoff: str | None = None,
     referee: str | None = None,
     hybrid_root: Path | None = None,
 ) -> dict[str, dict]:
     """Return hybrid learned-rate simulator estimates keyed by market id.
 
-    Only the two requested penalty question families are sent to the sibling
+    Only explicitly supported question families are sent to the sibling
     simulator. Missing dependencies, a missing sibling checkout, or parse errors
     produce an empty result so evidence building remains robust.
     """
-    targets = [
-        {"market_id": str(m["id"]), "question": str(m.get("question") or "")}
-        for m in markets
-        if penalty_market_kind(str(m.get("question") or ""))
-    ]
+    targets = []
+    for market in markets:
+        mid = str(market["id"])
+        question = str(market.get("question") or "")
+        intent = (intents or {}).get(mid)
+        kind = model_estimate_kind(question, intent)
+        if kind:
+            targets.append({"market_id": mid, "question": question, "kind": kind})
     if not targets:
         return {}
 
@@ -186,6 +190,10 @@ def simulator_estimates(
             "model": raw.get("rate_model") or "unknown",
             "engine": raw.get("engine") or "unknown",
             "simulator": "sportspredict.simulate",
+            "kind": next(
+                (item["kind"] for item in targets if item["market_id"] == mid),
+                None,
+            ),
             "market": pred.get("market"),
             "params": pred.get("params") or {},
             "probability": round(p_final, 6),
@@ -197,14 +205,55 @@ def simulator_estimates(
             "context": context,
             "odds_anchor_inputs": payload["market_odds"],
             "note": (
-                "Learned-rate simulator context only for this unsupported "
-                "penalty market; not a final anchor."
+                "Learned-rate simulator context only; not a final anchor. The "
+                "pricing LLM must weigh it against direct odds, related odds, "
+                "lineups, tactics, game state, referee, and market freshness."
             ),
         }
     return out
 
 
-def penalty_market_kind(question: str) -> str | None:
+def model_estimate_kind(question: str, intent: dict | None = None) -> str | None:
+    """Classify the market families currently sent to the hybrid simulator."""
+    penalty = _penalty_market_kind(question)
+    if penalty:
+        return penalty
+
+    lower = question.lower()
+    intent = intent or {}
+    market = intent.get("market")
+    period = intent.get("period", "match")
+    subject = intent.get("subject")
+
+    if (
+        market == "shots_on_target_compare"
+        and period == "2H"
+        and subject in ("home", "away")
+        and "more shots on target than" in lower
+    ):
+        return "team_more_shots_on_target_2h"
+
+    if (
+        market == "team_shots_on_target"
+        and period == "match"
+        and subject in ("home", "away")
+        and intent.get("comparator") == "gte"
+        and intent.get("threshold") is not None
+    ):
+        return "team_shots_on_target_threshold"
+
+    if (
+        "both teams" in lower
+        and "shot on target" in lower
+        and ("at least 1" in lower or "1 or more" in lower)
+        and period in ("1H", "2H")
+    ):
+        return f"both_teams_shot_on_target_{period.lower()}"
+
+    return None
+
+
+def _penalty_market_kind(question: str) -> str | None:
     """Classify the two penalty market wordings currently supported."""
     lower = question.lower()
     if "penalty kick be awarded" not in lower:

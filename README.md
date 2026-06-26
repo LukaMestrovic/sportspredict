@@ -259,6 +259,11 @@ file. These estimates are auditable context for the LLM, not submitted prices.
   Poisson rate. Split it between teams with
   `home_share = clamp(0.5 + 0.40·(P(home more) − P(away more)), 0.2, 0.8)` from
   shots-on-target 1x2. Allocate 45% to the first half and 55% to the second.
+  In live LLM evidence, the requested team/full-match threshold, second-half
+  team comparison, and both-teams first/second-half SoT markets also receive
+  optional `simulator_model_estimates` from `../sportspredict-hybrid`. These
+  learned-rate simulator prices are labeled context for the LLM to reason with,
+  not submitted prices and not absolute truth.
 - **Half shots-on-target comparison:** "more shots on target than the opponent
   in the 1st/2nd half" has no bookmaker market (the full-match SoT 1x2 is priced
   directly). Split each team's match SoT rate into the half (45%/55%) and price
@@ -277,10 +282,12 @@ file. These estimates are auditable context for the LLM, not submitted prices.
   their OR union subtracts an enlarged intersection for positive correlation.
   In live LLM evidence, the two supported penalty markets ("penalty kick
   awarded" and "penalty kick awarded OR red card shown") also receive optional
-  `simulator_model_estimates` from `../sportspredict-hybrid`: the bridge runs
-  that repo's own virtualenv, imports its `src/` tree ahead of any installed
-  package so local hybrid edits are picked up immediately, and passes the
-  learned-rate simulator output to the LLM as context only.
+  `simulator_model_estimates` from `../sportspredict-hybrid`.
+
+The simulator-evidence bridge runs that repo's own virtualenv, imports its
+`src/` tree ahead of any installed package so local hybrid edits are picked up
+immediately, and passes the learned-rate simulator output to the LLM as context
+only.
 
 ## LLM pricing layer
 
