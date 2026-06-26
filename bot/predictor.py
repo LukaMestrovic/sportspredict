@@ -138,3 +138,118 @@ def predict(bookmakers: list[dict], spec: dict) -> dict | None:
     return {"probability": p, "n_books": len(probs),
             "book_probabilities": probs,
             "label": spec.get("label", "")}
+
+
+def observations(bookmakers: list[dict], spec: dict | None) -> list[dict]:
+    """Per-book fair-probability observations for an API-Football spec.
+
+    This mirrors ``predict`` but keeps the bookmaker name, raw contract odds and
+    de-vig method so the LLM pricing layer can audit exactly which bookmaker
+    probabilities it saw instead of only receiving an averaged anchor.
+    """
+    if not spec:
+        return []
+    out: list[dict] = []
+    for bm in bookmakers:
+        bet = _bets_by_id(bm, spec["bet_id"])
+        if not bet:
+            continue
+        values = bet.get("values", [])
+        if spec["type"] == "select":
+            p = _devig_select(values, spec["value"])
+            raw = _raw_select(values, spec["value"])
+            method = "same-book categorical de-vig"
+        elif spec["type"] == "ou":
+            p = _devig_ou(values, spec["side"], spec["line"])
+            raw = _raw_ou(values, spec["line"])
+            method = "same-book over/under de-vig"
+        elif spec["type"] == "player_yes":
+            p = _price_player_yes(values, spec.get("player"))
+            raw = _raw_player_yes(values, spec.get("player"))
+            method = "single-sided player prop haircut"
+        elif spec["type"] == "player_threshold":
+            p = _price_player_threshold(values, spec.get("player"),
+                                        spec["side"], spec["line"])
+            raw = _raw_player_threshold(values, spec.get("player"), spec["line"])
+            method = "single-sided player prop haircut"
+        else:
+            p = None
+            raw = []
+            method = "unknown"
+        if p is not None and 0.0 < p < 1.0:
+            out.append({
+                "source": "api-football",
+                "bookmaker": bm.get("name") or bm.get("id") or "unknown",
+                "market_key": f"af_bet_{spec['bet_id']}",
+                "market_name": spec.get("label", ""),
+                "contract": _contract_label(spec),
+                "probability": round(p, 6),
+                "probability_pct": round(p * 100, 2),
+                "raw_odds": raw,
+                "devig_method": method,
+            })
+    return out
+
+
+def _raw_select(values: list[dict], target: str) -> list[dict]:
+    return [
+        {"name": v.get("value"), "decimal_odds": _float_or_none(v.get("odd")),
+         "is_target": v.get("value", "").strip().lower() == target.strip().lower()}
+        for v in values
+    ]
+
+
+def _raw_ou(values: list[dict], line: float) -> list[dict]:
+    raw = []
+    for v in values:
+        ln = _parse_line(v.get("value", ""))
+        if ln is not None and abs(ln - line) <= 1e-6:
+            raw.append({"name": v.get("value"), "decimal_odds": _float_or_none(v.get("odd"))})
+    return raw
+
+
+def _raw_player_yes(values: list[dict], player: str | None) -> list[dict]:
+    if not player:
+        return []
+    return [
+        {"name": v.get("value"), "decimal_odds": _float_or_none(v.get("odd")),
+         "is_target": player_matches(v.get("value", ""), player)}
+        for v in values if player_matches(v.get("value", ""), player)
+    ]
+
+
+def _raw_player_threshold(
+    values: list[dict], player: str | None, line: float
+) -> list[dict]:
+    if not player or line < 0 or not float(line + 0.5).is_integer():
+        return []
+    target = int(line + 0.5)
+    raw = []
+    for value in values:
+        match = re.fullmatch(r"(.+?)\s*-\s*(\d+)\+", value.get("value", "").strip())
+        if match and int(match.group(2)) == target and player_matches(match.group(1), player):
+            raw.append({
+                "name": value.get("value"),
+                "decimal_odds": _float_or_none(value.get("odd")),
+                "is_target": True,
+            })
+    return raw
+
+
+def _contract_label(spec: dict) -> str:
+    if spec["type"] == "select":
+        return str(spec.get("value"))
+    if spec["type"] == "ou":
+        return f"{spec.get('side')} {spec.get('line')}"
+    if spec["type"] == "player_yes":
+        return f"{spec.get('player')} Yes"
+    if spec["type"] == "player_threshold":
+        return f"{spec.get('player')} {spec.get('side')} {spec.get('line')}"
+    return ""
+
+
+def _float_or_none(value) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

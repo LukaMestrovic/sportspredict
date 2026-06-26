@@ -157,6 +157,32 @@ def predict(bookmakers: list[dict], spec: dict) -> dict | None:
             "label": spec.get("label", spec["market"])}
 
 
+def observations(bookmakers: list[dict], spec: dict | None) -> list[dict]:
+    """Per-book fair-probability observations for an Odds API spec."""
+    if not spec:
+        return []
+    out: list[dict] = []
+    for bm in bookmakers:
+        for market in bm.get("markets", []):
+            if market.get("key") != spec["market"]:
+                continue
+            outs = market.get("outcomes", [])
+            p = _price_from_market(outs, spec)
+            if p is not None and 0.0 < p < 1.0:
+                out.append({
+                    "source": "odds-api",
+                    "bookmaker": bm.get("title") or bm.get("key") or "unknown",
+                    "market_key": spec["market"],
+                    "market_name": spec.get("label", spec["market"]),
+                    "contract": _contract_label(spec),
+                    "probability": round(p, 6),
+                    "probability_pct": round(p * 100, 2),
+                    "raw_odds": _raw_contract(outs, spec),
+                    "devig_method": _devig_method(spec, outs),
+                })
+    return out
+
+
 def _price_from_market(outs: list[dict], spec: dict) -> float | None:
     kind = spec["kind"]
     if kind == "multiway":                      # h2h, corners_1x2, draw_no_bet
@@ -193,3 +219,83 @@ def _price_from_market(outs: list[dict], spec: dict) -> float | None:
         p = _devig_two_sided(ov, un)
         return p if spec["side"] == "Over" else (1 - p if p else None)
     return None
+
+
+def _contract_label(spec: dict) -> str:
+    kind = spec.get("kind")
+    if kind == "multiway":
+        return str(spec.get("name"))
+    if kind == "yesno":
+        return str(spec.get("value", "Yes"))
+    if kind == "ou":
+        return f"{spec.get('side')} {spec.get('line')}"
+    if kind == "player_yesno":
+        return f"{spec.get('player')} Yes"
+    if kind == "player_ou":
+        return f"{spec.get('player')} {spec.get('side')} {spec.get('line')}"
+    return ""
+
+
+def _raw_contract(outs: list[dict], spec: dict) -> list[dict]:
+    kind = spec.get("kind")
+    if kind == "multiway":
+        target = str(spec.get("name", "")).lower()
+        return [_raw_outcome(o, o.get("name", "").lower() == target) for o in outs]
+    if kind == "yesno":
+        target = str(spec.get("value", "Yes")).lower()
+        return [
+            _raw_outcome(o, o.get("name", "").lower() == target)
+            for o in outs if o.get("name", "").lower() in ("yes", "no")
+        ]
+    if kind == "ou":
+        line = spec.get("line")
+        side = str(spec.get("side", "")).lower()
+        return [
+            _raw_outcome(o, o.get("name", "").lower() == side)
+            for o in outs
+            if abs(o.get("point", 1e9) - line) < 1e-6
+            and o.get("name", "").lower() in ("over", "under")
+        ]
+    if kind == "player_yesno":
+        player = spec.get("player")
+        return [
+            _raw_outcome(o, o.get("name", "").lower() == "yes")
+            for o in outs
+            if player_matches(o.get("description", ""), player or "")
+        ]
+    if kind == "player_ou":
+        player = spec.get("player")
+        line = spec.get("line")
+        side = str(spec.get("side", "")).lower()
+        return [
+            _raw_outcome(o, o.get("name", "").lower() == side)
+            for o in outs
+            if player_matches(o.get("description", ""), player or "")
+            and abs(o.get("point", 1e9) - line) < 1e-6
+        ]
+    return []
+
+
+def _raw_outcome(outcome: dict, is_target: bool) -> dict:
+    raw = {
+        "name": outcome.get("name"),
+        "decimal_odds": outcome.get("price"),
+        "is_target": bool(is_target),
+    }
+    if outcome.get("point") is not None:
+        raw["point"] = outcome.get("point")
+    if outcome.get("description"):
+        raw["description"] = outcome.get("description")
+    return raw
+
+
+def _devig_method(spec: dict, outs: list[dict]) -> str:
+    if spec.get("kind") in ("player_yesno", "player_ou"):
+        raw = _raw_contract(outs, spec)
+        names = {str(o.get("name", "")).lower() for o in raw}
+        if names >= {"yes", "no"} or names >= {"over", "under"}:
+            return "same-book two-sided de-vig"
+        return "single-sided player prop haircut"
+    if spec.get("kind") == "multiway":
+        return "same-book categorical de-vig"
+    return "same-book two-sided de-vig"
