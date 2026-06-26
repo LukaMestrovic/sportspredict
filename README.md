@@ -256,24 +256,25 @@ Some unsupported contracts still get deterministic estimates inside the evidence
 file. These estimates are auditable context for the LLM, not submitted prices.
 
 - **Shots on target:** invert a quoted match-total O/U probability into a
-  Poisson rate. Split it between teams with
-  `home_share = clamp(0.5 + 0.40·(P(home more) − P(away more)), 0.2, 0.8)` from
-  shots-on-target 1x2. Allocate 45% to the first half and 55% to the second.
-  In live LLM evidence, the requested team/full-match threshold, second-half
-  team comparison, and both-teams first/second-half SoT markets also receive
-  optional `simulator_model_estimates` from `../sportspredict-hybrid`. These
-  learned-rate simulator prices are labeled context for the LLM to reason with,
-  not submitted prices and not absolute truth.
+  Poisson rate, apply the source-level 2.5% rate debias, then split it between
+  teams with
+  `home_share = clamp(0.5 + 0.35·(P(home more) − P(away more)), 0.2, 0.8)` from
+  shots-on-target 1x2. Allocate 45% to the first half and 55% to the second for
+  team markets. In live LLM evidence, the requested team/full-match threshold,
+  second-half team comparison, and both-teams first/second-half SoT markets also
+  receive optional `simulator_model_estimates` from `../sportspredict-hybrid`.
+  These learned-rate simulator prices are labeled context for the LLM to reason
+  with, not submitted prices and not absolute truth.
 - **Half shots-on-target comparison:** "more shots on target than the opponent
   in the 1st/2nd half" has no bookmaker market (the full-match SoT 1x2 is priced
   directly). Split each team's match SoT rate into the half (45%/55%) and price
   the lead with competing Poisson counts.
-- **Shot-count calibration:** apply `logit(p_cal) = logit(p_raw) − 0.18`. On 224
-  recent settled team/threshold checks (3+ through 6+), mean Brier was **0.164**
-  versus **0.250** for a coin flip. Raw probabilities were about four points
-  above observed frequencies before this single-intercept correction.
+- **Shot-count calibration:** the inferred total SoT rate is debiased at the
+  source (`lambda *= 0.975`) so team, total and both-teams shot markets inherit
+  the same correction without per-branch tilt math.
 - **Player half shots:** infer a Poisson rate from the quoted full-match player
-  probability, then apply the appropriate half share.
+  probability, then apply a minutes-aware half share that accounts for
+  substitutions.
 - **Half cards:** infer the half total-card rate and allocate it with the half
   cards 1x2 market; fall back to full-match team-card rates scaled 42%/58%.
 - **First scorer in 2H:** convert both team-to-score 2H probabilities to rates
