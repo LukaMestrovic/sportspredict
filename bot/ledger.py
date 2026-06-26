@@ -24,6 +24,15 @@ def _json(value) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
 
+def _ensure_columns(
+    db: sqlite3.Connection, table: str, columns: tuple[tuple[str, str], ...]
+) -> None:
+    existing = {row[1] for row in db.execute(f"PRAGMA table_info({table})").fetchall()}
+    for name, declaration in columns:
+        if name not in existing:
+            db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {declaration}")
+
+
 def connect(path: Path = LEDGER_PATH) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(path)
@@ -94,10 +103,7 @@ def connect(path: Path = LEDGER_PATH) -> sqlite3.Connection:
         CREATE INDEX IF NOT EXISTS questions_unsettled
             ON questions(outcome) WHERE outcome IS NULL;
     """)
-    columns = {
-        row[1] for row in db.execute("PRAGMA table_info(questions)").fetchall()
-    }
-    for name, declaration in (
+    _ensure_columns(db, "questions", (
         ("result_probability_int", "INTEGER"),
         ("result_brier_score", "REAL"),
         ("book_probabilities_json", "TEXT"),
@@ -106,33 +112,18 @@ def connect(path: Path = LEDGER_PATH) -> sqlite3.Connection:
         ("applied_delta", "INTEGER"),
         ("calibration_rationale", "TEXT"),
         ("anchor_brier_score", "REAL"),
-    ):
-        if name not in columns:
-            db.execute(f"ALTER TABLE questions ADD COLUMN {name} {declaration}")
-    run_columns = {
-        row[1] for row in db.execute("PRAGMA table_info(runs)").fetchall()
-    }
-    if "calibration_briefing_json" not in run_columns:
-        db.execute("ALTER TABLE runs ADD COLUMN calibration_briefing_json TEXT")
-    for name, declaration in (
+        ("llm_audit_json", "TEXT"),
+        ("llm_sources_json", "TEXT"),
+        ("llm_reasoning_summary", "TEXT"),
+    ))
+    _ensure_columns(db, "runs", (
+        ("calibration_briefing_json", "TEXT"),
         ("evidence_path", "TEXT"),
         ("evidence_hash", "TEXT"),
         ("llm_pricing_audit_path", "TEXT"),
         ("llm_pricing_report_path", "TEXT"),
         ("llm_pricing_briefing_json", "TEXT"),
-    ):
-        if name not in run_columns:
-            db.execute(f"ALTER TABLE runs ADD COLUMN {name} {declaration}")
-    columns = {
-        row[1] for row in db.execute("PRAGMA table_info(questions)").fetchall()
-    }
-    for name, declaration in (
-        ("llm_audit_json", "TEXT"),
-        ("llm_sources_json", "TEXT"),
-        ("llm_reasoning_summary", "TEXT"),
-    ):
-        if name not in columns:
-            db.execute(f"ALTER TABLE questions ADD COLUMN {name} {declaration}")
+    ))
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     return db
 
