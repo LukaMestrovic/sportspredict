@@ -35,6 +35,9 @@ class LedgerRecordingTests(unittest.TestCase):
 
         self.assertEqual(run["status"], "priced")
         self.assertEqual(run["match_id"], "match")
+        self.assertEqual(run["evidence_path"], "logs/llm_pricing_runs/evidence.json")
+        self.assertEqual(run["evidence_hash"], "hash123")
+        self.assertEqual(run["llm_pricing_report_path"], "logs/llm_pricing_runs/audit.md")
         self.assertEqual(json.loads(run["af_odds_json"]), [{"book": "af"}])
         self.assertEqual(json.loads(run["oa_odds_json"]), [{"book": "oa"}])
         self.assertEqual(len(questions), 2)
@@ -44,6 +47,8 @@ class LedgerRecordingTests(unittest.TestCase):
         self.assertEqual(
             json.loads(questions[0]["book_probabilities_json"]), [0.61, 0.65]
         )
+        self.assertEqual(json.loads(questions[0]["llm_audit_json"])["probability_int"], 63)
+        self.assertEqual(questions[0]["llm_reasoning_summary"], "audited rationale")
         self.assertEqual(questions[1]["skip_reason"], "no direct market mapping")
 
     def test_submission_status_is_updated(self):
@@ -114,6 +119,18 @@ def _result(probability=0.634, probability_int=63):
         "a", markets[0]["question"], probability, probability_int, 4, "Home win",
         book_probabilities=[0.61, 0.65],
     )
+    prediction.llm_audit = {
+        "market_id": "a",
+        "probability_int": probability_int,
+        "provided_odds_used": [],
+        "online_odds_found": [],
+        "non_odds_factors_used": [],
+        "ignored_or_downweighted_evidence": [],
+        "reasoning_summary": "audited rationale",
+        "sources": [],
+    }
+    prediction.llm_sources = []
+    prediction.llm_reasoning_summary = "audited rationale"
     return MatchResult(
         sp_match={
             "id": "match", "name": "HOME vs AWAY",
@@ -131,6 +148,9 @@ def _result(probability=0.634, probability_int=63):
         skip_reasons={"b": "no direct market mapping"},
         af_books=[{"book": "af"}],
         oa_observations=[{"book": "oa"}],
+        evidence_path="logs/llm_pricing_runs/evidence.json",
+        evidence_hash="hash123",
+        llm_pricing_report_path="logs/llm_pricing_runs/audit.md",
     )
 
 

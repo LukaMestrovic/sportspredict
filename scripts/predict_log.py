@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Price the next N open matches and log every question and prediction.
 
-Uses the configured pricing cascade. Does not submit by itself; pass --submit
-to send the logged predictions to SportPredict after review.
+Uses the configured auditable LLM pricing layer. Does not submit by itself; pass
+--submit to send the logged predictions to SportPredict after review.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from bot.pipeline import run_match, submit_with_ledger
 from bot.sportspredict import SportPredict
 
 TAG = {"api-football": "AF", "odds-api": "OA", "derived": "DRV",
-       "empirical": "EMP", "external": "WEB"}
+       "empirical": "EMP", "external": "WEB", "llm-pricing": "LLM"}
 
 
 def main() -> None:
@@ -52,8 +52,14 @@ def main() -> None:
         kickoff = sp_match["opening_time"]
 
         m_entry = {"match": head, "kickoff": kickoff,
+                   "evidence_path": r.evidence_path,
+                   "llm_pricing_report_path": r.llm_pricing_report_path,
                    "predictions": [], "skipped": []}
         md.append(f"## {head}  ({kickoff})")
+        if r.evidence_path:
+            md.append(f"evidence: `{r.evidence_path}`")
+        if r.llm_pricing_report_path:
+            md.append(f"audit: `{r.llm_pricing_report_path}`")
         md.append("")
         md.append("| prob | src | books | question |")
         md.append("|---:|---|---:|---|")
@@ -69,6 +75,7 @@ def main() -> None:
                 "n_books": p.n_books,
                 "market_id": p.market_id,
                 "label": p.market_label,
+                "audit": p.llm_audit,
             })
         for q, why in r.skipped:
             md.append(f"| — | skip | | {q} ({why}) |")

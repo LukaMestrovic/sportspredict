@@ -29,4 +29,5 @@ cache/
 analysis/*.png
 analysis/*.csv
 logs/calibration_runs/
+logs/llm_pricing_runs/
 logs/*.log

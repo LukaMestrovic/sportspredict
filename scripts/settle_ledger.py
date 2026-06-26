@@ -5,55 +5,55 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from statistics import pstdev
-
 from bot import ledger
 from bot.sportspredict import SportPredict
 from bot.web import WebAPI
 
 
 _SRC_TAG = {"api-football": "AF", "odds-api": "OA", "af+oa": "AF+OA",
-            "derived": "DRV", "empirical": "EMP", "external": "WEB"}
+            "derived": "DRV", "empirical": "EMP", "external": "WEB",
+            "llm-pricing": "LLM"}
 
 
 def _print_match_detail(detail: dict) -> None:
-    """Per-question review: anchor → calibrated, tilt, outcome, reasoning."""
+    """Per-question review: final probability, audit paths, outcome, reasoning."""
     run = detail["run"]
     print(f"\n=== {run['match_name']} ===")
     print(f"kickoff {run['kickoff']}  window={run['window_min']}min  "
           f"recorded {run['recorded_at']}  status={run['status']}")
-    briefing = run.get("calibration_briefing_json")
+    if run.get("evidence_path"):
+        print(f"[evidence] {run['evidence_path']}  hash={run.get('evidence_hash')}")
+    if run.get("llm_pricing_report_path"):
+        print(f"[audit] {run['llm_pricing_report_path']}")
+    briefing = run.get("llm_pricing_briefing_json") or run.get("calibration_briefing_json")
     if briefing:
         blob = json.loads(briefing)
         print(f"[briefing] {blob.get('briefing')}")
         if blob.get("sources"):
             print(f"[sources] {', '.join(blob['sources'][:5])}")
-    print(f"\n{'anchor→cal':>11} {'tilt':>5} {'src':>6} {'n':>3} "
-          f"{'spread':>7} {'out':>4} {'aBr→cBr':>13}  question / rationale")
+    print(f"\n{'prob':>5} {'src':>6} {'n':>3} {'out':>4} {'brier':>7}  question / rationale")
     for q in detail["questions"]:
         if q["probability_int"] is None:
             continue  # skipped question
-        anchor = q["anchor_probability_int"]
         prob = q["probability_int"]
-        move = (f"{anchor}→{prob}" if anchor is not None and anchor != prob
-                else f"{prob}")
-        tilt = q["tilt_points"]
-        tilt_s = f"{tilt:+g}" if tilt else "·"
         books = q["n_books"] or 0
-        bp = json.loads(q["book_probabilities_json"] or "[]")
-        spread = f"{pstdev(bp):.3f}" if len(bp) >= 2 else "·"
         outcome = "·" if q["outcome"] is None else str(q["outcome"])
-        if q["anchor_brier_score"] is not None and q["brier_score"] is not None:
-            briers = f"{q['anchor_brier_score']:.3f}→{q['brier_score']:.3f}"
-        elif q["brier_score"] is not None:
-            briers = f"{q['brier_score']:.3f}"
-        else:
-            briers = "·"
+        brier = f"{q['brier_score']:.3f}" if q["brier_score"] is not None else "·"
         src = _SRC_TAG.get(q["source"], q["source"] or "?")
-        print(f"{move:>11} {tilt_s:>5} {src:>6} {books:>3} "
-              f"{spread:>7} {outcome:>4} {briers:>13}  {q['question']}")
-        if q["calibration_rationale"]:
-            print(f"{'':>53}  ↳ {q['calibration_rationale']}")
+        print(f"{prob:>4}% {src:>6} {books:>3} {outcome:>4} {brier:>7}  {q['question']}")
+        rationale = q["llm_reasoning_summary"] or q["calibration_rationale"]
+        if rationale:
+            print(f"{'':>31}  ↳ {rationale}")
+        if q["llm_audit_json"]:
+            audit = json.loads(q["llm_audit_json"])
+            for label, key in (
+                ("provided odds", "provided_odds_used"),
+                ("online odds", "online_odds_found"),
+                ("non-odds", "non_odds_factors_used"),
+                ("downweighted", "ignored_or_downweighted_evidence"),
+            ):
+                items = audit.get(key) or []
+                print(f"{'':>31}  {label}: {len(items)} item(s)")
 
 
 def main() -> None:

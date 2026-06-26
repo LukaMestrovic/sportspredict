@@ -13,7 +13,7 @@ from .parser import PROMPT_VERSION
 
 
 LEDGER_PATH = config.ROOT / "logs" / "prediction_ledger.sqlite3"
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def _now() -> str:
@@ -50,7 +50,12 @@ def connect(path: Path = LEDGER_PATH) -> sqlite3.Connection:
             error TEXT,
             af_odds_json TEXT NOT NULL,
             oa_odds_json TEXT NOT NULL,
-            calibration_briefing_json TEXT
+            calibration_briefing_json TEXT,
+            evidence_path TEXT,
+            evidence_hash TEXT,
+            llm_pricing_audit_path TEXT,
+            llm_pricing_report_path TEXT,
+            llm_pricing_briefing_json TEXT
         );
 
         CREATE TABLE IF NOT EXISTS questions (
@@ -70,6 +75,9 @@ def connect(path: Path = LEDGER_PATH) -> sqlite3.Connection:
             tilt_points REAL,
             applied_delta INTEGER,
             calibration_rationale TEXT,
+            llm_audit_json TEXT,
+            llm_sources_json TEXT,
+            llm_reasoning_summary TEXT,
             anchor_brier_score REAL,
             outcome INTEGER,
             brier_score REAL,
@@ -106,6 +114,25 @@ def connect(path: Path = LEDGER_PATH) -> sqlite3.Connection:
     }
     if "calibration_briefing_json" not in run_columns:
         db.execute("ALTER TABLE runs ADD COLUMN calibration_briefing_json TEXT")
+    for name, declaration in (
+        ("evidence_path", "TEXT"),
+        ("evidence_hash", "TEXT"),
+        ("llm_pricing_audit_path", "TEXT"),
+        ("llm_pricing_report_path", "TEXT"),
+        ("llm_pricing_briefing_json", "TEXT"),
+    ):
+        if name not in run_columns:
+            db.execute(f"ALTER TABLE runs ADD COLUMN {name} {declaration}")
+    columns = {
+        row[1] for row in db.execute("PRAGMA table_info(questions)").fetchall()
+    }
+    for name, declaration in (
+        ("llm_audit_json", "TEXT"),
+        ("llm_sources_json", "TEXT"),
+        ("llm_reasoning_summary", "TEXT"),
+    ):
+        if name not in columns:
+            db.execute(f"ALTER TABLE questions ADD COLUMN {name} {declaration}")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     return db
 
@@ -135,20 +162,32 @@ def record_run(
             "briefing": briefing,
             "sources": getattr(result, "calibration_sources", []),
         }) if briefing else None
+        llm_briefing = getattr(result, "llm_pricing_briefing", None)
+        llm_pricing_json = _json({
+            "briefing": llm_briefing,
+            "sources": getattr(result, "llm_pricing_sources", []),
+        }) if llm_briefing else None
         db.execute(
             """INSERT INTO runs (
                 id, recorded_at, event_id, lobby_id, match_id, fixture_id,
                 match_name, home, away, kickoff, window_min, minutes_before,
                 parser_version, parser_model, status, af_odds_json, oa_odds_json,
-                calibration_briefing_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'priced', ?, ?, ?)""",
+                calibration_briefing_json, evidence_path, evidence_hash,
+                llm_pricing_audit_path, llm_pricing_report_path,
+                llm_pricing_briefing_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'priced',
+                      ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 run_id, recorded_at, event_id, lobby_id, result.sp_match["id"],
                 fixture_id, result.sp_match.get("name", result.sp_match["id"]),
                 result.home, result.away, result.sp_match["opening_time"],
                 window_min, minutes_before, PROMPT_VERSION, config.PARSER_MODEL,
                 _json(result.af_books), _json(result.oa_observations),
-                calibration_json,
+                calibration_json, getattr(result, "evidence_path", None),
+                getattr(result, "evidence_hash", None),
+                getattr(result, "llm_pricing_audit_path", None),
+                getattr(result, "llm_pricing_report_path", None),
+                llm_pricing_json,
             ),
         )
         for market in result.markets:
@@ -160,8 +199,9 @@ def record_run(
                     probability, probability_int, source, n_books, market_label,
                     book_probabilities_json, skip_reason,
                     anchor_probability_int, tilt_points, applied_delta,
-                    calibration_rationale
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    calibration_rationale, llm_audit_json, llm_sources_json,
+                    llm_reasoning_summary
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     run_id, market_id, market["question"],
                     _json(result.intents[market_id])
@@ -180,6 +220,13 @@ def record_run(
                     getattr(prediction, "tilt_points", None) if prediction else None,
                     getattr(prediction, "applied_delta", None) if prediction else None,
                     getattr(prediction, "calibration_rationale", None)
+                    if prediction else None,
+                    _json(getattr(prediction, "llm_audit", {}))
+                    if prediction and getattr(prediction, "llm_audit", None)
+                    else None,
+                    _json(getattr(prediction, "llm_sources", []))
+                    if prediction else None,
+                    getattr(prediction, "llm_reasoning_summary", None)
                     if prediction else None,
                 ),
             )
