@@ -37,7 +37,7 @@ begin="# >>> sportspredict-llm v1 >>>"
 end="# <<< sportspredict-llm v1 <<<"
 block="$(cat <<EOF
 $begin
-# Every minute: submit the next match's predictions at the 30-min and 5-min marks.
+# Every minute: submit the next match's predictions at the 30-min mark.
 # Runs the immutable $IMAGE:$TAG image, so working-tree edits never affect a live
 # tick; it is a fast no-op until a match is within 30 minutes of kickoff.
 * * * * * $ROOT/scripts/run.sh >> $ROOT/logs/cron.log 2>&1
