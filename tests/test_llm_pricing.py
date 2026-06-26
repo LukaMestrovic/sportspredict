@@ -35,8 +35,8 @@ class LLMFinalPricingTests(unittest.TestCase):
         self.assertEqual(pred.source, "llm-pricing")
         self.assertEqual(pred.llm_reasoning_summary, "odds plus lineup support 57%.")
         self.assertEqual(result.skipped, [])
-        self.assertTrue(result.llm_pricing_audit_path.exists())
-        self.assertTrue(result.llm_pricing_report_path.exists())
+        self.assertTrue(Path(result.llm_pricing_audit_path).exists())
+        self.assertTrue(Path(result.llm_pricing_report_path).exists())
 
     def test_missing_audit_field_skips_market(self):
         bad = _audit("m1", 57)

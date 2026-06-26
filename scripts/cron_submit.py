@@ -10,13 +10,9 @@ match and submits once at the 30-minute window using a marker file so it never
 re-submits on the intervening ticks. A file lock prevents overlapping ticks
 (a fire calls the LLM/odds and can outlast one minute) from double-submitting.
 
-At T-30 the lineups are out and there is ~1800s of headroom, so the calibration
-layer (bot/calibrate.py, gated by CALIBRATE_ENABLED) fires its single per-match
-LLM call here, between pricing and submission, tilting the anchors in place.
-
-Determinism is preserved for the anchors: recurring templates are local, LLM
-fallbacks are cached, and the web layer stays off (EXTERNAL_FALLBACK=0). The
-window forces one fresh provider observation so the run sees the latest market.
+At T-30 the lineups are out and there is ~1800s of headroom, so the auditable
+LLM pricing layer receives the match evidence JSON, researches online odds and
+context, and returns final probabilities plus a per-market audit trail.
 
 Manual checks:
   python -m scripts.cron_submit --dry-run   # decide + price, never submit/mark
@@ -30,7 +26,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from bot import calibrate
+from bot import llm_pricing
 from bot.apifootball import APIFootball
 from bot.config import ROOT
 from bot.oddsapi import OddsAPI
@@ -145,23 +141,23 @@ def _process_match(sp_match, kickoff, now, sp, event, lobby, args) -> None:
     af = APIFootball(refresh_odds=True)
     oa = OddsAPI(refresh_odds=True)
     markets = sp.markets(lobby["id"], sp_match["id"])
-    result = run_match(sp_match, markets, af, oa, allow_external=False)
-
-    # LLM calibration: one web-grounded call (cached per match), tilts anchors in
-    # place. Gated by CALIBRATE_ENABLED; any error degrades to the raw anchors.
-    if calibrate.ENABLED and result.fixture and result.predictions:
-        try:
-            fixture_id = result.fixture["fixture"]["id"]
-            calibrate.calibrate(result, af.lineups(fixture_id), mins)
-        except Exception as exc:  # never let calibration block a submission
-            _log(f"  calibration error (using raw anchors): {exc}")
+    lineups = None
+    try:
+        fixture = af.find_fixture(sp_match["opening_time"], sp_match.get("name"))
+        if fixture:
+            lineups = af.lineups(fixture["fixture"]["id"])
+    except Exception as exc:
+        _log(f"  lineup fetch warning: {exc}")
+    result = run_match(
+        sp_match, markets, af, oa, allow_external=False,
+        llm_pricing_enabled=True, lineups=lineups, minutes_before=mins,
+    )
 
     by_src: dict[str, int] = {}
     for p in result.predictions:
         by_src[p.source] = by_src.get(p.source, 0) + 1
-    tilted = sum(1 for p in result.predictions if getattr(p, "applied_delta", 0))
     summary = (f"{head}: {len(result.predictions)} priced, "
-               f"{len(result.skipped)} skipped, {tilted} tilted, by-source={by_src}")
+               f"{len(result.skipped)} skipped, by-source={by_src}")
 
     if args.dry_run:
         _log(f"DRY-RUN {summary} — not submitted")
@@ -178,7 +174,7 @@ def _process_match(sp_match, kickoff, now, sp, event, lobby, args) -> None:
         if w >= window:
             _marker(sp_match["id"], kickoff, w).touch()
     _write_audit(head, kickoff, window, mins, outcome, by_src, result, run_id)
-    _write_calibration_report(head, kickoff, mins, result, run_id)
+    _write_llm_pricing_report(head, kickoff, mins, result, run_id)
     landed = outcome["submitted"] + outcome["updated"] + outcome["unchanged"]
     _log(f"UPSERT {head}: created={outcome['submitted']} updated={outcome['updated']} "
          f"unchanged={outcome['unchanged']} failed={outcome['failed']} "
@@ -203,12 +199,16 @@ def _write_audit(head, kickoff, window, mins, outcome, by_src, result, run_id) -
         "failed": outcome["failed"],
         "errors": outcome["errors"][:5],
         "by_source": by_src,
-        "calibration_briefing": getattr(result, "calibration_briefing", None),
-        "calibration_sources": getattr(result, "calibration_sources", []),
+        "evidence_path": getattr(result, "evidence_path", None),
+        "evidence_hash": getattr(result, "evidence_hash", None),
+        "llm_pricing_audit_path": getattr(result, "llm_pricing_audit_path", None),
+        "llm_pricing_report_path": getattr(result, "llm_pricing_report_path", None),
+        "llm_pricing_briefing": getattr(result, "llm_pricing_briefing", None),
+        "llm_pricing_sources": getattr(result, "llm_pricing_sources", []),
         "predictions": [
             {"question": p.question, "probability": p.probability_int,
-             "anchor": p.anchor_probability_int, "tilt": p.tilt_points,
-             "rationale": p.calibration_rationale,
+             "rationale": p.llm_reasoning_summary,
+             "audit": p.llm_audit,
              "source": p.source, "market_id": p.market_id}
             for p in result.predictions
         ],
@@ -219,40 +219,33 @@ def _write_audit(head, kickoff, window, mins, outcome, by_src, result, run_id) -
         f.write(json.dumps(rec) + "\n")
 
 
-def _write_calibration_report(head, kickoff, mins, result, run_id) -> None:
-    """Human-readable per-match calibration summary in logs/calibration_runs/.
-
-    Mirrors the manual preview runner: the match-read briefing, the sources, and
-    a per-question anchor->calibrated / tilt / cap / rationale table — so each
-    cron fire leaves a reviewable record alongside the ledger and the JSONL audit.
-    """
+def _write_llm_pricing_report(head, kickoff, mins, result, run_id) -> None:
+    """Human-readable pointer summary for the auditable LLM pricing run."""
     lines = [
         f"=== {head} ===",
-        f"kickoff {kickoff.isoformat()}  (T-{mins:.0f} min)  model={calibrate.MODEL}  "
+        f"kickoff {kickoff.isoformat()}  (T-{mins:.0f} min)  model={llm_pricing.MODEL}  "
         f"ledger_run={run_id}",
     ]
-    if getattr(result, "calibration_briefing", None):
-        lines.append(f"\n[match-read + briefing] {result.calibration_briefing}")
-    if getattr(result, "calibration_sources", None):
-        lines.append("[sources] " + ", ".join(result.calibration_sources[:10]))
+    if getattr(result, "evidence_path", None):
+        lines.append(f"[evidence] {result.evidence_path}")
+    if getattr(result, "llm_pricing_report_path", None):
+        lines.append(f"[full audit] {result.llm_pricing_report_path}")
+    if getattr(result, "llm_pricing_briefing", None):
+        lines.append(f"\n[match-read + briefing] {result.llm_pricing_briefing}")
+    if getattr(result, "llm_pricing_sources", None):
+        lines.append("[sources] " + ", ".join(result.llm_pricing_sources[:10]))
     lines.append("")
-    lines.append(f"{'anchor→cal':>11} {'tilt':>5} {'cap':>4} {'src':>6} {'n':>3}  question")
+    lines.append(f"{'prob':>5} {'src':>12} {'n':>3}  question")
     for p in result.predictions:
-        moved = p.anchor_probability_int not in (None, p.probability_int)
-        move = (f"{p.anchor_probability_int}→{p.probability_int}" if moved
-                else f"{p.probability_int}")
-        tilt = f"{p.tilt_points:+g}" if p.tilt_points else "·"
-        cap = calibrate.cap_for_books(p.n_books or 0)
-        lines.append(f"{move:>11} {tilt:>5} {cap:>4} {(p.source or '?')[:6]:>6} "
+        lines.append(f"{p.probability_int:>4}% {(p.source or '?')[:12]:>12} "
                      f"{p.n_books or 0:>3}  {p.question}")
-        if p.calibration_rationale:
-            lines.append(f"{'':>13}↳ {p.calibration_rationale}")
-    tilted = sum(1 for p in result.predictions if getattr(p, "applied_delta", 0))
+        if p.llm_reasoning_summary:
+            lines.append(f"{'':>13}↳ {p.llm_reasoning_summary}")
     lines.append(f"\n{len(result.predictions)} priced, {len(result.skipped)} skipped, "
-                 f"{tilted} tilted")
-    lines.append(f"USAGE: {json.dumps(calibrate.LAST_USAGE)}")
+                 f"audit={getattr(result, 'llm_pricing_report_path', None)}")
+    lines.append(f"USAGE: {json.dumps(llm_pricing.LAST_USAGE)}")
 
-    outdir = ROOT / "logs" / "calibration_runs"
+    outdir = ROOT / "logs" / "llm_pricing_runs"
     outdir.mkdir(parents=True, exist_ok=True)
     slug = head.replace(" ", "_").replace("/", "_")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")

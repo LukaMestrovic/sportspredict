@@ -212,9 +212,11 @@ def price_match(
         pred.llm_reasoning_summary = audit.get("reasoning_summary")
         result.predictions.append(pred)
 
-    result.llm_pricing_audit_path, result.llm_pricing_report_path = write_audit_bundle(
+    audit_path, report_path = write_audit_bundle(
         result, evidence, evidence_path, response,
     )
+    result.llm_pricing_audit_path = str(audit_path)
+    result.llm_pricing_report_path = str(report_path)
     return result
 
 

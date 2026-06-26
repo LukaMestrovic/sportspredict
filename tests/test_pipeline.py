@@ -47,6 +47,7 @@ class SkipReasonTests(unittest.TestCase):
             result = run_match(
                 {"name": "HOME vs AWAY", "opening_time": "2026-01-01T00:00:00Z"},
                 [market], af, None,
+                llm_pricing_enabled=False,
             )
         self.assertEqual(result.skipped[0][1], "parser marked unsupported")
 
@@ -64,6 +65,7 @@ class SkipReasonTests(unittest.TestCase):
                 [market],
                 _AF(fixture),
                 allow_external=False,
+                llm_pricing_enabled=False,
             )
         estimate.assert_not_called()
         self.assertEqual(len(result.skipped), 1)

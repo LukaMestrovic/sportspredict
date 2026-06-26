@@ -126,6 +126,7 @@ def main() -> None:
             questions,
             af,
             allow_external=False,
+            llm_pricing_enabled=False,
         )
         predictions = {p.market_id: p for p in result.predictions}
         skip_by_question = dict(result.skipped)

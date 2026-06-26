@@ -1,9 +1,10 @@
-"""Orchestrates one match end-to-end: questions -> intents -> markets -> probs.
+"""Orchestrates one match end-to-end.
 
-  Parser (LLM)  ->  Market Matcher (catalog)  ->  Predictor (odds de-vig)
+Live path:
+  questions -> parser -> provider evidence JSON -> auditable LLM final prices
 
-Questions with no matching market, or no bookmaker coverage, are skipped
-(predict nothing), per the competition spec.
+The older deterministic cascade is retained only for explicit validation/backtest
+calls that must not run web-grounded LLM pricing after kickoff.
 """
 from __future__ import annotations
 
@@ -11,7 +12,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from . import derive, external, ledger
+from . import derive, evidence, external, ledger
 from .apifootball import APIFootball
 from .oddsapi import OddsAPI
 from .parser import parse_questions
@@ -32,11 +33,15 @@ class Prediction:
     market_label: str
     source: str = "api-football"  # odds or derivation source that priced it
     book_probabilities: list[float] = field(default_factory=list)
-    # Set by the calibration layer (bot/calibrate.py) when it tilts an anchor.
+    # Deprecated calibration fields retained for ledger compatibility with older runs.
     anchor_probability_int: int | None = None   # pre-calibration anchor
     tilt_points: float | None = None            # raw signed tilt the LLM asked for
     applied_delta: int | None = None            # realised move (calibrated - anchor)
     calibration_rationale: str | None = None    # one-line LLM reason for the tilt
+    # Final LLM pricing audit fields.
+    llm_audit: dict = field(default_factory=dict)
+    llm_sources: list = field(default_factory=list)
+    llm_reasoning_summary: str | None = None
 
 
 @dataclass
@@ -53,8 +58,16 @@ class MatchResult:
     skip_reasons: dict[str, str] = field(default_factory=dict)
     af_books: list[dict] = field(default_factory=list)
     oa_observations: list[dict] = field(default_factory=list)
-    calibration_briefing: str | None = None       # LLM research summary (match-level)
-    calibration_sources: list = field(default_factory=list)  # URLs the LLM cited
+    calibration_briefing: str | None = None       # legacy
+    calibration_sources: list = field(default_factory=list)  # legacy
+    evidence_json: dict | None = None
+    evidence_path: str | None = None
+    evidence_hash: str | None = None
+    llm_pricing_briefing: str | None = None
+    llm_pricing_sources: list = field(default_factory=list)
+    llm_pricing_response: dict | None = None
+    llm_pricing_audit_path: str | None = None
+    llm_pricing_report_path: str | None = None
 
 
 def _clamp_int(p: float) -> int:
@@ -68,6 +81,9 @@ def run_match(
     oa: OddsAPI | None = None,
     *,
     allow_external: bool = True,
+    llm_pricing_enabled: bool = True,
+    lineups: list[dict] | None = None,
+    minutes_before: float | None = None,
 ) -> MatchResult:
     fixture = af.find_fixture(sp_match["opening_time"], sp_match.get("name"))
     res = MatchResult(
@@ -93,6 +109,35 @@ def run_match(
         oa=oa,
         oa_event=oa.find_event(sp_match["opening_time"], home, away) if oa else None,
     )
+    res.af_books = ctx.af_books
+
+    if llm_pricing_enabled:
+        from . import llm_pricing
+
+        if minutes_before is None:
+            kickoff_dt = datetime.fromisoformat(
+                sp_match["opening_time"].replace("Z", "+00:00")
+            )
+            minutes_before = (
+                kickoff_dt - datetime.now(timezone.utc)
+            ).total_seconds() / 60.0
+        if lineups is None:
+            try:
+                lineups = af.lineups(fixture["fixture"]["id"])
+            except Exception:
+                lineups = None
+        bundle = evidence.build_match_evidence(res, ctx, lineups, minutes_before)
+        path = evidence.write_evidence(bundle)
+        res.evidence_json = bundle
+        res.evidence_path = str(path)
+        res.evidence_hash = bundle.get("evidence_hash")
+        res.market_specs = {
+            item["market_id"]: item.get("direct_market_spec")
+            for item in bundle.get("question_evidence", [])
+        }
+        res.oa_observations = list(getattr(ctx.oa, "observations", [])) if ctx.oa else []
+        llm_pricing.price_match(res, bundle, path, minutes_before)
+        return res
 
     kickoff = sp_match["opening_time"]
     for m in markets:
@@ -246,15 +291,11 @@ def submit_with_ledger(
 
 
 def predict_open_matches(
-    submit: bool = False, limit: int | None = None, calibrate_layer: bool = False
+    submit: bool = False,
+    limit: int | None = None,
+    llm_pricing_enabled: bool = True,
 ):
-    """Run the pipeline over all open SP matches. Optionally submit predictions.
-
-    ``calibrate_layer`` force-runs the LLM calibration layer (preview/test path);
-    it fetches the lineup and tilts each anchored prediction in place. Production
-    submission applies calibration from the cron, gated by ``CALIBRATE_ENABLED``.
-    """
-    from . import calibrate
+    """Run the pipeline over all open SP matches. Optionally submit predictions."""
     sp = SportPredict()
     af = APIFootball()
     oa = OddsAPI()
@@ -267,14 +308,10 @@ def predict_open_matches(
     results = []
     for sp_match in matches:
         markets = sp.markets(lobby["id"], sp_match["id"])
-        result = run_match(sp_match, markets, af, oa)
-        if calibrate_layer and result.fixture and result.predictions:
-            kickoff = datetime.fromisoformat(
-                sp_match["opening_time"].replace("Z", "+00:00")
-            )
-            mins = (kickoff - datetime.now(timezone.utc)).total_seconds() / 60.0
-            fixture_id = result.fixture["fixture"]["id"]
-            calibrate.calibrate(result, af.lineups(fixture_id), mins, force=True)
+        result = run_match(
+            sp_match, markets, af, oa,
+            llm_pricing_enabled=llm_pricing_enabled,
+        )
         results.append(result)
 
     if submit:
