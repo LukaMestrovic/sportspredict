@@ -58,7 +58,7 @@ git-ignored; keep it that way).
 - The scheduled 30-minute submission intentionally refreshes odds once. Keep
   refreshes deduplicated within the run so identical Odds API market requests
   never incur repeated credits.
-- The final LLM pricing layer (`gpt-5-mini` + web search by default) is
+- The final LLM pricing layer (`gpt-5.5` + web search by default) is
   web-grounded spend. It is cached per match and can be disabled with
   `LLM_PRICING_ENABLED=0` for deterministic validation. Don't run it on settled
   matches — a web search can leak the result. `llm_pricing.price_match()` refuses

@@ -21,8 +21,8 @@ from . import cache, config
 from .pipeline import Prediction
 
 
-LLM_PRICING_VERSION = "lp1-auditable-final"
-MODEL = os.environ.get("LLM_PRICING_MODEL", "gpt-5-mini")
+LLM_PRICING_VERSION = "lp2-compact-evidence"
+MODEL = os.environ.get("LLM_PRICING_MODEL", "gpt-5.5")
 PROMPT_PATH = config.ROOT / "prompts" / "llm_pricing_prompt.md"
 ENABLED = os.environ.get("LLM_PRICING_ENABLED", "1") != "0"
 TIMEOUT = 300
@@ -109,7 +109,7 @@ def _record_usage(data: dict) -> None:
 def _call_llm(evidence: dict) -> dict:
     payload = {
         "model": MODEL,
-        "tools": [{"type": "web_search"}],
+        "tools": [{"type": "web_search", "search_context_size": "low"}],
         "reasoning": {"effort": "medium"},
         "input": f"{_load_prompt()}\n\nMATCH EVIDENCE JSON:\n"
                  f"{json.dumps(evidence, ensure_ascii=False)}",
@@ -123,7 +123,10 @@ def _call_llm(evidence: dict) -> dict:
                 json=payload,
                 timeout=TIMEOUT,
             )
-            r.raise_for_status()
+            try:
+                r.raise_for_status()
+            except requests.HTTPError as exc:
+                raise RuntimeError(f"{exc}: {r.text[:500]}") from exc
             data = r.json()
             _record_usage(data)
             text = "".join(

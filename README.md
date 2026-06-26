@@ -66,7 +66,7 @@ cp .env.example .env     # then fill in your keys
 | `OPENAI_API_KEY`    | parser fallback + compound splitter + final LLM pricing |
 
 Optional LLM pricing env: `LLM_PRICING_MODEL` picks the model (default
-`gpt-5-mini`); `LLM_PRICING_ENABLED=0` disables final LLM pricing for local
+`gpt-5.5`); `LLM_PRICING_ENABLED=0` disables final LLM pricing for local
 deterministic/backtest-style runs.
 
 ## Usage
@@ -203,15 +203,17 @@ SportPredict is free; API-Football is a flat-rate subscription. Metered costs:
 | Parser `gpt-4.1` (cached fallback) | $2.00/$8.00 per 1M tok | $0 known; ≤$0.004 unfamiliar | ≤$0.46 |
 | Compound splitter `gpt-4.1` (cached fallback) | same | $0 known; ≤$0.001 unfamiliar | ≤$0.10 |
 | Odds API | billed `markets×regions` (even empty markets) | ~3–4 markets × 3 regions ≈ **9–12 credits** (single 30-min window) | within plan |
-| Final LLM pricing `gpt-5-mini` (1 cached call/match, multi-source web research) | ~$0.08 / match | **~$0.08** | **~$7–9** (`gpt-5-mini`; ~$45 on `gpt-5.5`) |
+| Final LLM pricing `gpt-5.5` (1 cached call/match, multi-source web research) | varies with evidence size + web calls | observed smoke **~$1.15** before further compaction | roughly **$50–120** |
 
 *104 matches. **Every LLM call is cached**, and ordinary odds re-runs reuse the
 disk cache; only the single scheduled submission window deliberately refreshes
 odds. Caching the parser on `(model, prompt, questions)` also makes unfamiliar
 question→intent mapping deterministic across runs. Final LLM pricing is one
 cached web-grounded call per match; re-runs reuse the frozen pre-match audit.
-Parser + splitter spend is well under **$1**; final pricing adds roughly $7–9 on
-`gpt-5-mini` for the full tournament.
+Parser + splitter spend is well under **$1**; final pricing cost depends mostly
+on evidence size, output audit detail and web-search calls. The first live smoke
+with `gpt-5.5` logged about `$1.15`; evidence compaction keeps future calls
+smaller, but auditability is intentionally prioritized over minimum token spend.
 
 ## Supported markets
 

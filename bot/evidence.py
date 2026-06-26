@@ -24,6 +24,7 @@ from .pricing import PriceCtx
 
 
 EVIDENCE_DIR = config.ROOT / "logs" / "llm_pricing_runs"
+MAX_RELATED_ODDS_PER_QUESTION = 30
 
 
 def build_match_evidence(
@@ -54,7 +55,10 @@ def build_match_evidence(
         related = _related_odds(question, intent, ctx)
         if not direct:
             related.extend(_other_direct_odds(mid, direct_by_market))
-        related = _dedupe_observations(related, exclude=direct)
+        related = _limit_observations(
+            [_compact_related_observation(obs) for obs in _dedupe_observations(related, exclude=direct)],
+            MAX_RELATED_ODDS_PER_QUESTION,
+        )
 
         question_evidence.append({
             "market_id": mid,
@@ -84,7 +88,7 @@ def build_match_evidence(
             for m in result.markets
         ],
         "question_evidence": question_evidence,
-        "all_provider_odds_observed": _dedupe_observations(all_obs),
+        "provider_odds_summary": _provider_odds_summary(_dedupe_observations(all_obs)),
         "llm_research_requirements": [
             "Find any additional market prices or odds available online, including "
             "Kalshi, Polymarket, Pinnacle, Betfair Exchange, and betting platforms.",
@@ -316,6 +320,52 @@ def _dedupe_observations(
         seen.add(key)
         out.append(obs)
     return out
+
+
+def _limit_observations(observations: list[dict], limit: int) -> list[dict]:
+    """Keep a bounded but diverse related-odds set for prompt size control."""
+    if len(observations) <= limit:
+        return observations
+    buckets: dict[tuple, list[dict]] = {}
+    for obs in observations:
+        key = (obs.get("source"), obs.get("market_key"), obs.get("contract"))
+        buckets.setdefault(key, []).append(obs)
+    selected = []
+    while len(selected) < limit and buckets:
+        for key in list(buckets):
+            if buckets[key]:
+                selected.append(buckets[key].pop(0))
+                if len(selected) >= limit:
+                    break
+            if not buckets.get(key):
+                buckets.pop(key, None)
+    return selected
+
+
+def _compact_related_observation(obs: dict) -> dict:
+    """Related odds keep the audit essentials but omit bulky raw outcome arrays."""
+    return {
+        key: value for key, value in obs.items()
+        if key in {
+            "source", "bookmaker", "market_key", "market_name", "contract",
+            "probability", "probability_pct", "devig_method", "role", "why_relevant",
+        }
+    }
+
+
+def _provider_odds_summary(observations: list[dict]) -> dict:
+    by_source: dict[str, int] = {}
+    by_market: dict[str, int] = {}
+    for obs in observations:
+        source = obs.get("source") or "unknown"
+        market = f"{source}:{obs.get('market_key')}"
+        by_source[source] = by_source.get(source, 0) + 1
+        by_market[market] = by_market.get(market, 0) + 1
+    return {
+        "total_observations": len(observations),
+        "by_source": by_source,
+        "by_market": by_market,
+    }
 
 
 def _obs_key(obs: dict) -> tuple:
