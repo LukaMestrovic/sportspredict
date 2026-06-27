@@ -44,7 +44,7 @@ git-ignored; keep it that way).
   The pricing LLM must return final `probability_int` values and complete audit
   fields for every submitted market; if a market lacks audit detail, skip it.
 - Recurring question and compound templates are parsed deterministically. The
-  parser uses `PARSER_MODEL` (default `gpt-4.1`) for unfamiliar wording only,
+  parser uses `PARSER_MODEL` (default `gpt-5.4-mini`) for unfamiliar wording only,
   with **at most one batched fallback call per match**. Because the call is
   cached, the model is a one-time cost — favour reliability over the cheapest
   model. Document any per-match cost change in the README "Cost" table.
@@ -58,7 +58,7 @@ git-ignored; keep it that way).
 - The scheduled 30-minute submission intentionally refreshes odds once. Keep
   refreshes deduplicated within the run so identical Odds API market requests
   never incur repeated credits.
-- The final LLM pricing layer (`gpt-5.5` + web search by default) is
+- The final LLM pricing layer (`gpt-5.4-mini` + web search by default) is
   web-grounded spend. It is cached per match for manual repeatability and can be
   disabled with `LLM_PRICING_ENABLED=0` for deterministic validation. Scheduled
   T-30 cron fires deliberately refresh provider odds and force a fresh LLM

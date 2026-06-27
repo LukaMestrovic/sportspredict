@@ -4,7 +4,7 @@ Turns a free-text binary question (e.g. "Will Argentina win the match?") into a
 structured intent the matcher can map to an odds market. All of a match's
 questions are parsed in ONE batched call to keep token spend minimal.
 
-Model: configurable via ``PARSER_MODEL`` (default ``gpt-4.1``). See README.
+Model: configurable via ``PARSER_MODEL`` (default ``gpt-5.4-mini``). See README.
 """
 from __future__ import annotations
 

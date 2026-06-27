@@ -42,6 +42,7 @@ WC_SEASON = 2026
 
 # Model for structured question parsing. Parser responses are cached to disk
 # (see parser.chat_json), so the model is a one-time tournament cost and we use
-# the most reliable affordable option rather than the cheapest. gpt-4.1 misparses
-# far less than nano on period/market extraction; re-runs then cost $0.
-PARSER_MODEL = os.environ.get("PARSER_MODEL", "gpt-4.1")
+# the most reliable affordable option rather than the cheapest. gpt-5.4-mini
+# parses period/market extraction reliably and accepts temperature=0 + seed on
+# chat/completions, so re-runs stay deterministic and then cost $0.
+PARSER_MODEL = os.environ.get("PARSER_MODEL", "gpt-5.4-mini")

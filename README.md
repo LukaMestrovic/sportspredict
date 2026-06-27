@@ -22,7 +22,7 @@ match context, and returns final YES probabilities.
 ```
 
 1. **Parser** ([bot/parser.py](bot/parser.py)) — recurring competition templates
-   are parsed deterministically. Only unfamiliar wording is sent to `gpt-4.1`,
+   are parsed deterministically. Only unfamiliar wording is sent to `gpt-5.4-mini`,
    in at most **one batched call per match**. That fallback is cached on
    `(model, prompt version, questions)`, so a question maps to the same intent
    on every re-run. Known
@@ -66,7 +66,7 @@ cp .env.example .env     # then fill in your keys
 | `OPENAI_API_KEY`    | parser fallback + compound splitter + final LLM pricing |
 
 Optional LLM pricing env: `LLM_PRICING_MODEL` picks the model (default
-`gpt-5.5`); `LLM_PRICING_ENABLED=0` disables final LLM pricing for local
+`gpt-5.4-mini`); `LLM_PRICING_ENABLED=0` disables final LLM pricing for local
 deterministic/backtest-style runs.
 
 ## Usage
@@ -204,10 +204,10 @@ SportPredict is free; API-Football is a flat-rate subscription. Metered costs:
 
 | Source | Unit cost | Per match (first run) | Whole tournament* |
 |---|---|---|---|
-| Parser `gpt-4.1` (cached fallback) | $2.00/$8.00 per 1M tok | $0 known; ≤$0.004 unfamiliar | ≤$0.46 |
-| Compound splitter `gpt-4.1` (cached fallback) | same | $0 known; ≤$0.001 unfamiliar | ≤$0.10 |
+| Parser `gpt-5.4-mini` (cached fallback) | $0.25/$2.00 per 1M tok | $0 known; ≤$0.001 unfamiliar | ≤$0.12 |
+| Compound splitter `gpt-5.4-mini` (cached fallback) | same | $0 known; ≤$0.001 unfamiliar | ≤$0.03 |
 | Odds API | billed `markets×regions` (even empty markets) | ~3–4 markets × 3 regions ≈ **9–12 credits** (single 30-min window) | within plan |
-| Final LLM pricing `gpt-5.5` (1 cached call/match, multi-source web research) | varies with evidence size + web calls | observed smoke **~$1.15** before further compaction | roughly **$50–120** |
+| Final LLM pricing `gpt-5.4-mini` (1 cached call/match, multi-source web research) | varies with evidence size + web calls | mini rate ≈ $0.25/$2.00 per 1M tok + web calls | roughly **$5–20** |
 
 *104 matches. **Every LLM call is cached**, and ordinary odds re-runs reuse the
 disk cache; only the single scheduled submission window deliberately refreshes
@@ -218,6 +218,8 @@ Parser + splitter spend is well under **$1**; final pricing cost depends mostly
 on evidence size, output audit detail and web-search calls. The first live smoke
 with `gpt-5.5` logged about `$1.15`; evidence compaction keeps future calls
 smaller, but auditability is intentionally prioritized over minimum token spend.
+The pricing and parser layers now default to `gpt-5.4-mini`, an order of
+magnitude cheaper per token than `gpt-5.5`.
 
 ## Supported markets
 

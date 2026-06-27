@@ -22,13 +22,14 @@ from .pipeline import Prediction
 
 
 LLM_PRICING_VERSION = "lp2-compact-evidence"
-MODEL = os.environ.get("LLM_PRICING_MODEL", "gpt-5.5")
+MODEL = os.environ.get("LLM_PRICING_MODEL", "gpt-5.4-mini")
 PROMPT_PATH = config.ROOT / "prompts" / "llm_pricing_prompt.md"
 ENABLED = os.environ.get("LLM_PRICING_ENABLED", "1") != "0"
 TIMEOUT = 300
 
 _PRICES = {
     "gpt-5.5": (5.0, 30.0), "gpt-5": (1.25, 10.0), "gpt-5-mini": (0.25, 2.0),
+    "gpt-5.4-mini": (0.25, 2.0),
     "gpt-4.1": (2.0, 8.0), "gpt-4.1-mini": (0.4, 1.6),
 }
 _WEB_SEARCH_CALL_USD = 0.01
