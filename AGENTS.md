@@ -13,20 +13,26 @@ git-ignored; keep it that way).
 ## Conventions
 - Pure standard library + `requests` for the bot. No heavy frameworks. (The
   analysis notebook may use pandas/matplotlib — keep those deps out of `bot/`.)
-- The parser LLM only extracts intent. The live pricing LLM prices final markets
+- The parser LLM only extracts intent. The live pricing LLM prices raw markets
   from a deterministic evidence JSON plus web research. All provider market
   mapping and bookmaker probability conversion stays deterministic and auditable
   in `matcher.py` / `predictor.py` / `oddsapi.py` / `derive.py` / `evidence.py`.
 - **Live pricing flow** (`bot/evidence.py`, `bot/llm_pricing.py`,
   `bot/pipeline.py`): collect direct and related API-Football / Odds API odds
   into one evidence JSON per match, include deterministic estimates only as
-  labeled context, then make one cached web-grounded LLM call that returns final
-  probabilities and a complete per-market audit. There are no pre-LLM anchors or
-  hidden tilt math in the live submission path.
+  labeled context, then make one cached web-grounded LLM call that returns raw
+  probabilities and a complete per-market audit. A deterministic, crowd-blind
+  outcome calibration layer may transform them immediately before submission.
+  There are no pre-LLM anchors or hidden tilt math in the live path.
 - De-vig only coherent outcome sets from the **same bookmaker and contract**.
   Compounds are composed from **separately priced components**, not from
   marginal lines of one book.
 - Submit probabilities as integers **1–99**.
+- Every submission preserves its raw 1–99 price and applies the active
+  `bot/calibration.py` snapshot at `pipeline.submit_with_ledger`. Calibration is
+  fit only from frozen raw prices and explicit outcomes, never crowd averages.
+  If its prequential global/cohort/family gates do not validate improvement, it
+  must return identity.
 - Every submission path must use `pipeline.submit_with_ledger`; do not call the
   raw batch submitter from a user-facing or scheduled workflow. The SQLite
   ledger records real questions, raw odds, pricing traces and both submission
@@ -41,8 +47,9 @@ git-ignored; keep it that way).
   (ttl=0) so re-runs are stable. The pricing prompt lives in
   `prompts/llm_pricing_prompt.md`; editing it auto-invalidates the cache through
   the prompt hash. Bump `LLM_PRICING_VERSION` when the output contract changes.
-  The pricing LLM must return final `probability_int` values and complete audit
-  fields for every submitted market; if a market lacks audit detail, skip it.
+  The pricing LLM must return raw pre-calibration `probability_int` values and
+  complete audit fields for every submitted market; if a market lacks audit
+  detail, skip it.
 - Recurring question and compound templates are parsed deterministically. The
   parser uses `PARSER_MODEL` (default `gpt-5.4-mini`) for unfamiliar wording only,
   with **at most one batched fallback call per match**. Because the call is
@@ -58,13 +65,17 @@ git-ignored; keep it that way).
 - The scheduled 30-minute submission intentionally refreshes odds once. Keep
   refreshes deduplicated within the run so identical Odds API market requests
   never incur repeated credits.
-- The final LLM pricing layer (`gpt-5.4-mini` + web search by default) is
+- The raw LLM pricing layer (`gpt-5.4-mini` + web search by default) is
   web-grounded spend. It is cached per match for manual repeatability and can be
   disabled with `LLM_PRICING_ENABLED=0` for deterministic validation. Scheduled
   T-30 cron fires deliberately refresh provider odds and force a fresh LLM
   pricing/web-search call for that submission window. Don't run it on settled
   matches — a web search can leak the result. `llm_pricing.price_match()` refuses
   to run once kickoff has passed, and ledger review reads frozen rows only.
+- Calibration synchronization runs on normal cron ticks using only SportPredict
+  results and explicit web-API `current_value` outcomes. It makes no Odds API,
+  API-Football or LLM calls. Post-cutover rows must recover the raw price from
+  the matching ledger run, never from the calibrated official result.
 
 ## Keys / env
 `config.py` loads `.env`. Required: `SPORTSPREDICT_KEY`, `APIFOOTBALL_KEY`,
@@ -73,6 +84,7 @@ git-ignored; keep it that way).
 ## Test before committing
 - `python run.py predict --limit 1` — cheap end-to-end smoke test (uses cache).
 - `python validate.py --days 7` — backtest against settled matches.
+- `python -m scripts.calibration evaluate` — local prequential calibration report.
 
 ## Useful facts
 - WC2026 in API-Football: `league=1`, `season=2026`; Odds API sport

@@ -1,7 +1,7 @@
 """Build auditable per-match evidence for the LLM pricing layer.
 
 The evidence file is the deterministic handoff between provider odds and the
-final LLM judgement. It contains per-book de-vigged probabilities, raw odds, and
+raw LLM judgement. It contains per-book de-vigged probabilities, raw odds, and
 why each observation is relevant to each SportPredict question. Deterministic
 derived/empirical estimates may be included as context, but they are not final
 anchors and are labeled separately from bookmaker odds.
@@ -79,7 +79,7 @@ def build_match_evidence(
                 [simulator_by_market[mid]] if mid in simulator_by_market else []
             ),
             "audit_requirement": (
-                "The final LLM response must explain which provided odds, online "
+                "The raw LLM response must explain which provided odds, online "
                 "odds, simulator/model context, and non-odds factors were used "
                 "or downweighted."
             ),

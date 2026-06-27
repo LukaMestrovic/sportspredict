@@ -166,7 +166,7 @@ def price_match(
     force: bool = False,
     refresh: bool = False,
 ):
-    """Populate ``result.predictions`` with validated final LLM probabilities."""
+    """Populate ``result.predictions`` with validated raw LLM probabilities."""
     if not (force or ENABLED) or not config.OPENAI_API_KEY:
         _skip_all(result, "LLM pricing unavailable")
         return result

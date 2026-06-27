@@ -42,7 +42,7 @@ HOW TO USE THE PROVIDED ODDS
   baseline, but do not copy them mechanically. Challenge them against direct
   odds, related odds, lineups/minutes, tactical fit, expected game state,
   referee, stale or thin anchors, and any direct online prices before setting
-  the final probability.
+  the raw pre-calibration probability.
 - Do not average blindly. Consider market liquidity, bookmaker independence,
   line relevance, lineup certainty, tactical fit, weather, referee, and whether
   a price is stale or one-sided.

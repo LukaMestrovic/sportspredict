@@ -1,6 +1,9 @@
 import json
+import io
+import sys
 import tempfile
 import unittest
+from contextlib import closing, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -216,6 +219,23 @@ class SynchronizationTests(unittest.TestCase):
         )
         self.assertEqual(result["observations_total"], 1)
         self.assertEqual(result["excluded"], 1)
+
+    def test_status_cli_is_local_only(self):
+        from scripts import calibration as calibration_cli
+
+        with closing(ledger.connect(self.path)) as db, db:
+            db.execute(
+                """INSERT INTO calibration_state (
+                       lobby_id, initialized_at, legacy_backfill_complete
+                   ) VALUES ('lobby', '2026-06-01T00:00:00Z', 1)"""
+            )
+        with patch.object(sys, "argv", [
+            "calibration", "--ledger", str(self.path), "status",
+        ]), patch.object(
+            calibration_cli, "SportPredict", side_effect=AssertionError("network")
+        ), redirect_stdout(io.StringIO()) as output:
+            calibration_cli.main()
+        self.assertIn("Calibration observations: 0", output.getvalue())
 
 
 class _FakeSP:
