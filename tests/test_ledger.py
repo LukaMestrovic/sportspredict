@@ -42,6 +42,9 @@ class LedgerRecordingTests(unittest.TestCase):
         self.assertEqual(json.loads(run["oa_odds_json"]), [{"book": "oa"}])
         self.assertEqual(len(questions), 2)
         self.assertEqual(questions[0]["probability_int"], 63)
+        self.assertEqual(questions[0]["raw_probability_int"], 63)
+        self.assertEqual(questions[0]["raw_model_cohort"], "test:raw-pricer")
+        self.assertEqual(questions[0]["calibration_family"], "match_result_timing")
         self.assertEqual(json.loads(questions[0]["intent_json"])["market"], "match_winner")
         self.assertEqual(json.loads(questions[0]["market_spec_json"])["bet_id"], 1)
         self.assertEqual(
@@ -101,6 +104,7 @@ class LedgerRecordingTests(unittest.TestCase):
         self.assertEqual([row["outcome"] for row in rows], [1, 1])
         self.assertAlmostEqual(rows[0]["brier_score"], 0.49)
         self.assertAlmostEqual(rows[1]["brier_score"], 0.36)
+        self.assertAlmostEqual(rows[1]["raw_brier_score"], 0.36)
         self.assertEqual(rows[1]["result_probability_int"], 40)
         self.assertTrue(all(row["outcome"] is None for row in skipped))
 
@@ -119,6 +123,14 @@ def _result(probability=0.634, probability_int=63):
         "a", markets[0]["question"], probability, probability_int, 4, "Home win",
         book_probabilities=[0.61, 0.65],
     )
+    prediction.raw_probability = probability
+    prediction.raw_probability_int = probability_int
+    prediction.raw_model_cohort = "test:raw-pricer"
+    prediction.calibration_family = "match_result_timing"
+    prediction.calibration_family_version = "cf1"
+    prediction.calibrated_probability = probability
+    prediction.calibration_delta_int = 0
+    prediction.calibration_gate_reason = "test identity"
     prediction.llm_audit = {
         "market_id": "a",
         "probability_int": probability_int,

@@ -7,8 +7,10 @@ provider/bookmaker names, lineups when available, venue/referee metadata, parsed
 questions, related market odds, and deterministic model estimates clearly
 marked as context. For selected penalty and shots-on-target markets, it may also
 contain learned-rate simulator estimates from the sibling sportspredict-hybrid
-model. Your job is to combine that evidence with web research and return final
-YES probabilities for every SportPredict market.
+model. Your job is to combine that evidence with web research and return the
+best raw YES probabilities for every SportPredict market. A separate,
+deterministic outcome-calibration layer may transform them before submission;
+do not anticipate or imitate that post-processing.
 
 Auditability is mandatory. We cannot inspect private chain-of-thought, so your
 answer must contain a complete public audit trail for each market: what odds you
@@ -107,7 +109,7 @@ EVERY market_id in the evidence JSON:
           "why": "stale, thin, wrong contract, includes vig, contradicted by stronger evidence, etc."
         }
       ],
-      "reasoning_summary": "Concise public audit summary: evidence -> mechanism -> final probability.",
+      "reasoning_summary": "Concise public audit summary: evidence -> mechanism -> raw pre-calibration probability.",
       "sources": ["market-specific URL", "..."]
     }
   ]

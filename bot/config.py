@@ -24,6 +24,7 @@ SPORTSPREDICT_KEY = os.environ.get("SPORTSPREDICT_KEY", "")
 APIFOOTBALL_KEY = os.environ.get("APIFOOTBALL_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
+CALIBRATION_ENABLED = os.environ.get("CALIBRATION_ENABLED", "1") != "0"
 
 SP_BASE = "https://api.sportspredict.com/api/v1"
 AF_BASE = "https://v3.football.api-sports.io"

@@ -269,6 +269,59 @@ def family_for(question: str, intent: dict | None = None) -> str:
     return "rare_unknown_compound"
 
 
+def apply_result(
+    result,
+    snapshot: CalibrationSnapshot | None,
+    *,
+    enabled: bool = True,
+):
+    """Idempotently apply one snapshot to every prediction in a match result."""
+    from .parser import PROMPT_VERSION
+
+    result.calibration_model_id = snapshot.model_id if snapshot else None
+    for prediction in result.predictions:
+        raw_probability = getattr(prediction, "raw_probability", None)
+        raw_probability_int = getattr(prediction, "raw_probability_int", None)
+        if raw_probability is None:
+            raw_probability = float(prediction.probability)
+        if raw_probability_int is None:
+            raw_probability_int = int(prediction.probability_int)
+        raw_probability_int = max(1, min(99, round(raw_probability_int)))
+        prediction.raw_probability = raw_probability
+        prediction.raw_probability_int = raw_probability_int
+
+        intent = getattr(result, "intents", {}).get(prediction.market_id)
+        family = family_for(prediction.question, intent)
+        cohort = getattr(prediction, "raw_model_cohort", None) or (
+            f"deterministic:{PROMPT_VERSION}:{prediction.source or 'unknown'}"
+        )
+        prediction.raw_model_cohort = cohort
+        prediction.calibration_family = family
+        prediction.calibration_family_version = FAMILY_VERSION
+        prediction.calibration_model_id = snapshot.model_id if snapshot else None
+
+        if snapshot is None:
+            calibrated = raw_probability
+            calibrated_int = raw_probability_int
+            applied = False
+            reason = "no calibration snapshot"
+        else:
+            calibrated, calibrated_int, applied, reason = snapshot.apply(
+                raw_probability_int, family, cohort, enabled=enabled,
+            )
+            # When a gate returns identity, retain the model's exact raw float
+            # for local diagnostics while preserving its raw submitted integer.
+            if reason != "calibrated":
+                calibrated = raw_probability
+        prediction.probability = calibrated
+        prediction.probability_int = calibrated_int
+        prediction.calibrated_probability = calibrated
+        prediction.calibration_delta_int = calibrated_int - raw_probability_int
+        prediction.calibration_applied = applied
+        prediction.calibration_gate_reason = reason
+    return result
+
+
 def observation_hash(observations: Iterable[CalibrationObservation]) -> str:
     rows = [
         {

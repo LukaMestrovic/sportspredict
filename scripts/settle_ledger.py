@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from bot import ledger
+from bot import calibration, ledger
 from bot.sportspredict import SportPredict
 from bot.web import WebAPI
 
@@ -31,19 +31,31 @@ def _print_match_detail(detail: dict) -> None:
         print(f"[briefing] {blob.get('briefing')}")
         if blob.get("sources"):
             print(f"[sources] {', '.join(blob['sources'][:5])}")
-    print(f"\n{'prob':>5} {'src':>6} {'n':>3} {'out':>4} {'brier':>7}  question / rationale")
+    print(
+        f"\n{'raw':>5} {'final':>5} {'src':>6} {'n':>3} {'out':>4} "
+        f"{'brier':>7}  question / rationale"
+    )
     for q in detail["questions"]:
         if q["probability_int"] is None:
             continue  # skipped question
         prob = q["probability_int"]
+        raw = q["raw_probability_int"] if q["raw_probability_int"] is not None else prob
         books = q["n_books"] or 0
         outcome = "·" if q["outcome"] is None else str(q["outcome"])
         brier = f"{q['brier_score']:.3f}" if q["brier_score"] is not None else "·"
         src = _SRC_TAG.get(q["source"], q["source"] or "?")
-        print(f"{prob:>4}% {src:>6} {books:>3} {outcome:>4} {brier:>7}  {q['question']}")
+        print(
+            f"{raw:>4}% {prob:>4}% {src:>6} {books:>3} {outcome:>4} "
+            f"{brier:>7}  {q['question']}"
+        )
+        if q["calibration_gate_reason"]:
+            print(
+                f"{'':>38}  calibration: {q['calibration_gate_reason']} "
+                f"(model={q['calibration_model_id'] or 'identity'})"
+            )
         rationale = q["llm_reasoning_summary"] or q["calibration_rationale"]
         if rationale:
-            print(f"{'':>31}  ↳ {rationale}")
+            print(f"{'':>38}  ↳ {rationale}")
         if q["llm_audit_json"]:
             audit = json.loads(q["llm_audit_json"])
             for label, key in (
@@ -53,7 +65,7 @@ def _print_match_detail(detail: dict) -> None:
                 ("downweighted", "ignored_or_downweighted_evidence"),
             ):
                 items = audit.get(key) or []
-                print(f"{'':>31}  {label}: {len(items)} item(s)")
+                print(f"{'':>38}  {label}: {len(items)} item(s)")
 
 
 def main() -> None:
@@ -79,26 +91,13 @@ def main() -> None:
     sp = SportPredict()
     event = sp.event()
     lobby = sp.lobby(event["id"])
-    match_ids = ledger.unsettled_match_ids(lobby["id"], path=args.ledger)
-    results = sp.results(lobby["id"])
-
-    web = WebAPI()
-    settled_match_ids = {
-        match["id"] for match in web.settled_matches(event["id"], limit=200)
-    }
-    outcomes: dict[str, int] = {}
-    for match_id in match_ids:
-        if match_id not in settled_match_ids:
-            continue
-        for market in web.crowd_stats(match_id, lobby["id"]):
-            value = market.get("current_value")
-            if value in (0, 100):
-                outcomes[market["id"]] = value // 100
-
-    stats = ledger.settle_results(outcomes, results, path=args.ledger)
+    sync = calibration.sync_and_refit(
+        sp, WebAPI(), event, lobby, path=args.ledger,
+    )
     print(
-        f"Settled {stats['settled_predictions']} predictions; "
-        f"{stats['remaining_predictions']} remain open."
+        f"Calibration sync: {sync['observations_imported']} new observations, "
+        f"{sync['observations_total']} total across {sync['usable_matches']} matches; "
+        f"refit={sync['refit']}."
     )
     for row in ledger.performance(path=args.ledger):
         if row["group"] == "overall":
@@ -108,9 +107,11 @@ def main() -> None:
         else:
             label = f"source={row['source']}"
         extra = ""
+        if row.get("mean_raw_brier") is not None:
+            extra += f"  (raw={row['mean_raw_brier']:.4f})"
         if row.get("mean_anchor_brier") is not None and row.get("tilted"):
-            extra = (f"  (anchor={row['mean_anchor_brier']:.4f}, "
-                     f"{row['tilted']} tilted)")
+            extra += (f"  (legacy-anchor={row['mean_anchor_brier']:.4f}, "
+                      f"{row['tilted']} tilted)")
         print(
             f"  {label:<24} n={row['predictions']:>4}  "
             f"mean Brier={row['mean_brier']:.4f}{extra}"

@@ -33,6 +33,7 @@ class LLMFinalPricingTests(unittest.TestCase):
         pred = result.predictions[0]
         self.assertEqual(pred.probability_int, 57)
         self.assertEqual(pred.source, "llm-pricing")
+        self.assertTrue(pred.raw_model_cohort.startswith("llm-pricing:lp3-"))
         self.assertEqual(pred.llm_reasoning_summary, "odds plus lineup support 57%.")
         self.assertEqual(result.skipped, [])
         self.assertTrue(Path(result.llm_pricing_audit_path).exists())

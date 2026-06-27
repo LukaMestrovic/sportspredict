@@ -40,7 +40,14 @@ def main() -> None:
                        "derived": "DRV", "empirical": "EMP",
                        "external": "WEB", "llm-pricing": "LLM"}.get(p.source, "??")
                 books = f" {p.n_books}b" if p.n_books else ""
-                print(f"  {p.probability_int:>2}%  [{tag}{books}] {p.question}")
+                raw = p.raw_probability_int or p.probability_int
+                shown = (
+                    f"{raw:>2}→{p.probability_int:>2}%"
+                    if raw != p.probability_int else f"{p.probability_int:>5}%"
+                )
+                print(f"  {shown}  [{tag}{books}] {p.question}")
+                if p.calibration_gate_reason and p.calibration_model_id:
+                    print(f"        calibration: {p.calibration_gate_reason}")
                 if p.llm_reasoning_summary:
                     print(f"        ↳ {p.llm_reasoning_summary}")
             for q, why in r.skipped:
