@@ -10,9 +10,11 @@ import hashlib
 import json
 import math
 import random
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from itertools import groupby
+from pathlib import Path
 from typing import Iterable
 
 
@@ -391,16 +393,50 @@ def prequential_predictions(
     return predictions
 
 
+def extend_prequential_predictions(
+    history: Iterable[CalibrationObservation],
+    new_observations: Iterable[CalibrationObservation],
+) -> list[PrequentialPrediction]:
+    """Score later observations without replaying already evaluated history."""
+    prior = sorted(history, key=lambda row: (row.kickoff, row.match_id, row.market_id))
+    new_rows = sorted(
+        new_observations, key=lambda row: (row.kickoff, row.match_id, row.market_id)
+    )
+    predictions: list[PrequentialPrediction] = []
+    for _kickoff, slot_iter in groupby(new_rows, key=lambda row: row.kickoff):
+        slot = list(slot_iter)
+        if len({row.match_id for row in prior}) >= WARMUP_MATCHES:
+            model = fit_model(prior)
+            predictions.extend(
+                PrequentialPrediction(
+                    match_id=row.match_id,
+                    kickoff=row.kickoff,
+                    market_id=row.market_id,
+                    family=row.family,
+                    cohort=row.cohort,
+                    outcome=row.outcome,
+                    raw_probability_int=row.raw_probability_int,
+                    calibrated_probability_int=model.probability_int(
+                        row.raw_probability_int, row.family, row.cohort
+                    ),
+                )
+                for row in slot
+            )
+        prior.extend(slot)
+    return predictions
+
+
 def build_snapshot(
     observations: Iterable[CalibrationObservation],
     *,
     created_at: str | None = None,
     bootstrap_samples: int = BOOTSTRAP_SAMPLES,
+    prequential: Iterable[PrequentialPrediction] | None = None,
 ) -> CalibrationSnapshot:
     rows = list(observations)
     obs_hash = observation_hash(rows)
     model = fit_model(rows)
-    replay = prequential_predictions(rows)
+    replay = list(prequential) if prequential is not None else prequential_predictions(rows)
     global_gate = _global_gate(replay, obs_hash, bootstrap_samples)
     family_gates = {
         family: _family_gate([row for row in replay if row.family == family])
@@ -647,3 +683,473 @@ def _sigmoid(value: float) -> float:
         return 1.0 / (1.0 + math.exp(-value))
     exp_value = math.exp(value)
     return exp_value / (1.0 + exp_value)
+
+
+# ---------------------------------------------------------------------------
+# Durable observations, synchronization, and snapshots
+
+
+def stored_observations(
+    lobby_id: str, *, path: Path | None = None
+) -> list[CalibrationObservation]:
+    from . import ledger
+
+    path = path or ledger.LEDGER_PATH
+    with closing(ledger.connect(path)) as db:
+        rows = db.execute(
+            """SELECT * FROM calibration_observations
+               WHERE lobby_id = ? ORDER BY kickoff, match_id, market_id""",
+            (lobby_id,),
+        ).fetchall()
+    return [_observation_from_row(row) for row in rows]
+
+
+def load_active_snapshot(
+    lobby_id: str, *, path: Path | None = None
+) -> CalibrationSnapshot | None:
+    from . import ledger
+
+    path = path or ledger.LEDGER_PATH
+    with closing(ledger.connect(path)) as db:
+        row = db.execute(
+            """SELECT snapshot_json FROM calibration_models
+               WHERE lobby_id = ? AND active = 1
+               ORDER BY created_at DESC LIMIT 1""",
+            (lobby_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    return CalibrationSnapshot.from_dict(json.loads(row["snapshot_json"]))
+
+
+def stored_prequential(
+    model_id: str, *, path: Path | None = None
+) -> list[PrequentialPrediction]:
+    from . import ledger
+
+    path = path or ledger.LEDGER_PATH
+    with closing(ledger.connect(path)) as db:
+        rows = db.execute(
+            """SELECT * FROM calibration_prequential
+               WHERE model_id = ? ORDER BY kickoff, match_id, market_id""",
+            (model_id,),
+        ).fetchall()
+    return [
+        PrequentialPrediction(
+            match_id=row["match_id"],
+            kickoff=row["kickoff"],
+            market_id=row["market_id"],
+            family=row["family"],
+            cohort=row["cohort"],
+            outcome=row["outcome"],
+            raw_probability_int=row["raw_probability_int"],
+            calibrated_probability_int=row["calibrated_probability_int"],
+        )
+        for row in rows
+    ]
+
+
+def status(lobby_id: str, *, path: Path | None = None) -> dict:
+    from . import ledger
+
+    path = path or ledger.LEDGER_PATH
+    with closing(ledger.connect(path)) as db:
+        state = db.execute(
+            "SELECT * FROM calibration_state WHERE lobby_id = ?", (lobby_id,)
+        ).fetchone()
+        counts = db.execute(
+            """SELECT COUNT(*) observations, COUNT(DISTINCT match_id) matches
+               FROM calibration_observations WHERE lobby_id = ?""",
+            (lobby_id,),
+        ).fetchone()
+        match_counts = db.execute(
+            """SELECT status, COUNT(*) count FROM calibration_matches
+               WHERE lobby_id = ? GROUP BY status""",
+            (lobby_id,),
+        ).fetchall()
+    snapshot = load_active_snapshot(lobby_id, path=path)
+    return {
+        "state": dict(state) if state else None,
+        "observations": counts["observations"],
+        "matches": counts["matches"],
+        "match_statuses": {row["status"]: row["count"] for row in match_counts},
+        "snapshot": snapshot.to_dict() if snapshot else None,
+    }
+
+
+def sync_and_refit(
+    sp,
+    web,
+    event: dict,
+    lobby: dict,
+    *,
+    path: Path | None = None,
+    bootstrap_samples: int = BOOTSTRAP_SAMPLES,
+) -> dict:
+    """Import newly settled outcomes and atomically install a fresh snapshot.
+
+    Initial import treats official pre-cutover submissions as raw.  Every later
+    import requires a matching ledger row with an explicitly preserved raw
+    probability, preventing calibrated outputs from feeding back into training.
+    """
+    from . import ledger
+
+    path = path or ledger.LEDGER_PATH
+    lobby_id = lobby["id"]
+    event_id = event["id"]
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    with closing(ledger.connect(path)) as db, db:
+        state = db.execute(
+            "SELECT * FROM calibration_state WHERE lobby_id = ?", (lobby_id,)
+        ).fetchone()
+        if state is None:
+            db.execute(
+                """INSERT INTO calibration_state (
+                       lobby_id, initialized_at, legacy_backfill_complete
+                   ) VALUES (?, ?, 0)""",
+                (lobby_id, now),
+            )
+            legacy_backfill = True
+        else:
+            legacy_backfill = not bool(state["legacy_backfill_complete"])
+
+    before = stored_observations(lobby_id, path=path)
+    previous = load_active_snapshot(lobby_id, path=path)
+    previous_replay = (
+        stored_prequential(previous.model_id, path=path) if previous else []
+    )
+
+    try:
+        matches = _matches_to_sync(
+            web, event_id, lobby_id, path=path, initial=legacy_backfill
+        )
+        results = sp.results(lobby_id) if matches else []
+        result_by_market = {
+            row["market_id"]: row for row in results
+            if row.get("market_status") == "settled"
+        }
+        imported = excluded = 0
+        all_outcomes: dict[str, int] = {}
+        errors: list[str] = []
+
+        for match in matches:
+            match_id = match["id"]
+            try:
+                markets = web.crowd_stats(match_id, lobby_id)
+                observations: list[CalibrationObservation] = []
+                match_excluded = 0
+                with closing(ledger.connect(path)) as db:
+                    for market in markets:
+                        value = market.get("current_value")
+                        if value not in (0, 100):
+                            match_excluded += 1
+                            continue
+                        outcome = value // 100
+                        market_id = market["id"]
+                        all_outcomes[market_id] = outcome
+                        official = result_by_market.get(market_id)
+                        if official is None:
+                            match_excluded += 1
+                            continue
+                        official_int = round(float(official["probability_submitted"]))
+                        metadata = _canonical_ledger_row(
+                            db, lobby_id, market_id, official_int,
+                            require_raw=not legacy_backfill,
+                        )
+                        if legacy_backfill:
+                            raw_int = official_int
+                            provenance = "legacy-official-result"
+                        elif metadata is not None:
+                            raw_int = metadata["raw_probability_int"]
+                            provenance = "ledger-raw"
+                        else:
+                            match_excluded += 1
+                            continue
+                        intent = _json_or_none(
+                            metadata["intent_json"] if metadata is not None else None
+                        )
+                        cohort = _cohort_from_ledger(metadata)
+                        observations.append(CalibrationObservation(
+                            lobby_id=lobby_id,
+                            match_id=match_id,
+                            kickoff=match.get("opening_time") or match.get("kickoff") or "",
+                            market_id=market_id,
+                            question=market["question"],
+                            raw_probability_int=int(raw_int),
+                            official_probability_int=official_int,
+                            outcome=outcome,
+                            family=family_for(market["question"], intent),
+                            cohort=cohort,
+                            source_run_id=(metadata["run_id"] if metadata is not None else None),
+                            provenance=provenance,
+                        ))
+                inserted = _store_match_observations(
+                    event_id, lobby_id, match, markets, observations,
+                    match_excluded, now, path,
+                )
+                imported += inserted
+                excluded += match_excluded
+            except Exception as exc:
+                errors.append(f"{match_id}: {type(exc).__name__}: {exc}")
+                _record_match_error(event_id, lobby_id, match, str(exc), now, path)
+
+        if all_outcomes:
+            ledger.settle_results(all_outcomes, results, path=path, settled_at=now)
+
+        with closing(ledger.connect(path)) as db, db:
+            if legacy_backfill and not errors:
+                db.execute(
+                    """UPDATE calibration_state
+                       SET legacy_backfill_complete = 1, last_sync_at = ?,
+                           last_error = NULL WHERE lobby_id = ?""",
+                    (now, lobby_id),
+                )
+            else:
+                db.execute(
+                    """UPDATE calibration_state SET last_sync_at = ?, last_error = ?
+                       WHERE lobby_id = ?""",
+                    (now, "; ".join(errors) if errors else None, lobby_id),
+                )
+
+        after = stored_observations(lobby_id, path=path)
+        digest = observation_hash(after)
+        refit = previous is None or previous.observation_hash != digest
+        snapshot = previous
+        if refit:
+            before_ids = {(row.lobby_id, row.market_id) for row in before}
+            new_rows = [
+                row for row in after if (row.lobby_id, row.market_id) not in before_ids
+            ]
+            incremental = bool(previous) and bool(new_rows) and (
+                not before or min(row.kickoff for row in new_rows)
+                >= max(row.kickoff for row in before)
+            )
+            if incremental:
+                replay = previous_replay + extend_prequential_predictions(before, new_rows)
+            else:
+                replay = prequential_predictions(after)
+            snapshot = build_snapshot(
+                after, created_at=now, bootstrap_samples=bootstrap_samples,
+                prequential=replay,
+            )
+            _store_snapshot(lobby_id, snapshot, replay, path)
+
+        return {
+            "matches_checked": len(matches),
+            "observations_imported": imported,
+            "observations_total": len(after),
+            "usable_matches": len({row.match_id for row in after}),
+            "excluded": excluded,
+            "errors": errors,
+            "refit": refit,
+            "model_id": snapshot.model_id if snapshot else None,
+            "global_gate": snapshot.global_gate if snapshot else None,
+        }
+    except Exception as exc:
+        with closing(ledger.connect(path)) as db, db:
+            db.execute(
+                """UPDATE calibration_state SET last_sync_at = ?, last_error = ?
+                   WHERE lobby_id = ?""",
+                (now, f"{type(exc).__name__}: {exc}", lobby_id),
+            )
+        raise
+
+
+def _matches_to_sync(web, event_id: str, lobby_id: str, *, path: Path,
+                     initial: bool) -> list[dict]:
+    from . import ledger
+
+    with closing(ledger.connect(path)) as db:
+        rows = db.execute(
+            "SELECT * FROM calibration_matches WHERE lobby_id = ?", (lobby_id,)
+        ).fetchall()
+    known_complete = {row["match_id"] for row in rows if row["status"] == "complete"}
+    pending = {
+        row["match_id"]: {
+            "id": row["match_id"], "opening_time": row["kickoff"],
+            "name": row["match_name"],
+        }
+        for row in rows if row["status"] != "complete"
+    }
+    found: dict[str, dict] = dict(pending)
+    skip = 0
+    while True:
+        page = web.settled_matches_page(event_id, skip=skip, limit=8)
+        if not page:
+            break
+        for match in page:
+            if match["id"] not in known_complete:
+                found[match["id"]] = match
+        if not initial and all(match["id"] in known_complete for match in page):
+            break
+        skip += len(page)
+        if len(page) < 8:
+            break
+    return sorted(
+        found.values(), key=lambda match: (match.get("opening_time") or "", match["id"])
+    )
+
+
+def _canonical_ledger_row(db, lobby_id: str, market_id: str, official_int: int,
+                          *, require_raw: bool):
+    raw_clause = "AND q.raw_probability_int IS NOT NULL" if require_raw else ""
+    return db.execute(
+        f"""SELECT q.*, r.id run_id, r.recorded_at, r.submitted_at
+            FROM questions q JOIN runs r ON r.id = q.run_id
+            WHERE r.lobby_id = ? AND r.status = 'submitted'
+              AND q.market_id = ? AND q.probability_int = ? {raw_clause}
+            ORDER BY COALESCE(r.submitted_at, r.recorded_at) DESC,
+                     r.recorded_at DESC LIMIT 1""",
+        (lobby_id, market_id, official_int),
+    ).fetchone()
+
+
+def _cohort_from_ledger(row) -> str:
+    if row is None:
+        return "legacy:unversioned"
+    if row["raw_model_cohort"]:
+        return row["raw_model_cohort"]
+    if row["llm_audit_json"]:
+        return "legacy:llm-pricing"
+    if row["anchor_probability_int"] is not None:
+        return "legacy:web-tilt"
+    if row["source"]:
+        return f"legacy:deterministic:{row['source']}"
+    return "legacy:unversioned"
+
+
+def _store_match_observations(
+    event_id: str,
+    lobby_id: str,
+    match: dict,
+    markets: list[dict],
+    observations: list[CalibrationObservation],
+    excluded: int,
+    now: str,
+    path: Path,
+) -> int:
+    from . import ledger
+
+    inserted = 0
+    with closing(ledger.connect(path)) as db, db:
+        for row in observations:
+            cursor = db.execute(
+                """INSERT OR IGNORE INTO calibration_observations (
+                       lobby_id, market_id, event_id, match_id, kickoff, question,
+                       raw_probability_int, official_probability_int, outcome,
+                       family, family_version, cohort, source_run_id, provenance,
+                       recorded_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    row.lobby_id, row.market_id, event_id, row.match_id, row.kickoff,
+                    row.question, row.raw_probability_int,
+                    row.official_probability_int, row.outcome, row.family,
+                    FAMILY_VERSION, row.cohort, row.source_run_id, row.provenance, now,
+                ),
+            )
+            inserted += cursor.rowcount
+        db.execute(
+            """INSERT INTO calibration_matches (
+                   lobby_id, match_id, event_id, kickoff, match_name, status,
+                   market_count, usable_count, excluded_count, last_synced_at, error
+               ) VALUES (?, ?, ?, ?, ?, 'complete', ?, ?, ?, ?, NULL)
+               ON CONFLICT(lobby_id, match_id) DO UPDATE SET
+                   status='complete', market_count=excluded.market_count,
+                   usable_count=excluded.usable_count,
+                   excluded_count=excluded.excluded_count,
+                   last_synced_at=excluded.last_synced_at, error=NULL""",
+            (
+                lobby_id, match["id"], event_id,
+                match.get("opening_time") or match.get("kickoff") or "",
+                match.get("name"), len(markets), len(observations), excluded, now,
+            ),
+        )
+    return inserted
+
+
+def _record_match_error(event_id: str, lobby_id: str, match: dict, error: str,
+                        now: str, path: Path) -> None:
+    from . import ledger
+
+    with closing(ledger.connect(path)) as db, db:
+        db.execute(
+            """INSERT INTO calibration_matches (
+                   lobby_id, match_id, event_id, kickoff, match_name, status,
+                   last_synced_at, error
+               ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+               ON CONFLICT(lobby_id, match_id) DO UPDATE SET
+                   status='pending', last_synced_at=excluded.last_synced_at,
+                   error=excluded.error""",
+            (
+                lobby_id, match["id"], event_id,
+                match.get("opening_time") or match.get("kickoff") or "",
+                match.get("name"), now, error,
+            ),
+        )
+
+
+def _store_snapshot(
+    lobby_id: str,
+    snapshot: CalibrationSnapshot,
+    replay: list[PrequentialPrediction],
+    path: Path,
+) -> None:
+    from . import ledger
+
+    with closing(ledger.connect(path)) as db, db:
+        db.execute("UPDATE calibration_models SET active = 0 WHERE lobby_id = ?",
+                   (lobby_id,))
+        db.execute(
+            """INSERT INTO calibration_models (
+                   model_id, lobby_id, created_at, observation_hash,
+                   calibration_version, family_version, snapshot_json, active
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
+            (
+                snapshot.model_id, lobby_id, snapshot.created_at,
+                snapshot.observation_hash, CALIBRATION_VERSION, FAMILY_VERSION,
+                json.dumps(snapshot.to_dict(), sort_keys=True, separators=(",", ":")),
+            ),
+        )
+        db.executemany(
+            """INSERT INTO calibration_prequential (
+                   model_id, lobby_id, match_id, kickoff, market_id, family,
+                   cohort, outcome, raw_probability_int,
+                   calibrated_probability_int
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
+                (
+                    snapshot.model_id, lobby_id, row.match_id, row.kickoff,
+                    row.market_id, row.family, row.cohort, row.outcome,
+                    row.raw_probability_int, row.calibrated_probability_int,
+                )
+                for row in replay
+            ],
+        )
+
+
+def _observation_from_row(row) -> CalibrationObservation:
+    return CalibrationObservation(
+        lobby_id=row["lobby_id"],
+        match_id=row["match_id"],
+        kickoff=row["kickoff"],
+        market_id=row["market_id"],
+        question=row["question"],
+        raw_probability_int=row["raw_probability_int"],
+        official_probability_int=row["official_probability_int"],
+        outcome=row["outcome"],
+        family=row["family"],
+        cohort=row["cohort"],
+        source_run_id=row["source_run_id"],
+        provenance=row["provenance"],
+    )
+
+
+def _json_or_none(value: str | None) -> dict | None:
+    if not value:
+        return None
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, dict) else None
+    except (TypeError, ValueError):
+        return None

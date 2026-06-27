@@ -31,18 +31,25 @@ class WebAPI:
         out: list[dict] = []
         skip = 0
         while len(out) < limit:
-            r = self.s.get(
-                f"{WEB_BASE}/matches/event/more-matches",
-                params={"eventId": event_id, "tab": "settled", "limit": 8, "skip": skip},
-                timeout=30,
-            )
-            r.raise_for_status()
-            items = r.json().get("items", [])
+            items = self.settled_matches_page(event_id, skip=skip, limit=8)
             if not items:
                 break
             out.extend(items)
             skip += 8
         return out[:limit]
+
+    def settled_matches_page(
+        self, event_id: str, *, skip: int = 0, limit: int = 8
+    ) -> list[dict]:
+        """One settled-match page for incremental calibration synchronization."""
+        r = self.s.get(
+            f"{WEB_BASE}/matches/event/more-matches",
+            params={"eventId": event_id, "tab": "settled", "limit": limit,
+                    "skip": skip},
+            timeout=30,
+        )
+        r.raise_for_status()
+        return r.json().get("items", [])
 
     def crowd_stats(self, match_id: str, lobby_id: str) -> list[dict]:
         """Per-market crowd mean + outcome for one settled match."""

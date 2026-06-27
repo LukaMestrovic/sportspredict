@@ -1,8 +1,11 @@
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-from bot import calibration
+from bot import calibration, ledger
+from bot.pipeline import MatchResult, Prediction
 
 
 class FamilyTests(unittest.TestCase):
@@ -112,6 +115,173 @@ class PrequentialTests(unittest.TestCase):
         )
         self.assertEqual((probability, value, applied), (0.67, 67, False))
         self.assertIn("global", reason)
+
+
+class SynchronizationTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = Path(self.tmp.name) / "ledger.sqlite3"
+        self.event = {"id": "event"}
+        self.lobby = {"id": "lobby"}
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_initial_backfill_uses_official_probability_and_ignores_crowd(self):
+        match = _settled_match("match-1", "2026-06-01T00:00:00Z")
+        market = _settled_market("market-1", outcome=1, crowd=3)
+        sp = _FakeSP([_official("market-1", 67)])
+        result = calibration.sync_and_refit(
+            sp, _FakeWeb([match], {"match-1": [market]}),
+            self.event, self.lobby, path=self.path, bootstrap_samples=10,
+        )
+        observations = calibration.stored_observations("lobby", path=self.path)
+        self.assertEqual(result["observations_total"], 1)
+        self.assertEqual(observations[0].raw_probability_int, 67)
+        self.assertEqual(observations[0].outcome, 1)
+        self.assertEqual(observations[0].provenance, "legacy-official-result")
+
+        # A second database with a contradictory crowd mean must be byte-stable.
+        other_path = Path(self.tmp.name) / "other.sqlite3"
+        changed = dict(market, prediction_average=99)
+        calibration.sync_and_refit(
+            sp, _FakeWeb([match], {"match-1": [changed]}),
+            self.event, self.lobby, path=other_path, bootstrap_samples=10,
+        )
+        first = calibration.load_active_snapshot("lobby", path=self.path)
+        second = calibration.load_active_snapshot("lobby", path=other_path)
+        self.assertEqual(first.observation_hash, second.observation_hash)
+        self.assertEqual(first.model_id, second.model_id)
+
+    def test_post_cutover_uses_latest_matching_ledger_raw_value(self):
+        match1 = _settled_match("match-1", "2026-06-01T00:00:00Z")
+        web1 = _FakeWeb(
+            [match1], {"match-1": [_settled_market("market-1", outcome=0)]}
+        )
+        calibration.sync_and_refit(
+            _FakeSP([_official("market-1", 40)]), web1,
+            self.event, self.lobby, path=self.path, bootstrap_samples=10,
+        )
+
+        for run_id, raw, recorded in (
+            ("older", 61, "2026-06-02T00:10:00Z"),
+            ("newer", 64, "2026-06-02T00:20:00Z"),
+        ):
+            result = _ledger_result("match-2", "market-2", final=55, raw=raw)
+            ledger.record_run(
+                "event", "lobby", result, 30, 29.0, path=self.path,
+                run_id=run_id, recorded_at=recorded,
+            )
+            ledger.mark_submitted(run_id, path=self.path, submitted_at=recorded)
+
+        match2 = _settled_match("match-2", "2026-06-02T00:00:00Z")
+        web2 = _FakeWeb(
+            [match2, match1],
+            {
+                "match-2": [_settled_market("market-2", outcome=1)],
+                "match-1": [_settled_market("market-1", outcome=0)],
+            },
+        )
+        calibration.sync_and_refit(
+            _FakeSP([_official("market-1", 40), _official("market-2", 55)]),
+            web2, self.event, self.lobby, path=self.path, bootstrap_samples=10,
+        )
+        observations = {
+            row.market_id: row
+            for row in calibration.stored_observations("lobby", path=self.path)
+        }
+        self.assertEqual(observations["market-2"].raw_probability_int, 64)
+        self.assertEqual(observations["market-2"].official_probability_int, 55)
+        self.assertEqual(observations["market-2"].source_run_id, "newer")
+        self.assertEqual(observations["market-2"].provenance, "ledger-raw")
+
+    def test_post_cutover_missing_raw_is_excluded_not_recursed(self):
+        match1 = _settled_match("match-1", "2026-06-01T00:00:00Z")
+        calibration.sync_and_refit(
+            _FakeSP([_official("market-1", 40)]),
+            _FakeWeb([match1], {"match-1": [_settled_market("market-1", 0)]}),
+            self.event, self.lobby, path=self.path, bootstrap_samples=10,
+        )
+        match2 = _settled_match("match-2", "2026-06-02T00:00:00Z")
+        result = calibration.sync_and_refit(
+            _FakeSP([_official("market-1", 40), _official("market-2", 91)]),
+            _FakeWeb(
+                [match2, match1],
+                {
+                    "match-2": [_settled_market("market-2", 1)],
+                    "match-1": [_settled_market("market-1", 0)],
+                },
+            ),
+            self.event, self.lobby, path=self.path, bootstrap_samples=10,
+        )
+        self.assertEqual(result["observations_total"], 1)
+        self.assertEqual(result["excluded"], 1)
+
+
+class _FakeSP:
+    def __init__(self, results):
+        self._results = results
+
+    def results(self, _lobby_id):
+        return self._results
+
+
+class _FakeWeb:
+    def __init__(self, matches, markets):
+        self.matches = matches
+        self.markets = markets
+
+    def settled_matches_page(self, _event_id, *, skip=0, limit=8):
+        return self.matches[skip:skip + limit]
+
+    def crowd_stats(self, match_id, _lobby_id):
+        return self.markets[match_id]
+
+
+def _settled_match(match_id, kickoff):
+    return {"id": match_id, "name": match_id, "opening_time": kickoff}
+
+
+def _settled_market(market_id, outcome, crowd=50):
+    return {
+        "id": market_id,
+        "question": "Will Home win the match?",
+        "current_value": outcome * 100,
+        "prediction_average": crowd,
+    }
+
+
+def _official(market_id, probability):
+    return {
+        "id": f"result-{market_id}",
+        "market_id": market_id,
+        "market_status": "settled",
+        "probability_submitted": probability,
+        "brier_score": 0.0,
+        "created_date": "2026-06-01T00:00:00Z",
+    }
+
+
+def _ledger_result(match_id, market_id, *, final, raw):
+    question = "Will Home win the match?"
+    prediction = Prediction(
+        market_id, question, final / 100.0, final, 1, "raw price"
+    )
+    prediction.raw_probability = raw / 100.0
+    prediction.raw_probability_int = raw
+    prediction.raw_model_cohort = "llm:test"
+    prediction.calibration_family = "match_result_timing"
+    return MatchResult(
+        sp_match={"id": match_id, "name": match_id,
+                  "opening_time": "2026-06-02T00:00:00Z"},
+        fixture=None,
+        home="Home",
+        away="Away",
+        predictions=[prediction],
+        markets=[{"id": market_id, "question": question}],
+        intents={market_id: {"market": "match_winner", "subject": "home"}},
+        market_specs={market_id: None},
+    )
 
 
 def _biased_rows(matches: int, *, same_kickoff: bool = False):
