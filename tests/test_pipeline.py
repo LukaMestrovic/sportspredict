@@ -73,6 +73,39 @@ class SkipReasonTests(unittest.TestCase):
         self.assertEqual(result.skip_reasons["m"], "parser returned no intent")
 
 
+class MatchContextWiringTests(unittest.TestCase):
+    _FIXTURE = {
+        "fixture": {"id": 1, "referee": "R"},
+        "teams": {"home": {"id": 1, "name": "Home"}, "away": {"id": 2, "name": "Away"}},
+    }
+    _MATCH = {"id": "match", "name": "Home vs Away",
+              "opening_time": "2027-01-01T00:00:00Z"}
+    _MARKET = {"id": "m", "question": "Will Home win?"}
+
+    def _run(self, build_side_effect):
+        with patch("bot.pipeline.parse_questions", return_value={}), patch(
+            "bot.pipeline.match_context.build", **build_side_effect
+        ), patch("bot.pipeline.evidence.build_match_evidence", return_value={}), patch(
+            "bot.pipeline.evidence.write_evidence", return_value="path"
+        ), patch("bot.llm_pricing.price_match") as price:
+            result = run_match(
+                self._MATCH, [self._MARKET], _AF(self._FIXTURE), None,
+                llm_pricing_enabled=True,
+            )
+        return result, price
+
+    def test_run_match_attaches_built_context(self):
+        sentinel = {"team_form": {"home": {"games": 3}}}
+        result, price = self._run({"return_value": sentinel})
+        self.assertEqual(result.match_context, sentinel)
+        price.assert_called_once()
+
+    def test_context_build_failure_does_not_break_pricing(self):
+        result, price = self._run({"side_effect": RuntimeError("boom")})
+        self.assertEqual(result.match_context, {})
+        price.assert_called_once()  # pricing still runs
+
+
 class SubmissionTests(unittest.TestCase):
     def test_new_markets_are_created_in_api_sized_batches(self):
         sp = _SP()  # no existing predictions -> everything is a fresh create

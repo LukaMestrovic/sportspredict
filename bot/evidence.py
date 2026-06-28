@@ -89,10 +89,15 @@ def build_match_evidence(
     for item in question_evidence:
         all_obs.extend(item["direct_odds"])
         all_obs.extend(item["related_odds"])
+    context = getattr(result, "match_context", None) or {}
     evidence = {
-        "schema_version": 2,
+        "schema_version": 3,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "match": _match_meta(result, lineups, minutes_before),
+        "team_form": context.get("team_form") or {},
+        "player_form": context.get("player_form") or {},
+        "referee_profile": context.get("referee_profile") or {},
+        "injuries": context.get("injuries") or {},
         "questions": [
             {"market_id": m["id"], "question": m["question"],
              "intent": result.intents.get(m["id"])}

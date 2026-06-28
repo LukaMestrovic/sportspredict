@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from . import derive, evidence, external, ledger
+from . import derive, evidence, external, ledger, match_context
 from .apifootball import APIFootball
 from .oddsapi import OddsAPI
 from .parser import parse_questions
@@ -50,6 +50,7 @@ class MatchResult:
     evidence_json: dict | None = None
     evidence_path: str | None = None
     evidence_hash: str | None = None
+    match_context: dict | None = None
     llm_pricing_briefing: str | None = None
     llm_pricing_sources: list = field(default_factory=list)
     llm_pricing_response: dict | None = None
@@ -114,6 +115,10 @@ def run_match(
                 lineups = af.lineups(fixture["fixture"]["id"])
             except Exception:
                 lineups = None
+        try:
+            res.match_context = match_context.build(af, fixture, home, away, lineups)
+        except Exception:
+            res.match_context = {}
         bundle = evidence.build_match_evidence(res, ctx, lineups, minutes_before)
         path = evidence.write_evidence(bundle)
         res.evidence_json = bundle

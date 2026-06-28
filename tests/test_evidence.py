@@ -92,7 +92,7 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(estimates.call_args.kwargs["intents"], result.intents)
         q = evidence["question_evidence"][0]
-        self.assertEqual(evidence["schema_version"], 2)
+        self.assertEqual(evidence["schema_version"], 3)
         self.assertEqual(q["simulator_model_estimates"], [sim])
         self.assertIn("simulator/model context", q["audit_requirement"])
 
@@ -131,6 +131,45 @@ class EvidenceTests(unittest.TestCase):
 
         estimates.assert_called_once()
         self.assertEqual(evidence["question_evidence"][0]["simulator_model_estimates"], [])
+
+
+class ContextEvidenceTests(unittest.TestCase):
+    def test_match_context_blocks_are_embedded_at_top_level(self):
+        result = _result({
+            "win": {"market": "match_winner", "subject": "home",
+                    "comparator": "win", "threshold": None, "period": "match"},
+        })
+        result.match_context = {
+            "team_form": {"home": {"games": 3, "gf_avg": 1.7}, "away": {}},
+            "player_form": {"home": [{"name": "Striker One", "sot_per90": 1.2}], "away": []},
+            "referee_profile": {"name": "J. Smith", "yellows_per_game": 4.0},
+            "injuries": {"home": [{"player": "X", "type": "Out"}], "away": []},
+        }
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+
+        with patch("bot.evidence.hybrid_model.simulator_estimates", return_value={}):
+            evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+        self.assertEqual(evidence["schema_version"], 3)
+        self.assertEqual(evidence["team_form"]["home"]["gf_avg"], 1.7)
+        self.assertEqual(evidence["player_form"]["home"][0]["name"], "Striker One")
+        self.assertEqual(evidence["referee_profile"]["yellows_per_game"], 4.0)
+        self.assertEqual(evidence["injuries"]["home"][0]["player"], "X")
+
+    def test_missing_context_yields_empty_blocks(self):
+        result = _result({
+            "win": {"market": "match_winner", "subject": "home",
+                    "comparator": "win", "threshold": None, "period": "match"},
+        })  # no match_context attached
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+
+        with patch("bot.evidence.hybrid_model.simulator_estimates", return_value={}):
+            evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+        self.assertEqual(evidence["team_form"], {})
+        self.assertEqual(evidence["player_form"], {})
+        self.assertEqual(evidence["referee_profile"], {})
+        self.assertEqual(evidence["injuries"], {})
 
 
 class HybridModelTests(unittest.TestCase):
