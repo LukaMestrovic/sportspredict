@@ -2,7 +2,7 @@ import unittest
 import json
 from unittest.mock import patch
 
-from bot.parser import _repair_intent, parse_questions
+from bot.parser import _normalize_question, _repair_intent, parse_questions
 
 
 class DeterministicTemplateTests(unittest.TestCase):
@@ -204,6 +204,151 @@ class SubjectRepairTests(unittest.TestCase):
         self.assertEqual(repaired["subject"], "away")
         self.assertEqual(repaired["comparator"], "gte")
         self.assertEqual(repaired["period"], "match")
+
+
+class KnockoutWordingTests(unittest.TestCase):
+    """Best-of-32 questions: regulation suffix, (Country) props, new families."""
+
+    def _parse(self, question, home, away):
+        with patch("bot.parser.chat_json") as chat:
+            parsed = parse_questions(
+                [{"id": "x", "question": question}], home, away
+            )
+        chat.assert_not_called()  # must stay deterministic (no LLM spend)
+        return parsed["x"]
+
+    def test_regulation_suffix_is_stripped(self):
+        self.assertEqual(
+            _normalize_question(
+                "Will Germany win in regulation (90 minutes + stoppage time)?",
+                "Germany", "Paraguay"),
+            "Will Germany win?",
+        )
+        self.assertEqual(
+            _normalize_question(
+                "Will the second half produce more goals than the first half in "
+                "regulation (90 minutes + stoppage time), excluding extra time?",
+                "Australia", "Egypt"),
+            "Will the second half produce more goals than the first half?",
+        )
+
+    def test_country_parenthetical_is_removed(self):
+        self.assertEqual(
+            _normalize_question(
+                "Will Jamal Musiala (Germany) have 2 or more shots on target "
+                "in regulation (90 minutes + stoppage time)?",
+                "Germany", "Paraguay"),
+            "Will Jamal Musiala have 2 or more shots on target?",
+        )
+
+    def test_player_prop_with_country_is_player_not_team(self):
+        # The (Germany) parenthetical previously made this Germany's team SoT.
+        intent = self._parse(
+            "Will Jamal Musiala (Germany) have 2 or more shots on target "
+            "in regulation (90 minutes + stoppage time)?",
+            "Germany", "Paraguay",
+        )
+        self.assertEqual(intent["market"], "player_shots_on_target")
+        self.assertEqual(intent["subject"], "player")
+        self.assertEqual(intent["player"], "Jamal Musiala")
+        self.assertEqual((intent["comparator"], intent["threshold"]), ("gte", 2))
+
+    def test_player_scorer_and_assist_with_country(self):
+        scorer = self._parse(
+            "Will Kai Havertz (Germany) score a goal (excluding own goals) "
+            "in regulation (90 minutes + stoppage time)?",
+            "Germany", "Paraguay",
+        )
+        self.assertEqual(scorer["market"], "player_goal_scorer")
+        self.assertEqual(scorer["player"], "Kai Havertz")
+        assist = self._parse(
+            "Will Florian Wirtz (Germany) score or assist a goal (excluding own "
+            "goals) in regulation (90 minutes + stoppage time)?",
+            "Germany", "Paraguay",
+        )
+        self.assertEqual(assist["market"], "player_score_or_assist")
+        self.assertEqual(assist["player"], "Florian Wirtz")
+
+    def test_win_by_margin_is_not_a_scoring_total(self):
+        intent = self._parse(
+            "Will the United States win by 2 or more goals in regulation "
+            "(90 minutes + stoppage time)?",
+            "USA", "Bosnia and Herzegovina",
+        )
+        self.assertEqual(intent["market"], "win_margin")
+        self.assertEqual(intent["subject"], "home")
+        self.assertEqual((intent["comparator"], intent["threshold"]), ("gte", 2))
+
+    def test_score_two_or_more_goals_stays_team_total(self):
+        intent = self._parse(
+            "Will Brazil score 2 or more goals in regulation "
+            "(90 minutes + stoppage time)?",
+            "Brazil", "Japan",
+        )
+        self.assertEqual(intent["market"], "team_total_goals")
+        self.assertEqual((intent["subject"], intent["comparator"],
+                          intent["threshold"]), ("home", "gte", 2))
+
+    def test_new_knockout_families(self):
+        cases = [
+            ("Will South Africa advance to the Round of 16?",
+             "South Africa", "Canada", "to_advance", "home", "match"),
+            ("Will Argentina keep a clean sheet in regulation "
+             "(90 minutes + stoppage time)?",
+             "Argentina", "Cape Verde", "team_clean_sheet", "home", "match"),
+            ("Will Argentina score in both halves in regulation "
+             "(90 minutes + stoppage time)?",
+             "Argentina", "Cape Verde", "team_score_both_halves", "home", "match"),
+            ("Will Germany win in regulation (90 minutes + stoppage time)?",
+             "Germany", "Paraguay", "match_winner", "home", "match"),
+            ("Will Canada be ahead at halftime?",
+             "South Africa", "Canada", "match_winner", "away", "1H"),
+            ("Will regulation (90 minutes + stoppage time) end in a tie?",
+             "South Africa", "Canada", "match_draw", "match", "match"),
+            ("Will the match be tied at halftime?",
+             "Australia", "Egypt", "match_draw", "match", "1H"),
+            ("Will Germany score the first goal of the match?",
+             "Germany", "Paraguay", "first_team_to_score", "home", "match"),
+            ("Will the second half produce more goals than the first half in "
+             "regulation (90 minutes + stoppage time)?",
+             "Australia", "Egypt", "highest_scoring_half_2h", "match", "match"),
+            ("Will there be 22 or more total shots (on and off target) in "
+             "regulation (90 minutes + stoppage time)?",
+             "Argentina", "Cape Verde", "total_shots", "match", "match"),
+            ("Will both teams receive at least one card in regulation "
+             "(90 minutes + stoppage time)?",
+             "Australia", "Egypt", "both_teams_card", "match", "match"),
+            ("Will a card be shown in the first half?",
+             "USA", "Bosnia and Herzegovina", "total_cards", "match", "1H"),
+            ("Will a penalty kick be awarded during regulation "
+             "(90 minutes + stoppage time)?",
+             "Ivory Coast", "Norway", "penalty_awarded", "match", "match"),
+            ("Will a red card be shown in the match?",
+             "France", "Sweden", "red_card", "match", "match"),
+        ]
+        for q, home, away, market, subject, period in cases:
+            intent = self._parse(q, home, away)
+            self.assertEqual(
+                (intent["market"], intent["subject"], intent["period"]),
+                (market, subject, period), msg=q,
+            )
+
+    def test_no_market_families_route_to_none_without_a_half_period(self):
+        # Hydration breaks are at 22'/67' — never a 45' half boundary.
+        for q in (
+            "Will a goal be scored before the first hydration break?",
+            "Will a card be shown after the second hydration break, including "
+            "any extra time?",
+            "Will either team be ruled offside before the first hydration break?",
+            "Will a goal be scored in second-half stoppage time?",
+            "Will any player score more than 1 goal (excluding own goals) in "
+            "regulation (90 minutes + stoppage time)?",
+            "Will a substitute score a goal in regulation "
+            "(90 minutes + stoppage time)?",
+        ):
+            intent = self._parse(q, "South Africa", "Canada")
+            self.assertEqual(intent["market"], "none", msg=q)
+            self.assertEqual(intent["period"], "match", msg=q)
 
 
 if __name__ == "__main__":

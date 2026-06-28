@@ -18,7 +18,7 @@ from .matcher import MARKET_KEYS
 from .teams import normalize_team
 
 # Bump to invalidate cached intents after a prompt/model semantics change.
-PROMPT_VERSION = "p3-hybrid-deterministic"
+PROMPT_VERSION = "p4-knockout-wording"
 
 SYSTEM = """You convert soccer betting questions into structured JSON intents.
 Each question is a YES/NO question about a single match. Output ONLY the
@@ -115,22 +115,22 @@ def parse_questions(
     questions: [{id, question}]. Returns {market_id: intent}.
     """
     out: dict[str, dict] = {}
-    unfamiliar: list[dict] = []
+    unfamiliar: list[tuple[dict, str]] = []  # (question, normalized text)
     for question in questions:
-        intent = _parse_template(question["question"], home, away)
+        cleaned = _normalize_question(question["question"], home, away)
+        intent = _parse_template(cleaned, home, away)
         if intent:
-            out[question["id"]] = _repair_intent(
-                question["question"], intent, home, away
-            )
+            out[question["id"]] = _repair_intent(cleaned, intent, home, away)
         else:
-            unfamiliar.append(question)
+            unfamiliar.append((question, cleaned))
 
     if not unfamiliar:
         return out
     if not config.OPENAI_API_KEY:
         raise RuntimeError("OPENAI_API_KEY not set — unfamiliar question requires parser")
 
-    numbered = [{"id": i, "question": q["question"]} for i, q in enumerate(unfamiliar)]
+    numbered = [{"id": i, "question": cleaned}
+                for i, (_q, cleaned) in enumerate(unfamiliar)]
     user = (
         f"Home team: {home}\nAway team: {away}\n\n"
         f"Questions:\n{json.dumps(numbered, indent=0)}"
@@ -145,10 +145,8 @@ def parse_questions(
     for intent in parsed.get("intents", []):
         idx = intent.get("id")
         if isinstance(idx, int) and 0 <= idx < len(unfamiliar):
-            question = unfamiliar[idx]
-            out[question["id"]] = _repair_intent(
-                question["question"], intent, home, away
-            )
+            question, cleaned = unfamiliar[idx]
+            out[question["id"]] = _repair_intent(cleaned, intent, home, away)
     return out
 
 
@@ -188,8 +186,42 @@ def _intent(
     }
 
 
+def _normalize_question(question: str, home: str, away: str) -> str:
+    """Strip knockout-stage boilerplate so stable templates keep matching.
+
+    Removes the regulation/extra-time scope qualifiers ("in regulation (90
+    minutes + stoppage time)", ", excluding extra time"), the "(excluding own
+    goals)" gloss, and a "(Country)" parenthetical that merely names one of the
+    two teams (e.g. "Jamal Musiala (Germany)" -> "Jamal Musiala"). The last one
+    is what stops player props being misread as the team's own market.
+    """
+    text = question
+    text = re.sub(r"\s*\(90 minutes \+ stoppage time\)", "", text, flags=re.I)
+    text = re.sub(r",?\s*excluding extra time", "", text, flags=re.I)
+    text = re.sub(r"\s+in regulation\b", "", text, flags=re.I)
+    text = re.sub(r"\s*\(added\)", "", text, flags=re.I)
+    text = re.sub(r"\s*\(excluding own goals\)", "", text, flags=re.I)
+    for team in (home, away):
+        text = _strip_team_parenthetical(text, team)
+    text = re.sub(r"\s{2,}", " ", text).replace(" ?", "?").strip()
+    return text
+
+
+def _strip_team_parenthetical(text: str, team: str) -> str:
+    """Drop a "(...)" whose contents normalize to ``team`` (keeps other parens)."""
+    target = normalize_team(team)
+
+    def repl(match: re.Match) -> str:
+        return "" if normalize_team(match.group(1)) == target else match.group(0)
+
+    return re.sub(r"\s*\(([^()]*)\)", repl, text)
+
+
 def _parse_template(question: str, home: str, away: str) -> dict | None:
-    """Recognize stable Probability Cup question families conservatively."""
+    """Recognize stable Probability Cup question families conservatively.
+
+    ``question`` is the normalized text (see ``_normalize_question``).
+    """
     lower = question.strip().lower()
     if not lower.startswith(("will ", "at halftime,")):
         return None
@@ -203,26 +235,74 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
     if (re.search(r"\b(?:AND|OR)\b", question)
             or "score the first goal of the game and" in lower):
         return _intent("none")
-    if ("penalty kick be awarded" in lower or "red card be shown" in lower
-            or "both teams" in lower and "shot on target" in lower):
+
+    # Time-window / match-state questions with no single pre-match contract: the
+    # web-grounded LLM layer prices them from enriched related odds. A hydration
+    # break is NOT a half (the breaks are at 22' and 67'), so these stay
+    # market="none", period="match" — never a 1H/2H line.
+    if ("hydration break" in lower
+            or "stoppage time" in lower or "added time" in lower
+            or "substitution be made before" in lower
+            or lower.startswith(("will any player", "will a substitute",
+                                 "will a player"))):
+        return _intent("none")
+
+    # Discipline events: emit dedicated intents so the matcher takes the exact
+    # line (penalty bet 163 / red card 335/86) when a book quotes it, and degrades
+    # to related odds + the deterministic estimate otherwise.
+    if "penalty kick be awarded" in lower:
+        return _intent("penalty_awarded", period=period)
+    if "red card" in lower and "shown" in lower:
+        return _intent("red_card", period=period)
+    if "both teams" in lower and "shot on target" in lower:
         return _intent("none", period=period)
 
+    # Draw / tie contracts (full match or, when "halftime" is named, the 1st half).
     if lower.startswith("at halftime,") and re.search(
         r"\b(?:tied?|a draw|level|all square)\b", lower
     ):
         return _intent("match_draw", period="1H")
-    if "second half have more goals than the first half" in lower:
-        return _intent(
-            "highest_scoring_half_2h", comparator="second_half_more"
-        )
+    if re.search(r"\b(?:end in a tie|be tied|be a draw|"
+                 r"end (?:level|all square))\b", lower):
+        return _intent("match_draw", period=period)
+
+    if re.search(r"second half (?:have|produce|score) more goals than the "
+                 r"first half", lower):
+        return _intent("highest_scoring_half_2h", comparator="second_half_more")
     if "both teams score" in lower:
         return _intent("btts", period=period)
+    if ("both teams" in lower and "card" in lower
+            and ("receive" in lower or "shown" in lower)):
+        return _intent("both_teams_card", period=period)
+
+    # Total/team shots (on AND off target) — distinct from shots on target.
+    if "shots" in lower and "on target" not in lower and re.search(
+        r"\btotal shots\b|on and off target", lower
+    ):
+        count = _threshold_in(lower)
+        if count:
+            if subject:
+                return _intent("team_shots", subject[0], count[0], count[1])
+            return _intent("total_shots", comparator=count[0], threshold=count[1])
 
     if subject:
         side, team = subject
-        if lower.endswith(" win the match?"):
+        if "win by" in lower:
+            count = _threshold_in(lower)
+            if count and count[0] == "gte":
+                return _intent("win_margin", side, "gte", count[1])
+        if lower.endswith(" win the match?") or lower.endswith(" win?"):
             return _intent("match_winner", side, "win")
-        if "score the first goal of the game" in lower:
+        if "ahead at halftime" in lower or "winning at halftime" in lower:
+            return _intent("match_winner", side, "win", period="1H")
+        if "advance to the round of 16" in lower or "advance to round of 16" in lower:
+            return _intent("to_advance", side)
+        if "keep a clean sheet" in lower:
+            return _intent("team_clean_sheet", side)
+        if "score in both halves" in lower:
+            return _intent("team_score_both_halves", side)
+        if ("score the first goal of the game" in lower
+                or "score the first goal of the match" in lower):
             return _intent("first_team_to_score", side)
         if re.search(r"\bscore(?: at least 1 goal| in the (?:first|second) half)\?", lower):
             market = {"1H": "team_score_1h", "2H": "team_score_2h"}.get(
@@ -244,6 +324,10 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
         return _intent(
             _COMPARE_MARKETS[metric], compare_subject[0], "more", period=period
         )
+
+    # "a card be shown in the (first half|match)" -> at least one card.
+    if re.search(r"\bcard be shown\b", lower) and "red card" not in lower:
+        return _intent("total_cards", comparator="gte", threshold=1, period=period)
 
     count = _threshold_in(lower)
     if metric and count and lower.startswith(("will the ", "will there ")):
