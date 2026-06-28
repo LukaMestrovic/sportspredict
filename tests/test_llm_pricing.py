@@ -38,6 +38,24 @@ class LLMFinalPricingTests(unittest.TestCase):
         self.assertTrue(Path(result.llm_pricing_audit_path).exists())
         self.assertTrue(Path(result.llm_pricing_report_path).exists())
 
+    def test_report_surfaces_provided_context(self):
+        llm_pricing._ask = lambda evidence, **_kw: {
+            "briefing": "b", "sources": [], "markets": [_audit("m1", 57)],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            result = llm_pricing.price_match(
+                _result(), _evidence(with_context=True),
+                Path(tmp) / "evidence.json", 30.0, force=True,
+            )
+            report = Path(result.llm_pricing_report_path).read_text()
+
+        self.assertIn("## Provided context", report)
+        self.assertIn("home form:", report)
+        self.assertIn("referee:", report)
+        self.assertIn("home player form: 1 players", report)
+        self.assertIn("structured context available: team form, player form, referee, injuries",
+                      report)
+
     def test_missing_audit_field_skips_market(self):
         bad = _audit("m1", 57)
         bad.pop("online_odds_found")
@@ -93,9 +111,9 @@ def _result():
     )
 
 
-def _evidence():
-    return {
-        "schema_version": 1,
+def _evidence(with_context=False):
+    evidence = {
+        "schema_version": 3,
         "evidence_hash": "abc",
         "match": {"match_id": "match", "home": "Home", "away": "Away",
                   "kickoff": "2026-06-22T17:00:00Z"},
@@ -105,6 +123,15 @@ def _evidence():
             "related_odds": [],
         }],
     }
+    if with_context:
+        evidence.update({
+            "team_form": {"home": {"games": 3, "gf_avg": 1.7}, "away": {}},
+            "player_form": {"home": [{"name": "Striker One", "sot_per90": 1.2}],
+                            "away": []},
+            "referee_profile": {"name": "J. Smith", "yellows_per_game": 4.0},
+            "injuries": {"home": [{"player": "X", "type": "Out"}], "away": []},
+        })
+    return evidence
 
 
 if __name__ == "__main__":

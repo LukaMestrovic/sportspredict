@@ -50,6 +50,27 @@ HOW TO USE THE PROVIDED ODDS
   explain why the component evidence is not comparable. For "A OR B", avoid
   double-counting correlated events.
 
+PROVIDED STRUCTURED CONTEXT
+The evidence JSON may include deterministic, primary-source context built from
+API-Football. Treat these as your most reliable non-odds evidence and PREFER them
+over odds-derived betting blogs, which usually just re-express the same market:
+- team_form: each side's recent results, goals for/against, clean-sheet/BTTS/over
+  rates, and average shots, shots on target, corners, cards, fouls, offsides, and
+  expected goals (xG). Use it to form an INDEPENDENT read of the goal/cards/corners
+  environment instead of inferring it from the totals odds.
+- player_form: per-player minutes, starts, and shots, shots-on-target and goals per
+  90. Use this as the BASE RATE for scorer, shots-on-target and brace props, then
+  adjust for confirmed lineup and expected minutes. A bench/short-minutes profile
+  lowers a prop; a high per-90 starter raises it.
+- referee_profile: the assigned referee's career yellows/reds per game over a real
+  sample. Prefer it over any scraped referee figure; weight a small sample (low
+  games) cautiously. Penalty rate is not provided — research it if needed.
+- injuries: structured availability per side. Prefer it over scraped injury notes.
+When any of these materially moves a market, you MUST cite it in
+non_odds_factors_used with source "provided evidence" and factor "form",
+"player form", "referee", or "injuries". If a block is empty or absent, say so and
+fall back to web research.
+
 DIRECTIONAL TRAPS
 - Offsides depend strongly on the opponent's defensive line, not just attacking
   volume. A high line raises opponent offsides; a deep block suppresses them.

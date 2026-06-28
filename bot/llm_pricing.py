@@ -293,6 +293,9 @@ def _markdown_report(result, evidence: dict, evidence_path: Path | None, respons
         lines.extend(["", "## Match sources", ""])
         lines.extend(f"- {src}" for src in response.get("sources", []))
 
+    context_avail = _context_available(evidence)
+    lines.extend(_context_section(evidence, context_avail))
+
     audits = {p.market_id: p.llm_audit for p in result.predictions}
     evidence_by_market = {
         item["market_id"]: item for item in evidence.get("question_evidence", [])
@@ -322,7 +325,54 @@ def _markdown_report(result, evidence: dict, evidence_path: Path | None, respons
             lines.append(f"- provided direct odds available: {len(qe['direct_odds'])}")
         if qe.get("related_odds"):
             lines.append(f"- provided related odds available: {len(qe['related_odds'])}")
+        if context_avail:
+            lines.append(f"- structured context available: {', '.join(context_avail)}")
     return "\n".join(lines)
+
+
+def _context_available(evidence: dict) -> list[str]:
+    """Which structured context families are populated for this match."""
+    tf = evidence.get("team_form") or {}
+    pf = evidence.get("player_form") or {}
+    inj = evidence.get("injuries") or {}
+    avail = []
+    if any((tf.get(s) for s in ("home", "away"))):
+        avail.append("team form")
+    if any((pf.get(s) for s in ("home", "away"))):
+        avail.append("player form")
+    if evidence.get("referee_profile"):
+        avail.append("referee")
+    if any((inj.get(s) for s in ("home", "away"))):
+        avail.append("injuries")
+    return avail
+
+
+def _context_section(evidence: dict, context_avail: list[str]) -> list[str]:
+    """Human-readable summary of the structured context the model was given."""
+    if not context_avail:
+        return []
+    lines = ["", "## Provided context", "", f"- available: {', '.join(context_avail)}"]
+    tf = evidence.get("team_form") or {}
+    for side in ("home", "away"):
+        form = tf.get(side)
+        if form:
+            lines.append(f"- {side} form: "
+                         + json.dumps(form, ensure_ascii=False, sort_keys=True))
+    ref = evidence.get("referee_profile") or {}
+    if ref:
+        lines.append("- referee: " + json.dumps(ref, ensure_ascii=False, sort_keys=True))
+    pf = evidence.get("player_form") or {}
+    for side in ("home", "away"):
+        players = pf.get(side) or []
+        if players:
+            names = ", ".join(p.get("name", "?") for p in players[:6])
+            lines.append(f"- {side} player form: {len(players)} players ({names}…)")
+    inj = evidence.get("injuries") or {}
+    for side in ("home", "away"):
+        listed = inj.get(side) or []
+        if listed:
+            lines.append(f"- {side} injuries: {len(listed)} listed")
+    return lines
 
 
 def _append_audit_list(lines: list[str], title: str, items) -> None:
