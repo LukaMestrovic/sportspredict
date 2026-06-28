@@ -101,3 +101,40 @@ class APIFootball:
             lambda: self._get("/fixtures/statistics", fixture=fixture_id)["response"],
             ttl=0,
         )
+
+    def fixture_players(self, fixture_id: int) -> list[dict]:
+        """Per-player stats for a (played) fixture, cached forever.
+
+        Only meaningful once a fixture has been played, and immutable thereafter,
+        so we never refresh it. Powers player form/usage aggregation.
+        """
+        return cache.get_or_fetch(
+            "af_fixture_players", str(fixture_id),
+            lambda: self._get("/fixtures/players", fixture=fixture_id)["response"],
+            ttl=0,
+        )
+
+    def referee_fixtures(self, referee: str, season: int) -> list[dict]:
+        """Fixtures a referee officiated in a season (cached 24h).
+
+        Career discipline history for the assigned referee; spans all leagues, so
+        it is far deeper than the handful of WC games per referee. Empty on a name
+        miss, which the caller treats as 'no profile'.
+        """
+        return cache.get_or_fetch(
+            "af_referee_fixtures", f"{referee}|{season}",
+            lambda: self._get("/fixtures", referee=referee, season=season)["response"],
+            ttl=24 * 3600,
+        )
+
+    def injuries(self, team_id: int, season: int) -> list[dict]:
+        """Injury/suspension list for a team in a season (cached 10 min).
+
+        Refreshed at submission windows like lineups/odds so a 30-minute tick sees
+        the freshest availability.
+        """
+        return cache.get_or_fetch(
+            "af_injuries", f"{team_id}|{season}",
+            lambda: self._get("/injuries", team=team_id, season=season)["response"],
+            ttl=600, refresh=self.refresh_odds,
+        )
