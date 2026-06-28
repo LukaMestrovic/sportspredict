@@ -21,7 +21,7 @@ from . import cache, config
 from .pipeline import Prediction
 
 
-LLM_PRICING_VERSION = "lp4"
+LLM_PRICING_VERSION = "lp5"
 MODEL = os.environ.get("LLM_PRICING_MODEL", "gpt-5.4-mini")
 PROMPT_PATH = config.ROOT / "prompts" / "llm_pricing_prompt.md"
 ENABLED = os.environ.get("LLM_PRICING_ENABLED", "1") != "0"

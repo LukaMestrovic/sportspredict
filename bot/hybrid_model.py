@@ -1,9 +1,19 @@
 """Optional bridge to the sibling sportspredict-hybrid simulator.
 
 The LLM bot intentionally keeps its runtime dependencies tiny. The hybrid bot
-has the heavier learned-rate simulator stack, so this module calls it in its own
-virtualenv when that sibling checkout is available and returns auditable context
-for selected unsupported or model-sensitive markets.
+has the heavier learned-rate simulator stack, so this module shells out to its
+stable ``simulation-report`` CLI in its own virtualenv when that sibling
+checkout is available and returns compact, auditable context for the markets the
+LLM cannot price from a direct bookmaker contract.
+
+The bridge contract (see sibling ``docs/simulation_report.md``): one JSON object
+on stdin with ``home``/``away``/``questions`` and optional ``kickoff``/``stage``/
+``referee``/``lineups``/``market_odds``/``n_sims``. It returns ``question_reports``
+(one YES probability + deterministic ``explanation`` per supported question,
+``evidence_role=model_context``) and a separate ``unsupported_questions`` list,
+which we never turn into estimates. We do not duplicate the simulator's
+question-feasibility rules here: the report preflights both its frozen wheel and
+its additive parser and returns genuinely unsupported templates separately.
 """
 from __future__ import annotations
 
@@ -19,155 +29,113 @@ from .pricing import PriceCtx
 
 
 DEFAULT_HYBRID_ROOT = config.ROOT.parent / "sportspredict-hybrid"
-TIMEOUT_SECONDS = 90
-
-
-_BRIDGE_CODE = r"""
-import json
-import sys
-from pathlib import Path
-
-payload = json.load(sys.stdin)
-
-import yaml
-
-from sportspredict.config import Settings
-from sportspredict.compete.runner import MatchContextBuilder
-from sportspredict.features.context import MatchContext
-
-try:
-    from sportspredict.ingest.elo import load_elo_table
-except Exception:
-    load_elo_table = None
-
-from sphybrid.engine import build_engine
-
-root = Path.cwd()
-with open(root / "config" / "settings.yaml") as fh:
-    raw_settings = yaml.safe_load(fh)
-with open(root / "config" / "market_rules.yaml") as fh:
-    market_rules = yaml.safe_load(fh)
-settings = Settings(raw=raw_settings, market_rules=market_rules, root=root)
-elo_table = {}
-elo_path = settings.path("data/raw/elo.csv")
-if load_elo_table is not None:
-    try:
-        elo_table = load_elo_table(elo_path)
-    except Exception:
-        elo_table = {}
-
-tournament = settings.raw.get("tournament", {})
-builder = MatchContextBuilder(
-    elo_table=elo_table,
-    host_teams=set(tournament.get("host_teams", [])),
-    knockout_after=tournament.get("group_stage_end"),
-)
-match = {
-    "name": f"{payload['home']} vs {payload['away']}",
-    "opening_time": payload.get("kickoff") or "",
-}
-try:
-    ctx = builder.build(match)
-except Exception:
-    ctx = MatchContext(
-        payload["home"],
-        payload["away"],
-        stage=payload.get("stage") or "group",
-        date=payload.get("kickoff"),
-    )
-
-if payload.get("referee"):
-    ctx.referee = payload["referee"]
-
-engine = build_engine(settings)
-predictions = engine.predict_many(
-    ctx,
-    [item["question"] for item in payload["questions"]],
-    market_odds=payload.get("market_odds") or None,
-    n_sims=payload.get("n_sims"),
-)
-
-out = {
-    "engine": type(engine).__name__,
-    "rate_model": type(engine.rate_model).__name__,
-    "context": {
-        "team_a": ctx.team_a,
-        "team_b": ctx.team_b,
-        "elo_a": ctx.elo_a,
-        "elo_b": ctx.elo_b,
-        "stage": ctx.stage,
-        "host_a": ctx.host_a,
-        "host_b": ctx.host_b,
-        "referee": ctx.referee,
-    },
-    "predictions": [],
-}
-for item, pred in zip(payload["questions"], predictions):
-    out["predictions"].append({
-        "market_id": item["market_id"],
-        "question": item["question"],
-        "market": pred.market,
-        "params": pred.params,
-        "p_model": pred.p_model,
-        "p_final": pred.p_final,
-        "p_market": pred.p_market,
-        "n_sims": pred.n_sims,
-        "notes": pred.notes,
-    })
-print(json.dumps(out, sort_keys=True))
-"""
+TIMEOUT_SECONDS = 120
 
 
 def simulator_estimates(
     markets: Iterable[dict],
     ctx: PriceCtx,
     *,
+    direct_by_market: dict[str, list],
     intents: dict[str, dict] | None = None,
     kickoff: str | None = None,
     referee: str | None = None,
+    stage: str | None = None,
+    lineups: list[dict] | None = None,
     hybrid_root: Path | None = None,
 ) -> dict[str, dict]:
     """Return hybrid learned-rate simulator estimates keyed by market id.
 
-    Only explicitly supported question families are sent to the sibling
-    simulator. Missing dependencies, a missing sibling checkout, or parse errors
-    produce an empty result so evidence building remains robust.
+    A market is sent to the simulator when it has **no exact direct price**, plus
+    the model-sensitive penalty/shot-on-target families we keep even when a
+    direct price exists (see :func:`model_estimate_kind`). The simulator decides
+    what it can actually resolve; unsupported templates come back separately and
+    are dropped. A missing sibling checkout, missing dependencies, a timeout, or
+    a parse error all fail open to an empty result so evidence building stays
+    robust.
     """
-    targets = []
-    for market in markets:
-        mid = str(market["id"])
-        question = str(market.get("question") or "")
-        intent = (intents or {}).get(mid)
-        kind = model_estimate_kind(question, intent)
-        if kind:
-            targets.append({"market_id": mid, "question": question, "kind": kind})
+    targets = _targets(markets, direct_by_market, intents)
     if not targets:
         return {}
 
-    root = _hybrid_root(hybrid_root)
-    python = _hybrid_python(root)
-    source = root / "src"
-    if not (python and source.exists()):
+    sibling = _sibling(hybrid_root)
+    if sibling is None:
         return {}
+    root, python = sibling
 
+    payload = _payload(ctx, targets, kickoff=kickoff, referee=referee,
+                       stage=stage, lineups=lineups)
+    raw = _run_bridge(payload, root, python)
+    return _reports_by_market(raw)
+
+
+def _targets(
+    markets: Iterable[dict],
+    direct_by_market: dict[str, list] | None,
+    intents: dict[str, dict] | None,
+) -> list[dict]:
+    """Markets to price with the simulator: every no-direct market, plus the
+    retained model-sensitive penalty/shot-on-target targets even with direct odds."""
+    direct_by_market = direct_by_market or {}
+    intents = intents or {}
+    targets = []
+    for market in markets:
+        raw_mid = market["id"]
+        mid = str(raw_mid)
+        question = str(market.get("question") or "")
+        has_direct = bool(direct_by_market.get(raw_mid) or direct_by_market.get(mid))
+        model_sensitive = model_estimate_kind(question, intents.get(mid) or intents.get(raw_mid)) is not None
+        if has_direct and not model_sensitive:
+            continue
+        targets.append({"market_id": mid, "question": question})
+    return targets
+
+
+def _payload(
+    ctx: PriceCtx,
+    targets: list[dict],
+    *,
+    kickoff: str | None,
+    referee: str | None,
+    stage: str | None,
+    lineups: list[dict] | None,
+) -> dict:
     payload = {
         "home": ctx.home,
         "away": ctx.away,
         "kickoff": kickoff,
         "referee": referee,
+        "stage": stage,
         "questions": targets,
         "market_odds": _market_odds_from_ctx(ctx),
         "n_sims": _n_sims_override(),
     }
+    # The hybrid report understands the native API-Football lineups response and
+    # uses it only for player/substitute allocation. Send it as-is when present.
+    if lineups:
+        payload["lineups"] = lineups
+    return payload
+
+
+def _run_bridge(payload: dict, root: Path, python: Path) -> dict:
+    """Invoke the sibling ``simulation-report`` CLI; fail open to ``{}``."""
+    source = root / "src"
     env = os.environ.copy()
     env["PYTHONPATH"] = (
         str(source)
         if not env.get("PYTHONPATH")
         else f"{source}{os.pathsep}{env['PYTHONPATH']}"
     )
+    # Pin the sibling's project root explicitly. Its default_settings() locates the
+    # repo by walking up from the INSTALLED sportspredict package; that only lands
+    # on the right tree by luck when the venv lives inside the checkout (dev). In
+    # the deployed image the wheel is under /usr/local, so without this the report
+    # cannot find config/ or the fitted timing/share artifacts and silently fails
+    # open to no estimates. Setting SPORTSPREDICT_ROOT makes resolution deterministic.
+    env["SPORTSPREDICT_ROOT"] = str(root)
     try:
         proc = subprocess.run(
-            [str(python), "-c", _BRIDGE_CODE],
+            [str(python), "-m", "sphybrid.cli", "simulation-report"],
             cwd=str(root),
             env=env,
             input=json.dumps(payload),
@@ -181,37 +149,40 @@ def simulator_estimates(
     if proc.returncode != 0:
         return {}
     try:
-        raw = json.loads(proc.stdout)
-    except json.JSONDecodeError:
+        return json.loads(proc.stdout)
+    except (json.JSONDecodeError, TypeError):
         return {}
 
-    context = raw.get("context") or {}
+
+def _reports_by_market(raw: dict) -> dict[str, dict]:
+    """Key supported ``question_reports`` by market id; drop unsupported ones.
+
+    Each value is exactly one report item (the sibling's per-question contract)
+    plus compact model provenance and the not-an-anchor reminder. Match-level
+    internals, other questions' probabilities and ``unsupported_questions`` are
+    intentionally not attached.
+    """
+    raw = raw or {}
+    model_meta = raw.get("model") or {}
     out: dict[str, dict] = {}
-    for pred in raw.get("predictions") or []:
-        mid = str(pred.get("market_id") or "")
-        p_final = _as_probability(pred.get("p_final"))
-        if not mid or p_final is None:
+    for rep in raw.get("question_reports") or []:
+        mid = str(rep.get("market_id") or "")
+        prob = _as_probability(rep.get("probability"))
+        if not mid or prob is None:
             continue
-        p_model = _as_probability(pred.get("p_model"))
         out[mid] = {
-            "source": "sportspredict-hybrid",
-            "model": raw.get("rate_model") or "unknown",
-            "engine": raw.get("engine") or "unknown",
-            "simulator": "sportspredict.simulate",
-            "kind": next(
-                (item["kind"] for item in targets if item["market_id"] == mid),
-                None,
-            ),
-            "market": pred.get("market"),
-            "params": pred.get("params") or {},
-            "probability": round(p_final, 6),
-            "probability_pct": round(p_final * 100, 2),
-            "p_model": round(p_model, 6) if p_model is not None else None,
-            "p_market": pred.get("p_market"),
-            "n_sims": pred.get("n_sims"),
-            "notes": pred.get("notes"),
-            "context": context,
-            "odds_anchor_inputs": payload["market_odds"],
+            "source": rep.get("source") or "sportspredict-hybrid",
+            "family": rep.get("family"),
+            "probability": round(prob, 6),
+            "probability_pct": round(prob * 100.0, 2),
+            "explanation": rep.get("explanation"),
+            "evidence_role": rep.get("evidence_role") or "model_context",
+            "model": {
+                "engine": model_meta.get("engine"),
+                "rate_model": model_meta.get("rate_model"),
+                "n_sims": model_meta.get("n_sims"),
+                "odds_anchor_applied": model_meta.get("odds_anchor_applied"),
+            },
             "note": (
                 "Learned-rate simulator context only; not a final anchor. The "
                 "pricing LLM must weigh it against direct odds, related odds, "
@@ -222,7 +193,14 @@ def simulator_estimates(
 
 
 def model_estimate_kind(question: str, intent: dict | None = None) -> str | None:
-    """Classify the market families currently sent to the hybrid simulator."""
+    """Classify the model-sensitive penalty/shot-on-target families that are sent
+    to the simulator even when an exact direct price exists.
+
+    This is intentionally a small, curated set — not an exhaustive allowlist of
+    everything the simulator supports. The sibling report preflights feasibility
+    for all other (no-direct) questions, so new feasible templates are accepted
+    without being enumerated here.
+    """
     penalty = _penalty_market_kind(question)
     if penalty:
         return penalty
@@ -270,6 +248,15 @@ def _penalty_market_kind(question: str) -> str | None:
         return "penalty_or_red"
     if "red card" not in lower:
         return "penalty_awarded"
+    return None
+
+
+def _sibling(root: Path | None = None) -> tuple[Path, Path] | None:
+    """Return ``(root, python)`` for the sibling checkout, or ``None`` if absent."""
+    resolved = _hybrid_root(root)
+    python = _hybrid_python(resolved)
+    if python and (resolved / "src").exists():
+        return resolved, python
     return None
 
 

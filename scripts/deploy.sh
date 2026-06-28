@@ -33,7 +33,9 @@ for required in \
   "$HYBRID_ROOT/wheels/sportspredict-0.1.0-py3-none-any.whl" \
   "$HYBRID_ROOT/data/processed/rate_model.joblib" \
   "$HYBRID_ROOT/data/processed/rate_model.json" \
-  "$HYBRID_ROOT/data/processed/team_ratings.parquet"
+  "$HYBRID_ROOT/data/processed/team_ratings.parquet" \
+  "$HYBRID_ROOT/data/processed/event_timing.json" \
+  "$HYBRID_ROOT/data/processed/player_shares.parquet"
 do
   if [ ! -f "$required" ]; then
     echo "FATAL: required hybrid deploy artifact missing: $required" >&2
@@ -50,6 +52,8 @@ cp -a \
   "$HYBRID_ROOT/data/processed/rate_model.joblib" \
   "$HYBRID_ROOT/data/processed/rate_model.json" \
   "$HYBRID_ROOT/data/processed/team_ratings.parquet" \
+  "$HYBRID_ROOT/data/processed/event_timing.json" \
+  "$HYBRID_ROOT/data/processed/player_shares.parquet" \
   "$HYBRID_SNAPSHOT/data/processed/"
 if [ -f "$HYBRID_ROOT/data/raw/elo.csv" ]; then
   cp -a "$HYBRID_ROOT/data/raw/elo.csv" "$HYBRID_SNAPSHOT/data/raw/"
@@ -60,25 +64,32 @@ echo ">> docker build $IMAGE:$TAG ..."
 docker build -f docker/Dockerfile -t "$IMAGE:$TAG" .
 
 # 4) Smoke-test the baked hybrid bridge without any secrets. This proves the
-#    deployed image uses its internal /sportspredict-hybrid snapshot, not either
-#    live working tree.
+#    deployed image uses its internal /sportspredict-hybrid snapshot (not either
+#    live working tree) AND that config + both fitted artifacts load: the goal/
+#    card windows exercise event_timing.json and the any-player brace exercises
+#    player_shares.parquet. Missing artifacts would degrade to neutral priors, so
+#    a returned, non-degenerate probability for each family is the real check.
 echo ">> smoke-test image hybrid bridge ..."
-docker run --rm --entrypoint python -e SPORTSPREDICT_HYBRID_N_SIMS=200 \
+docker run --rm --entrypoint python -e SPORTSPREDICT_HYBRID_N_SIMS=500 \
   "$IMAGE:$TAG" -c '
 from bot.hybrid_model import simulator_estimates
-from bot.parser import parse_questions
 from bot.pricing import PriceCtx
 markets = [
     {"id": "pen", "question": "Will a penalty kick be awarded in the match?"},
-    {"id": "sot", "question": "Will Argentina have more shots on target than Austria in the second half?"},
+    {"id": "goal", "question": "Will a goal be scored before the first hydration break?"},
+    {"id": "card", "question": "Will a card be shown after the second hydration break?"},
+    {"id": "brace", "question": "Will any player score more than 1 goal (excluding own goals) in the match?"},
 ]
 ctx = PriceCtx("Argentina", "Austria", [], None, None)
-intents = parse_questions(markets, "Argentina", "Austria")
-out = simulator_estimates(markets, ctx, intents=intents, kickoff="2026-06-22T17:00:00Z")
-assert set(out) == {"pen", "sot"}, out
-assert {item["model"] for item in out.values()} == {"LearnedRateModel"}, out
-assert out["pen"]["probability"] > 0 and out["sot"]["probability"] > 0, out
-print("hybrid bridge OK:", {k: (v["kind"], v["probability_pct"]) for k, v in sorted(out.items())})
+# Empty lists => no direct price => every market is sent to the simulator, which
+# resolves what it can. No parser/LLM (and so no secrets) needed for selection.
+direct = {m["id"]: [] for m in markets}
+out = simulator_estimates(markets, ctx, direct_by_market=direct,
+                          kickoff="2026-06-22T17:00:00Z", stage="knockout")
+assert set(out) == {"pen", "goal", "card", "brace"}, out
+assert {v["model"]["rate_model"] for v in out.values()} == {"LearnedRateModel"}, out
+assert all(0.0 < v["probability"] < 1.0 for v in out.values()), out
+print("hybrid bridge OK:", {k: (v["family"], v["probability_pct"]) for k, v in sorted(out.items())})
 '
 
 # 5) Smoke-test the image without submitting: it must reach SportPredict and

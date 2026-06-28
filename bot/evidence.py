@@ -38,13 +38,6 @@ def build_match_evidence(
     direct_by_market: dict[str, list[dict]] = {}
     spec_by_market: dict[str, dict | None] = {}
     estimates_by_market: dict[str, list[dict]] = {}
-    simulator_by_market = hybrid_model.simulator_estimates(
-        result.markets,
-        ctx,
-        intents=result.intents,
-        kickoff=result.sp_match.get("opening_time"),
-        referee=_fixture_referee(result),
-    )
 
     for market in result.markets:
         mid = market["id"]
@@ -53,6 +46,21 @@ def build_match_evidence(
         direct_by_market[mid] = _tag_observations(direct, "direct", "exact mapped contract")
         spec_by_market[mid] = spec
         estimates_by_market[mid] = _deterministic_estimates(market["question"], intent, ctx)
+
+    # Direct odds are computed first so the simulator only prices the markets
+    # without an exact direct contract (plus the retained model-sensitive
+    # penalty/shot-on-target targets). It preserves direct-odds priority: a
+    # liquid exact price is never displaced by simulator context.
+    simulator_by_market = hybrid_model.simulator_estimates(
+        result.markets,
+        ctx,
+        direct_by_market=direct_by_market,
+        intents=result.intents,
+        kickoff=result.sp_match.get("opening_time"),
+        referee=_fixture_referee(result),
+        stage=_fixture_stage(result),
+        lineups=lineups,
+    )
 
     context = getattr(result, "match_context", None) or {}
     player_index = context.get("player_index") or {}
@@ -100,7 +108,7 @@ def build_match_evidence(
         all_obs.extend(item["direct_odds"])
         all_obs.extend(item["related_odds"])
     evidence = {
-        "schema_version": 3,
+        "schema_version": 4,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "match": _match_meta(result, lineups, minutes_before),
         "team_form": context.get("team_form") or {},
@@ -185,6 +193,23 @@ def _player_form_for(intent: dict | None, player_index: dict) -> dict | None:
 def _fixture_referee(result) -> str | None:
     fixture = (result.fixture or {}).get("fixture", {}) if result.fixture else {}
     return fixture.get("referee")
+
+
+def _fixture_stage(result) -> str | None:
+    """Map the API-Football round to the simulator's stage when unambiguous.
+
+    Returns ``"group"``/``"knockout"`` from the league round (e.g. "Group Stage
+    - 1", "Round of 16"), else ``None`` so the sibling derives it from kickoff.
+    """
+    league = (result.fixture or {}).get("league", {}) if result.fixture else {}
+    rnd = str(league.get("round") or "").lower()
+    if not rnd:
+        return None
+    if "group" in rnd:
+        return "group"
+    if any(key in rnd for key in ("round of", "16", "8", "quarter", "semi", "final")):
+        return "knockout"
+    return None
 
 
 def summarize_lineups(lineups: list[dict] | None) -> dict | None:
