@@ -60,8 +60,13 @@ if [ -f "$HYBRID_ROOT/data/raw/elo.csv" ]; then
 fi
 
 # 3) Build the immutable image (source baked in; secrets never baked).
+#    --provenance=false keeps this a single image manifest: the default BuildKit
+#    attestation manifest can fail to unpack on the containerd snapshotter
+#    ("failed to prepare extraction snapshot ... parent snapshot does not exist")
+#    even though the image is otherwise fine. We deploy one local arch, so the
+#    attestation buys nothing here.
 echo ">> docker build $IMAGE:$TAG ..."
-docker build -f docker/Dockerfile -t "$IMAGE:$TAG" .
+docker build --provenance=false -f docker/Dockerfile -t "$IMAGE:$TAG" .
 
 # 4) Smoke-test the baked hybrid bridge without any secrets. This proves the
 #    deployed image uses its internal /sportspredict-hybrid snapshot (not either
