@@ -1,7 +1,7 @@
 """Orchestrates one match end-to-end.
 
 Live path:
-  questions -> parser -> evidence -> audited raw prices -> outcome calibration
+  questions -> parser -> evidence -> audited LLM prices
 
 The older deterministic cascade is retained only for explicit validation/backtest
 calls that must not run web-grounded LLM pricing after kickoff.
@@ -10,10 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from . import calibration, config, derive, evidence, external, ledger
+from . import derive, evidence, external, ledger
 from .apifootball import APIFootball
 from .oddsapi import OddsAPI
-from .parser import PROMPT_VERSION, parse_questions
+from .parser import parse_questions
 from .pricing import PriceCtx, price_intent
 from .sportspredict import SportPredict
 
@@ -27,26 +27,10 @@ class Prediction:
     market_label: str
     source: str = "api-football"  # odds or derivation source that priced it
     book_probabilities: list[float] = field(default_factory=list)
-    # Deprecated calibration fields retained for ledger compatibility with older runs.
-    anchor_probability_int: int | None = None   # pre-calibration anchor
-    tilt_points: float | None = None            # raw signed tilt the LLM asked for
-    applied_delta: int | None = None            # realised move (calibrated - anchor)
-    calibration_rationale: str | None = None    # one-line LLM reason for the tilt
     # Final LLM pricing audit fields.
     llm_audit: dict = field(default_factory=dict)
     llm_sources: list = field(default_factory=list)
     llm_reasoning_summary: str | None = None
-    # Outcome calibration is always recomputed from these frozen raw fields.
-    raw_probability: float | None = None
-    raw_probability_int: int | None = None
-    raw_model_cohort: str | None = None
-    calibration_family: str | None = None
-    calibration_family_version: str | None = None
-    calibration_model_id: str | None = None
-    calibrated_probability: float | None = None
-    calibration_delta_int: int | None = None
-    calibration_applied: bool = False
-    calibration_gate_reason: str | None = None
 
 
 @dataclass
@@ -63,8 +47,6 @@ class MatchResult:
     skip_reasons: dict[str, str] = field(default_factory=dict)
     af_books: list[dict] = field(default_factory=list)
     oa_observations: list[dict] = field(default_factory=list)
-    calibration_briefing: str | None = None       # legacy
-    calibration_sources: list = field(default_factory=list)  # legacy
     evidence_json: dict | None = None
     evidence_path: str | None = None
     evidence_hash: str | None = None
@@ -73,7 +55,6 @@ class MatchResult:
     llm_pricing_response: dict | None = None
     llm_pricing_audit_path: str | None = None
     llm_pricing_report_path: str | None = None
-    calibration_model_id: str | None = None
 
 
 def _clamp_int(p: float) -> int:
@@ -91,7 +72,6 @@ def run_match(
     llm_pricing_refresh: bool = False,
     lineups: list[dict] | None = None,
     minutes_before: float | None = None,
-    calibration_snapshot: calibration.CalibrationSnapshot | None = None,
 ) -> MatchResult:
     fixture = af.find_fixture(sp_match["opening_time"], sp_match.get("name"))
     res = MatchResult(
@@ -147,9 +127,6 @@ def run_match(
         llm_pricing.price_match(
             res, bundle, path, minutes_before, refresh=llm_pricing_refresh,
         )
-        calibration.apply_result(
-            res, calibration_snapshot, enabled=config.CALIBRATION_ENABLED,
-        )
         return res
 
     kickoff = sp_match["opening_time"]
@@ -189,21 +166,16 @@ def run_match(
             res.skip_reasons[m["id"]] = skip_reason
     res.af_books = ctx.af_books
     res.oa_observations = list(getattr(ctx.oa, "observations", []))
-    calibration.apply_result(
-        res, calibration_snapshot, enabled=config.CALIBRATION_ENABLED,
-    )
     return res
 
 
 def _mk_pred(m: dict, out: dict, source: str) -> Prediction:
-    prediction = Prediction(
+    return Prediction(
         market_id=m["id"], question=m["question"],
         probability=out["probability"], probability_int=_clamp_int(out["probability"]),
         n_books=out["n_books"], market_label=out["label"], source=source,
         book_probabilities=out.get("book_probabilities", []),
     )
-    prediction.raw_model_cohort = f"deterministic:{PROMPT_VERSION}:{source}"
-    return prediction
 
 
 def submit_predictions(
@@ -275,15 +247,8 @@ def submit_with_ledger(
     *,
     window_min: int = -1,
     minutes_before: float | None = None,
-    calibration_snapshot=...,
 ) -> tuple[dict, list[str]]:
     """Record priced runs, upsert them, and durably record the outcome."""
-    if calibration_snapshot is ...:
-        calibration_snapshot = calibration.load_active_snapshot(lobby_id)
-    for result in results:
-        calibration.apply_result(
-            result, calibration_snapshot, enabled=config.CALIBRATION_ENABLED,
-        )
     now = datetime.now(timezone.utc)
     run_ids = []
     for result in results:
@@ -326,7 +291,6 @@ def predict_open_matches(
     oa = OddsAPI()
     event = sp.event()
     lobby = sp.lobby(event["id"])
-    calibration_snapshot = calibration.load_active_snapshot(lobby["id"])
     matches = sp.matches(event["id"], lobby["id"])
     if limit:
         matches = matches[:limit]
@@ -337,13 +301,9 @@ def predict_open_matches(
         result = run_match(
             sp_match, markets, af, oa,
             llm_pricing_enabled=llm_pricing_enabled,
-            calibration_snapshot=calibration_snapshot,
         )
         results.append(result)
 
     if submit:
-        submit_with_ledger(
-            sp, event["id"], lobby["id"], results,
-            calibration_snapshot=calibration_snapshot,
-        )
+        submit_with_ledger(sp, event["id"], lobby["id"], results)
     return results

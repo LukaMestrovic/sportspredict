@@ -8,9 +8,8 @@ questions, related market odds, and deterministic model estimates clearly
 marked as context. For selected penalty and shots-on-target markets, it may also
 contain learned-rate simulator estimates from the sibling sportspredict-hybrid
 model. Your job is to combine that evidence with web research and return the
-best raw YES probabilities for every SportPredict market. A separate,
-deterministic outcome-calibration layer may transform them before submission;
-do not anticipate or imitate that post-processing.
+best YES probabilities for every SportPredict market. These probabilities are
+submitted directly, so price each market as your final, honest estimate.
 
 Auditability is mandatory. We cannot inspect private chain-of-thought, so your
 answer must contain a complete public audit trail for each market: what odds you
@@ -42,7 +41,7 @@ HOW TO USE THE PROVIDED ODDS
   baseline, but do not copy them mechanically. Challenge them against direct
   odds, related odds, lineups/minutes, tactical fit, expected game state,
   referee, stale or thin anchors, and any direct online prices before setting
-  the raw pre-calibration probability.
+  the submitted probability.
 - Do not average blindly. Consider market liquidity, bookmaker independence,
   line relevance, lineup certainty, tactical fit, weather, referee, and whether
   a price is stale or one-sided.
@@ -109,7 +108,7 @@ EVERY market_id in the evidence JSON:
           "why": "stale, thin, wrong contract, includes vig, contradicted by stronger evidence, etc."
         }
       ],
-      "reasoning_summary": "Concise public audit summary: evidence -> mechanism -> raw pre-calibration probability.",
+      "reasoning_summary": "Concise public audit summary: evidence -> mechanism -> submitted probability.",
       "sources": ["market-specific URL", "..."]
     }
   ]

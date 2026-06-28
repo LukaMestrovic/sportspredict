@@ -1,7 +1,7 @@
-"""Auditable raw LLM pricing from match evidence.
+"""Auditable LLM pricing from match evidence.
 
 This layer receives the deterministic evidence JSON for one match and returns
-raw pre-calibration probabilities. It does not tilt anchors: every priced
+the submitted probabilities. It does not tilt anchors: every priced
 prediction must have a complete per-market audit showing provided odds used,
 online odds found, non-odds factors, downweighted evidence, and a concise
 reasoning summary.
@@ -21,7 +21,7 @@ from . import cache, config
 from .pipeline import Prediction
 
 
-LLM_PRICING_VERSION = "lp3-raw-pre-calibration"
+LLM_PRICING_VERSION = "lp4"
 MODEL = os.environ.get("LLM_PRICING_MODEL", "gpt-5.4-mini")
 PROMPT_PATH = config.ROOT / "prompts" / "llm_pricing_prompt.md"
 ENABLED = os.environ.get("LLM_PRICING_ENABLED", "1") != "0"
@@ -77,11 +77,6 @@ def _cache_key(match_id: str) -> str:
 
 def _prompt_sha() -> str:
     return hashlib.sha1(_load_prompt().encode("utf-8")).hexdigest()[:8]
-
-
-def pricing_cohort() -> str:
-    """Stable signature for raw prices emitted by this pricing architecture."""
-    return f"llm-pricing:{LLM_PRICING_VERSION}:{MODEL}:{_prompt_sha()}"
 
 
 def _extract_json(text: str) -> dict:
@@ -218,13 +213,12 @@ def price_match(
             probability=probability_int / 100.0,
             probability_int=probability_int,
             n_books=len(direct),
-            market_label="LLM raw pre-calibration audited price",
+            market_label="LLM audited price",
             source="llm-pricing",
             book_probabilities=[obs["probability"] for obs in direct
                                 if isinstance(obs.get("probability"), (int, float))],
         )
         pred.llm_audit = audit
-        pred.raw_model_cohort = pricing_cohort()
         pred.llm_sources = audit.get("sources") or []
         pred.llm_reasoning_summary = audit.get("reasoning_summary")
         result.predictions.append(pred)
@@ -313,7 +307,7 @@ def _markdown_report(result, evidence: dict, evidence_path: Path | None, respons
             lines.append(f"- skipped: {reason}")
             continue
         lines.append(
-            f"- raw pre-calibration probability: {audit.get('probability_int')}%"
+            f"- probability: {audit.get('probability_int')}%"
         )
         _append_audit_list(lines, "Provided odds used", audit.get("provided_odds_used"))
         _append_audit_list(lines, "Online odds found", audit.get("online_odds_found"))
