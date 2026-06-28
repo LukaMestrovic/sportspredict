@@ -74,6 +74,33 @@ def _devig_ou(values: list[dict], side: str, line: float) -> float | None:
     return fair_over if side == "Over" else 1 - fair_over
 
 
+def _devig_ah_pair(values: list[dict], side: str, line: float) -> float | None:
+    """De-vig one Asian-Handicap pair ``{side -line, opp +line}``.
+
+    Bet 4 interleaves every handicap line in one value list, so we isolate the
+    single coherent two-way contract (e.g. ``Home -1.5`` vs ``Away +1.5`` for
+    "win by 2+") instead of normalizing the whole ladder like ``_devig_select``.
+    The -line side has no push, so the pair partitions the outcome space.
+    """
+    opp = "Away" if side == "Home" else "Home"
+    want_fav = f"{side} -{line:g}"
+    want_dog = f"{opp} +{line:g}"
+    fav = dog = None
+    for v in values:
+        txt = v.get("value", "").strip()
+        try:
+            imp = 1.0 / float(v["odd"])
+        except (KeyError, ValueError, ZeroDivisionError):
+            continue
+        if txt.lower() == want_fav.lower():
+            fav = imp
+        elif txt.lower() == want_dog.lower():
+            dog = imp
+    if fav is None or dog is None or (fav + dog) <= 0:
+        return None
+    return fav / (fav + dog)
+
+
 def _single_side_probability(odd) -> float | None:
     try:
         return min(0.99, (1.0 / float(odd)) * SINGLE_SIDE_DEVIG)
@@ -118,6 +145,8 @@ def predict(bookmakers: list[dict], spec: dict) -> dict | None:
             p = _devig_select(bet["values"], spec["value"])
         elif spec["type"] == "ou":
             p = _devig_ou(bet["values"], spec["side"], spec["line"])
+        elif spec["type"] == "ah":
+            p = _devig_ah_pair(bet["values"], spec["side"], spec["line"])
         elif spec["type"] == "player_yes":
             p = _price_player_yes(bet["values"], spec.get("player"))
         elif spec["type"] == "player_threshold":
@@ -163,6 +192,10 @@ def observations(bookmakers: list[dict], spec: dict | None) -> list[dict]:
             p = _devig_ou(values, spec["side"], spec["line"])
             raw = _raw_ou(values, spec["line"])
             method = "same-book over/under de-vig"
+        elif spec["type"] == "ah":
+            p = _devig_ah_pair(values, spec["side"], spec["line"])
+            raw = _raw_ah_pair(values, spec["side"], spec["line"])
+            method = "same-book Asian-handicap pair de-vig"
         elif spec["type"] == "player_yes":
             p = _price_player_yes(values, spec.get("player"))
             raw = _raw_player_yes(values, spec.get("player"))
@@ -208,6 +241,17 @@ def _raw_ou(values: list[dict], line: float) -> list[dict]:
     return raw
 
 
+def _raw_ah_pair(values: list[dict], side: str, line: float) -> list[dict]:
+    opp = "Away" if side == "Home" else "Home"
+    fav, dog = f"{side} -{line:g}", f"{opp} +{line:g}"
+    return [
+        {"name": v.get("value"), "decimal_odds": _float_or_none(v.get("odd")),
+         "is_target": v.get("value", "").strip().lower() == fav.lower()}
+        for v in values
+        if v.get("value", "").strip().lower() in (fav.lower(), dog.lower())
+    ]
+
+
 def _raw_player_yes(values: list[dict], player: str | None) -> list[dict]:
     if not player:
         return []
@@ -241,6 +285,8 @@ def _contract_label(spec: dict) -> str:
         return str(spec.get("value"))
     if spec["type"] == "ou":
         return f"{spec.get('side')} {spec.get('line')}"
+    if spec["type"] == "ah":
+        return f"{spec.get('side')} -{spec.get('line'):g}"
     if spec["type"] == "player_yes":
         return f"{spec.get('player')} Yes"
     if spec["type"] == "player_threshold":

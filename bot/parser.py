@@ -63,6 +63,19 @@ Important direct mappings:
 - a team to score the first goal of the game -> market=first_team_to_score,
   subject=home/away, comparator=yes, period=match.
 
+Knockout markets (emit when the wording fits):
+- a team to qualify/advance to the next round -> to_advance.
+- a team to keep a clean sheet -> team_clean_sheet; to score in both halves ->
+  team_score_both_halves.
+- total shots (on AND off target, NOT "shots on target") -> total_shots; a single
+  team's -> team_shots.
+- a team to win BY N or more goals (winning margin) -> win_margin, comparator=gte,
+  threshold=N (never team_total_goals).
+- both teams to receive a card -> both_teams_card; a penalty awarded ->
+  penalty_awarded; a red card shown -> red_card.
+A name written "Player (Country)" is ALWAYS that player, never the country's team.
+"in regulation (90 minutes + stoppage time)" means the full match (period=match).
+
 Use market="none" for compound questions (two events joined by AND/OR). Set
 period to "1H"/"2H" for first/second-half or "at halftime" questions, else
 "match".

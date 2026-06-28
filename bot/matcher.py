@@ -18,6 +18,7 @@ _TEAM_OU = {
     "team_cards": (82, 83),           # Home/Away Team Total Cards
     "team_offsides": (167, 168),      # Offsides Home/Away Total
     "team_fouls": (171, 170),         # Fouls. Home/Away Total
+    "team_shots": (221, 220),         # Shots. Home/Away Total (on+off target)
 }
 
 # Match-level over/under markets: bet id
@@ -28,6 +29,7 @@ _MATCH_OU = {
     "total_offsides": 164, # Offsides Total
     "total_fouls": 173,    # Fouls. Total
     "total_shots_on_target": 87, # Total ShotOnGoal
+    "total_shots": 211,    # Total Shots (on+off target)
 }
 
 # Team yes/no markets: subject -> (home bet id, away bet id), target value "Yes"
@@ -35,6 +37,19 @@ _TEAM_YESNO = {
     "team_score": (43, 44),       # Home/Away Team Score a Goal
     "team_score_1h": (114, 116),  # ... (1st Half)
     "team_score_2h": (115, 117),  # ... (2nd Half)
+    "team_clean_sheet": (27, 28),         # Clean Sheet - Home/Away
+    "team_score_both_halves": (111, 112), # Home/Away team will score in both halves
+}
+
+# Match-level yes/no select markets: bet id, target value "Yes"
+_MATCH_YESNO = {
+    "both_teams_card": 252,    # Both Teams to Receive a Card
+    "penalty_awarded": 163,    # Penalty Awarded
+}
+
+# Two-way select markets that pick the named team: bet id, value Home/Away.
+_TEAM_SELECT = {
+    "to_advance": 61,          # To Qualify
 }
 
 # Team "more than opponent" 1x2 markets: subject picks Home/Away value
@@ -57,10 +72,12 @@ _PLAYER_MARKETS = [
 # The vocabulary the LLM parser is allowed to emit.
 MARKET_KEYS = (
     ["match_winner", "match_draw", "btts", "highest_scoring_half_2h",
-     "double_chance", "first_team_to_score"]
+     "double_chance", "first_team_to_score", "win_margin", "red_card"]
     + list(_MATCH_OU)
     + list(_TEAM_OU)
     + list(_TEAM_YESNO)
+    + list(_MATCH_YESNO)
+    + list(_TEAM_SELECT)
     + list(_COMPARE)
     + _PLAYER_MARKETS
     + ["none"]
@@ -90,6 +107,7 @@ _TOTAL_TO_TEAM = {
     "total_fouls": "team_fouls",
     "total_goals": "team_total_goals",
     "total_shots_on_target": "team_shots_on_target",
+    "total_shots": "team_shots",
 }
 # A team_* count with a "more than opponent" comparator means the 1x2 market.
 _TEAM_TO_COMPARE = {
@@ -214,6 +232,36 @@ def match_intent(intent: dict, home: str, away: str) -> dict | None:
     if market == "highest_scoring_half_2h":
         return {"type": "select", "bet_id": 11, "value": "2nd Half",
                 "label": "2nd half outscores 1st"}
+
+    if market in _TEAM_SELECT:
+        if subject not in ("home", "away"):
+            return None
+        return {"type": "select", "bet_id": _TEAM_SELECT[market],
+                "value": "Home" if subject == "home" else "Away",
+                "label": f"{market} {subject}"}
+
+    if market in _MATCH_YESNO:
+        return {"type": "select", "bet_id": _MATCH_YESNO[market], "value": "Yes",
+                "label": market}
+
+    if market == "red_card":
+        # "a red card shown" == total red cards >= 1 == Over 0.5.
+        return {"type": "ou", "bet_id": 335, "side": "Over", "line": 0.5,
+                "label": "red card shown"}
+
+    if market == "win_margin":
+        if subject not in ("home", "away") or threshold is None:
+            return None
+        try:
+            n = int(threshold)
+        except (TypeError, ValueError):
+            return None
+        if n < 1:
+            return None
+        # "win by N+" is the push-free Asian Handicap at -(N-0.5) on that team.
+        return {"type": "ah", "bet_id": 4,
+                "side": "Home" if subject == "home" else "Away", "line": n - 0.5,
+                "label": f"{subject} win by {n}+"}
 
     if market in _MATCH_OU:
         ou = _line_from_threshold(comp, threshold)

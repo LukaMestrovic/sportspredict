@@ -266,8 +266,20 @@ plus half draws, card comparisons, and (full match) offsides totals,
 offsides/fouls/shots-on-target 1x2, total shots on target, highest-scoring-half;
 player anytime-scorer, score-or-assist, shots-on-target, cards (both providers);
 compounds, penalties/red cards and unusual questions through related evidence.
-If the LLM does not return a complete audit for a market, that market is skipped
-rather than submitted without reviewability.
+
+Knockout-stage (best-of-32) additions: questions are normalized so the "in
+regulation (90 minutes + stoppage time)" / ", excluding extra time" scope and a
+"Player (Country)" gloss never break a template, and these exact contracts are
+mapped — *to qualify/advance* (bet 61), *clean sheet* (27/28), *score in both
+halves* (111/112), *total/team shots on+off target* (211 / 221/220), *win by N
+goals* (Asian Handicap −(N−0.5) pair, bet 4), *both teams to receive a card*
+(252), *penalty awarded* (163), *red card* (335). Where a fixture does not quote
+one of these it degrades to related odds. Time-window questions with no contract
+(hydration-break 22'/67' windows, stoppage-time goal, "any player" brace) are
+priced from related odds — chiefly the full per-15-minute goal-interval ladder
+(bets 144–149) plus the ET/penalty deciders (224/225) — so the model reads a
+22'/67' boundary, not the 45' half. If the LLM does not return a complete audit
+for a market, that market is skipped rather than submitted without reviewability.
 
 ## Evidence and Audit
 

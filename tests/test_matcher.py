@@ -1,6 +1,15 @@
 import unittest
 
+from bot import predictor as afpred
+from bot.evidence import _extra_related_observations
 from bot.matcher import match_intent
+from bot.pricing import PriceCtx
+
+
+def _I(market, subject="match", comparator="yes", threshold=None, period="match",
+       player=None):
+    return {"market": market, "subject": subject, "comparator": comparator,
+            "threshold": threshold, "period": period, "player": player}
 
 
 class DirectContractTests(unittest.TestCase):
@@ -67,6 +76,83 @@ class DirectContractTests(unittest.TestCase):
             market="first_team_to_score", subject="home", comparator="yes", period="match"
         )
         self.assertEqual((spec["bet_id"], spec["value"]), (14, "Home"))
+
+
+class KnockoutMarketMappingTests(unittest.TestCase):
+    def test_new_exact_markets_map_to_expected_bets(self):
+        cases = [
+            (_I("to_advance", "home"), {"type": "select", "bet_id": 61, "value": "Home"}),
+            (_I("to_advance", "away"), {"type": "select", "bet_id": 61, "value": "Away"}),
+            (_I("team_clean_sheet", "home"), {"type": "select", "bet_id": 27, "value": "Yes"}),
+            (_I("team_clean_sheet", "away"), {"type": "select", "bet_id": 28, "value": "Yes"}),
+            (_I("team_score_both_halves", "home"), {"type": "select", "bet_id": 111, "value": "Yes"}),
+            (_I("both_teams_card"), {"type": "select", "bet_id": 252, "value": "Yes"}),
+            (_I("penalty_awarded"), {"type": "select", "bet_id": 163, "value": "Yes"}),
+            (_I("red_card"), {"type": "ou", "bet_id": 335, "side": "Over", "line": 0.5}),
+            (_I("total_shots", "match", "gte", 22), {"type": "ou", "bet_id": 211, "side": "Over", "line": 21.5}),
+            (_I("team_shots", "home", "gte", 10), {"type": "ou", "bet_id": 221, "side": "Over", "line": 9.5}),
+        ]
+        for intent, expected in cases:
+            spec = match_intent(intent, "Home FC", "Away FC")
+            self.assertIsNotNone(spec, msg=intent)
+            for key, value in expected.items():
+                self.assertEqual(spec[key], value, msg=f"{intent} -> {key}")
+
+    def test_win_margin_maps_to_asian_handicap_pair(self):
+        spec = match_intent(_I("win_margin", "home", "gte", 2), "Home FC", "Away FC")
+        self.assertEqual(spec["type"], "ah")
+        self.assertEqual((spec["bet_id"], spec["side"], spec["line"]), (4, "Home", 1.5))
+        self.assertIsNone(match_intent(_I("win_margin", "match", "gte", 2), "H", "A"))
+
+    def test_total_shots_for_one_team_becomes_team_shots(self):
+        spec = match_intent(_I("total_shots", "home", "gte", 12), "Home FC", "Away FC")
+        self.assertEqual((spec["type"], spec["bet_id"]), ("ou", 221))
+
+
+class AsianHandicapDevigTests(unittest.TestCase):
+    def _book(self):
+        return {"name": "b", "bets": [{"id": 4, "values": [
+            {"value": "Home -1.5", "odd": "3.00"},
+            {"value": "Away +1.5", "odd": "1.40"},
+            {"value": "Home -0.5", "odd": "2.00"},   # other ladder lines: ignored
+            {"value": "Away +0.5", "odd": "1.80"},
+        ]}]}
+
+    def test_devig_isolates_the_requested_pair(self):
+        spec = {"type": "ah", "bet_id": 4, "side": "Home", "line": 1.5, "label": "x"}
+        out = afpred.predict([self._book(), self._book()], spec)
+        self.assertIsNotNone(out)
+        # fair Home -1.5 = (1/3.0)/(1/3.0 + 1/1.4) ~ 0.318, not blended with -0.5.
+        self.assertAlmostEqual(out["probability"], 0.3186, places=3)
+
+    def test_missing_pair_returns_no_price(self):
+        spec = {"type": "ah", "bet_id": 4, "side": "Home", "line": 2.5, "label": "x"}
+        self.assertIsNone(afpred.predict([self._book()], spec))
+
+
+class ExtraRelatedOddsTests(unittest.TestCase):
+    def _ctx(self):
+        yesno = [{"value": "Yes", "odd": "3.0"}, {"value": "No", "odd": "1.3"}]
+        bets = [{"id": b, "name": str(b), "values": yesno}
+                for b in (144, 145, 146, 147, 148, 149, 224, 225, 342)]
+        return PriceCtx(home="A", away="B", af_books=[{"name": "b", "bets": bets}],
+                        oa=None, oa_event=None)
+
+    def test_hydration_goal_question_gets_the_full_interval_ladder(self):
+        obs = _extra_related_observations(
+            "Will a goal be scored before the first hydration break?", _I("none"),
+            self._ctx())
+        keys = {o["market_key"] for o in obs}
+        for bet in range(144, 150):
+            self.assertIn(f"af_bet_{bet}", keys)
+        self.assertTrue(obs and all(o["role"] == "related" for o in obs))
+
+    def test_result_contract_gets_extra_time_deciders(self):
+        obs = _extra_related_observations(
+            "Will regulation end in a tie?", _I("match_draw"), self._ctx())
+        keys = {o["market_key"] for o in obs}
+        self.assertIn("af_bet_224", keys)
+        self.assertIn("af_bet_225", keys)
 
 
 if __name__ == "__main__":

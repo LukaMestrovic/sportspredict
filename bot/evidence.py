@@ -192,7 +192,71 @@ def _related_odds(question: str, intent: dict | None, ctx: PriceCtx) -> list[dic
     for related_intent, why in _related_intents(question, intent, ctx.home, ctx.away):
         obs, _spec = _direct_odds(related_intent, ctx)
         related.extend(_tag_observations(obs, "related", why))
+    related.extend(_extra_related_observations(question, intent, ctx))
     return related
+
+
+# Per-15-minute goal distribution (API-Football select Yes/No bets). The whole
+# ladder lets the LLM interpolate ANY window — a hydration break (22'/67') or
+# stoppage time — instead of collapsing it onto the 45' half boundary.
+_GOAL_INTERVAL_BETS = {
+    144: "goal in 1-15'", 145: "goal in 16-30'", 146: "goal in 31-45'",
+    147: "goal in 46-60'", 148: "goal in 61-75'", 149: "goal in 76-90'",
+}
+
+
+def _extra_related_observations(
+    question: str, intent: dict | None, ctx: PriceCtx
+) -> list[dict]:
+    """Targeted related odds for families with no single mapped contract.
+
+    These pull specific API-Football bet IDs that have no clean intent (goal
+    timing, ET/penalty deciders, half-specific discipline). Each is de-vigged by
+    the normal predictor, so absent markets simply yield nothing.
+    """
+    lower = question.lower()
+    market = (intent or {}).get("market")
+    out: list[dict] = []
+
+    def add(spec: dict, why: str) -> None:
+        out.extend(_tag_observations(
+            afpred.observations(ctx.af_books, spec), "related", why))
+
+    goal_timing = (
+        ("hydration break" in lower and ("goal" in lower or "scored" in lower))
+        or "stoppage time" in lower
+    )
+    if goal_timing:
+        window = (
+            "the first ~22 min, BEFORE the 22' hydration break (not the 45' half)"
+            if "before the first" in lower else
+            "from the 67' hydration break to full time (not the whole 2nd half)"
+            if "after the second" in lower else
+            "the stoppage-time window only"
+        )
+        for bet_id, name in _GOAL_INTERVAL_BETS.items():
+            add({"type": "select", "bet_id": bet_id, "value": "Yes", "label": name},
+                f"per-15' goal distribution ({name}); interpolate {window}")
+        add({"type": "ou", "bet_id": 6, "side": "Over", "line": 0.5, "label": "1H goal"},
+            "first-half goal rate (loose bound for an early window)")
+        add({"type": "ou", "bet_id": 26, "side": "Over", "line": 0.5, "label": "2H goal"},
+            "second-half goal rate (loose bound for a late window)")
+
+    # Regulation-result contracts: how often the tie is broken only in ET/pens.
+    if market in ("win_margin", "to_advance", "match_winner", "match_draw") or (
+        "end in a tie" in lower or "win in regulation" in lower
+    ):
+        add({"type": "select", "bet_id": 225, "value": "Yes", "label": "decided in ET"},
+            "P(match goes to extra time) — regulation contracts exclude it")
+        add({"type": "select", "bet_id": 224, "value": "Yes", "label": "decided on pens"},
+            "P(match goes to penalties) — regulation contracts exclude it")
+
+    # Discipline timing/severity for red-card and after-break card questions.
+    if market == "red_card" or ("card" in lower and "hydration break" in lower):
+        add({"type": "select", "bet_id": 342, "value": "Yes", "label": "red card 1H"},
+            "first-half red-card price as a discipline-severity signal")
+
+    return out
 
 
 def _related_intents(
@@ -208,6 +272,9 @@ def _related_intents(
         (_intent("total_corners", "match", "gte", 10), "corner volume context"),
         (_intent("total_cards", "match", "gte", 4), "card temperature context"),
         (_intent("total_shots_on_target", "match", "gte", 8), "shot quality/volume context"),
+        (_intent("total_shots", "match", "gte", 22), "total shot (on+off target) volume context"),
+        (_intent("to_advance", "home"), f"{home} to-advance price (knockout qualification)"),
+        (_intent("to_advance", "away"), f"{away} to-advance price (knockout qualification)"),
         (_intent("corners_compare", "home", "more"), f"{home} territorial/corner edge"),
         (_intent("corners_compare", "away", "more"), f"{away} territorial/corner edge"),
         (_intent("cards_compare", "home", "more"), f"{home} card-risk comparison"),
