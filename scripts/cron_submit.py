@@ -12,8 +12,7 @@ re-submits on the intervening ticks. A file lock prevents overlapping ticks
 
 At T-30 the lineups are out and there is ~1800s of headroom, so the auditable
 LLM pricing layer receives the match evidence JSON, researches online odds and
-context, and returns raw probabilities plus a per-market audit trail before
-outcome calibration.
+context, and returns the submitted probabilities plus a per-market audit trail.
 
 Manual checks:
   python -m scripts.cron_submit --dry-run   # decide + price, never submit/mark
@@ -27,13 +26,12 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from bot import calibration, llm_pricing
+from bot import llm_pricing
 from bot.apifootball import APIFootball
 from bot.config import ROOT
 from bot.oddsapi import OddsAPI
 from bot.pipeline import run_match, submit_with_ledger
 from bot.sportspredict import SportPredict
-from bot.web import WebAPI
 
 # Submit at these many minutes-before-kickoff (largest first). A window fires on
 # the first tick at or under its threshold, then is marked done for that match.
@@ -88,30 +86,6 @@ def _dispatch(args) -> None:
     sp = SportPredict()
     event = sp.event()
     lobby = sp.lobby(event["id"])
-
-    # Normal ticks keep outcome calibration current even when no match is due.
-    # Status/dry-run remain free of calibration-state writes.
-    calibration_snapshot = None
-    if not args.status and not args.dry_run:
-        try:
-            sync = calibration.sync_and_refit(sp, WebAPI(), event, lobby)
-            calibration_snapshot = calibration.load_active_snapshot(lobby["id"])
-            if sync["observations_imported"] or sync["refit"]:
-                gate = (sync.get("global_gate") or {}).get("active", False)
-                _log(
-                    f"calibration sync: +{sync['observations_imported']} observations, "
-                    f"{sync['observations_total']} total, refit={sync['refit']}, "
-                    f"global_gate={gate}, model={sync.get('model_id')}"
-                )
-        except Exception as exc:
-            _log(f"calibration sync warning: {type(exc).__name__}: {exc}")
-            try:
-                calibration_snapshot = calibration.load_active_snapshot(lobby["id"])
-            except Exception as load_exc:
-                _log(
-                    f"calibration snapshot warning: {type(load_exc).__name__}: "
-                    f"{load_exc}; using identity"
-                )
     matches = sp.matches(event["id"], lobby["id"])
 
     now = datetime.now(timezone.utc)
@@ -153,14 +127,11 @@ def _dispatch(args) -> None:
         return
 
     for sp_match, kickoff in due:
-        _process_match(
-            sp_match, kickoff, now, sp, event, lobby, args,
-            calibration_snapshot,
-        )
+        _process_match(sp_match, kickoff, now, sp, event, lobby, args)
 
 
 def _process_match(
-    sp_match, kickoff, now, sp, event, lobby, args, calibration_snapshot=None
+    sp_match, kickoff, now, sp, event, lobby, args
 ) -> None:
     """Price -> submit -> mark one due match. Each match owns its own
     per-window markers, so simultaneous kickoffs are handled independently."""
@@ -192,7 +163,6 @@ def _process_match(
         sp_match, markets, af, oa, allow_external=False,
         llm_pricing_enabled=True, llm_pricing_refresh=True,
         lineups=lineups, minutes_before=mins,
-        calibration_snapshot=calibration_snapshot,
     )
 
     by_src: dict[str, int] = {}
@@ -208,7 +178,6 @@ def _process_match(
     outcome, run_ids = submit_with_ledger(
         sp, event["id"], lobby["id"], [result],
         window_min=window, minutes_before=mins,
-        calibration_snapshot=calibration_snapshot,
     )
     run_id = run_ids[0]
 
@@ -248,17 +217,9 @@ def _write_audit(head, kickoff, window, mins, outcome, by_src, result, run_id) -
         "llm_pricing_report_path": getattr(result, "llm_pricing_report_path", None),
         "llm_pricing_briefing": getattr(result, "llm_pricing_briefing", None),
         "llm_pricing_sources": getattr(result, "llm_pricing_sources", []),
-        "calibration_model_id": getattr(result, "calibration_model_id", None),
         "predictions": [
             {"question": p.question,
-             "raw_probability": p.raw_probability_int,
              "probability": p.probability_int,
-             "calibration_family": p.calibration_family,
-             "raw_model_cohort": p.raw_model_cohort,
-             "calibration_model_id": p.calibration_model_id,
-             "calibration_delta_int": p.calibration_delta_int,
-             "calibration_applied": p.calibration_applied,
-             "calibration_gate_reason": p.calibration_gate_reason,
              "rationale": p.llm_reasoning_summary,
              "audit": p.llm_audit,
              "source": p.source, "market_id": p.market_id}
@@ -287,20 +248,14 @@ def _write_llm_pricing_report(head, kickoff, mins, result, run_id) -> None:
     if getattr(result, "llm_pricing_sources", None):
         lines.append("[sources] " + ", ".join(result.llm_pricing_sources[:10]))
     lines.append("")
-    lines.append(f"{'raw':>5} {'final':>5} {'src':>12} {'n':>3}  question")
+    lines.append(f"{'prob':>5} {'src':>12} {'n':>3}  question")
     for p in result.predictions:
-        raw = p.raw_probability_int or p.probability_int
         lines.append(
-            f"{raw:>4}% {p.probability_int:>4}% {(p.source or '?')[:12]:>12} "
+            f"{p.probability_int:>4}% {(p.source or '?')[:12]:>12} "
             f"{p.n_books or 0:>3}  {p.question}"
         )
-        if p.calibration_gate_reason:
-            lines.append(
-                f"{'':>13}calibration: {p.calibration_gate_reason} "
-                f"(family={p.calibration_family}, model={p.calibration_model_id})"
-            )
         if p.llm_reasoning_summary:
-            lines.append(f"{'':>13}↳ {p.llm_reasoning_summary}")
+            lines.append(f"{'':>8}↳ {p.llm_reasoning_summary}")
     lines.append(f"\n{len(result.predictions)} priced, {len(result.skipped)} skipped, "
                  f"audit={getattr(result, 'llm_pricing_report_path', None)}")
     lines.append(f"USAGE: {json.dumps(llm_pricing.LAST_USAGE)}")
