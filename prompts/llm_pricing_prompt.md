@@ -61,7 +61,10 @@ over odds-derived betting blogs, which usually just re-express the same market:
 - player_form: per-player minutes, starts, and shots, shots-on-target and goals per
   90. Use this as the BASE RATE for scorer, shots-on-target and brace props, then
   adjust for confirmed lineup and expected minutes. A bench/short-minutes profile
-  lowers a prop; a high per-90 starter raises it.
+  lowers a prop; a high per-90 starter raises it. For a player-specific market, that
+  question's evidence carries a `player_form` row for THAT exact player — use it and
+  do NOT read another player's line from the match-level list. An empty row means no
+  sample; say so and fall back to research.
 - referee_profile: the assigned referee's yellows/reds per game from this
   competition's matches. Prefer it over any scraped referee figure, but weight a
   small sample (low "games") cautiously and corroborate with research. Penalty rate

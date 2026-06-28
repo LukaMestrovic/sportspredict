@@ -48,6 +48,22 @@ class APIFootball:
             )
         return self._fixtures_cache
 
+    def league_fixtures(self, league_id: int, season: int) -> list[dict]:
+        """All fixtures for a league+season (cached 24h). Empty on any error.
+
+        Used to build referee discipline history across competitions, so it must
+        tolerate league/season combos that don't exist (off-year tournaments,
+        not-yet-started seasons) by returning an empty list instead of raising.
+        """
+        def fetch():
+            try:
+                return self._get("/fixtures", league=league_id, season=season)["response"]
+            except Exception:
+                return []
+        return cache.get_or_fetch(
+            "af_league_fixtures", f"{league_id}-{season}", fetch, ttl=24 * 3600,
+        )
+
     def find_fixture(self, kickoff_iso: str, match_name: str | None = None) -> dict | None:
         """Match an SP match by kickoff and, when ambiguous, team identity."""
         target = kickoff_iso[:16]  # 'YYYY-MM-DDTHH:MM'

@@ -52,9 +52,13 @@ def build(af, fixture, home, away, lineups) -> dict:
     except Exception:
         played = []
 
+    players = _safe(_player_form_both, af, played, home_id, away_id, lineups)
     return {
         "team_form": _safe(_team_form_both, af, played, home_id, away_id),
-        "player_form": _safe(_player_form_both, af, played, home_id, away_id, lineups),
+        "player_form": players.get("lists") or {},
+        # Full per-player map (all players, uncapped), keyed by name. Used to attach
+        # the exact row to a player-specific question; NOT embedded wholesale.
+        "player_index": players.get("index") or {},
         "referee_profile": _safe(_referee_profile, af, fx.get("referee"), played),
         "injuries": _safe(_injuries_both, af, home_id, away_id),
     }
@@ -212,13 +216,22 @@ def _player_form_both(af, played, home_id, away_id, lineups) -> dict:
                 fixture_ids.append(fid)
     per_fixture = {fid: _players(af, fid) for fid in fixture_ids}
     lineup_names = _lineup_names(lineups)
+    home_full = _player_rows(played, per_fixture, home_id)
+    away_full = _player_rows(played, per_fixture, away_id)
+    index = {p["name"]: p for p in home_full + away_full if p.get("name")}
     return {
-        "home": _player_form(played, per_fixture, home_id, lineup_names),
-        "away": _player_form(played, per_fixture, away_id, lineup_names),
+        # Capped/lineup-scoped lists for non-player markets (e.g. "a sub scores").
+        "lists": {
+            "home": _scope_and_cap(home_full, lineup_names),
+            "away": _scope_and_cap(away_full, lineup_names),
+        },
+        # Full map so a named player's exact row can be attached per question.
+        "index": index,
     }
 
 
-def _player_form(played, per_fixture, team_id, lineup_names) -> list:
+def _player_rows(played, per_fixture, team_id) -> list:
+    """Every player's aggregated form for a team (uncapped), by minutes desc."""
     if not team_id:
         return []
     team_fids = {(fx.get("fixture") or {}).get("id")
@@ -230,13 +243,17 @@ def _player_form(played, per_fixture, team_id, lineup_names) -> list:
                 continue
             for pl in entry.get("players") or []:
                 _accumulate_player(agg, pl)
-    players = [_finalize_player(name, a) for name, a in agg.items()]
+    rows = [_finalize_player(name, a) for name, a in agg.items()]
+    rows.sort(key=lambda p: p["minutes"], reverse=True)
+    return rows
+
+
+def _scope_and_cap(rows, lineup_names) -> list:
     if lineup_names:
-        in_xi = [p for p in players if _name_in(p["name"], lineup_names)]
+        in_xi = [p for p in rows if _name_in(p["name"], lineup_names)]
         if in_xi:
-            players = in_xi
-    players.sort(key=lambda p: p["minutes"], reverse=True)
-    return players[:_MAX_PLAYERS_PER_TEAM]
+            rows = in_xi
+    return rows[:_MAX_PLAYERS_PER_TEAM]
 
 
 def _accumulate_player(agg, pl) -> None:
@@ -295,18 +312,31 @@ def _name_in(name, lineup_names) -> bool:
 # --- referee ----------------------------------------------------------------
 
 def _referee_profile(af, referee, played) -> dict:
-    """Referee discipline from this competition's played fixtures.
+    """Referee discipline across competitions, matched by name.
 
-    API-Football's plan does not support a referee filter on /fixtures (the
-    ``referee`` param is rejected), so we derive the profile from the WC fixtures
-    we already cache, matched by name. The sample is therefore tournament-only and
-    can be thin; the prompt tells the model to weight a low game count cautiously.
+    API-Football has no referee endpoint and rejects a referee filter on
+    /fixtures, so we scan the configured competitions' fixtures (shared and
+    cached) plus this tournament's fixtures, match the assigned referee by name,
+    and aggregate cards from each match's statistics. This is far deeper than the
+    1-3 games a referee gets in the WC alone. The sample is still finite; the
+    prompt tells the model to weight a low game count cautiously.
     """
     if not referee:
         return {}
-    fixtures = [fx for fx in played
-                if player_matches(referee, (fx.get("fixture") or {}).get("referee") or "")]
-    yellows, reds, sample = [], [], []
+    by_id: dict = {}
+    for fx in _referee_scan_fixtures(af, played):
+        fixt = fx.get("fixture") or {}
+        if (fixt.get("status") or {}).get("short") not in _PLAYED:
+            continue
+        if not player_matches(referee, fixt.get("referee") or ""):
+            continue
+        if fixt.get("id") is not None:
+            by_id[fixt["id"]] = fx
+    fixtures = sorted(
+        by_id.values(),
+        key=lambda f: (f.get("fixture") or {}).get("date") or "", reverse=True,
+    )
+    yellows, reds, sample, comps = [], [], [], {}
     for fx in fixtures[:_REFEREE_GAMES]:
         by_team = _stats_by_team(_stats(af, (fx.get("fixture") or {}).get("id")))
         if not by_team:
@@ -316,8 +346,11 @@ def _referee_profile(af, referee, played) -> dict:
         yellows.append(y)
         reds.append(r)
         teams = fx.get("teams") or {}
+        comp = (fx.get("league") or {}).get("name")
+        comps[comp] = comps.get(comp, 0) + 1
         sample.append({
             "date": ((fx.get("fixture") or {}).get("date") or "")[:10],
+            "competition": comp,
             "match": f"{(teams.get('home') or {}).get('name')} vs "
                      f"{(teams.get('away') or {}).get('name')}",
             "yellows": int(y), "reds": int(r),
@@ -329,9 +362,22 @@ def _referee_profile(af, referee, played) -> dict:
         "games": len(yellows),
         "yellows_per_game": _avg(yellows),
         "reds_per_game": _avg(reds),
+        "competitions": comps,
         "note": "penalty rate is not derivable from fixture statistics; omitted.",
-        "sample": sample,
+        "sample": sample[:8],
     }
+
+
+def _referee_scan_fixtures(af, played) -> list:
+    """Fixtures to search for the referee: this tournament + configured leagues."""
+    fixtures = list(played)
+    for league_id in config.REFEREE_SCAN_LEAGUES:
+        for season in config.REFEREE_SCAN_SEASONS:
+            try:
+                fixtures.extend(af.league_fixtures(league_id, season))
+            except Exception:
+                continue
+    return fixtures
 
 
 # --- injuries ---------------------------------------------------------------

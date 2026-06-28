@@ -156,6 +156,43 @@ class ContextEvidenceTests(unittest.TestCase):
         self.assertEqual(evidence["referee_profile"]["yellows_per_game"], 4.0)
         self.assertEqual(evidence["injuries"]["home"][0]["player"], "X")
 
+    def test_player_market_gets_that_players_exact_row(self):
+        result = _result({
+            "scorer": {"market": "player_goal_scorer", "subject": "player",
+                       "player": "Cyle Larin", "comparator": "yes",
+                       "threshold": None, "period": "match"},
+        }, question="Will Cyle Larin score a goal?")
+        result.match_context = {
+            "player_index": {
+                "Cyle Larin": {"name": "Cyle Larin", "minutes": 162, "goals": 2,
+                               "goals_per90": 1.11},
+                "Jonathan David": {"name": "Jonathan David", "minutes": 241, "goals": 3,
+                                   "goals_per90": 1.12},
+            },
+        }
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+
+        with patch("bot.evidence.hybrid_model.simulator_estimates", return_value={}):
+            evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+        q = evidence["question_evidence"][0]
+        # The attached row is Larin's, never David's.
+        self.assertEqual(q["player_form"]["name"], "Cyle Larin")
+        self.assertEqual(q["player_form"]["goals"], 2)
+
+    def test_non_player_market_has_no_player_form_key(self):
+        result = _result({
+            "win": {"market": "match_winner", "subject": "home", "player": None,
+                    "comparator": "win", "threshold": None, "period": "match"},
+        })
+        result.match_context = {"player_index": {"X": {"name": "X"}}}
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+
+        with patch("bot.evidence.hybrid_model.simulator_estimates", return_value={}):
+            evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+        self.assertNotIn("player_form", evidence["question_evidence"][0])
+
     def test_missing_context_yields_empty_blocks(self):
         result = _result({
             "win": {"market": "match_winner", "subject": "home",

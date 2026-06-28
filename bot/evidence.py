@@ -21,6 +21,7 @@ from . import predictor as afpred
 from .matcher import match_intent, match_intent_oddsapi
 from .parser import parse_questions
 from .pricing import PriceCtx
+from .teams import player_matches
 
 
 EVIDENCE_DIR = config.ROOT / "logs" / "llm_pricing_runs"
@@ -53,6 +54,9 @@ def build_match_evidence(
         spec_by_market[mid] = spec
         estimates_by_market[mid] = _deterministic_estimates(market["question"], intent, ctx)
 
+    context = getattr(result, "match_context", None) or {}
+    player_index = context.get("player_index") or {}
+
     question_evidence = []
     for market in result.markets:
         mid = market["id"]
@@ -67,7 +71,7 @@ def build_match_evidence(
             MAX_RELATED_ODDS_PER_QUESTION,
         )
 
-        question_evidence.append({
+        item = {
             "market_id": mid,
             "question": question,
             "intent": intent,
@@ -83,13 +87,18 @@ def build_match_evidence(
                 "odds, simulator/model context, and non-odds factors were used "
                 "or downweighted."
             ),
-        })
+        }
+        # For a player-specific market, attach THAT player's exact form row so the
+        # model cannot read the wrong player's line from the match-level list.
+        player_form = _player_form_for(intent, player_index)
+        if player_form is not None:
+            item["player_form"] = player_form
+        question_evidence.append(item)
 
     all_obs = []
     for item in question_evidence:
         all_obs.extend(item["direct_odds"])
         all_obs.extend(item["related_odds"])
-    context = getattr(result, "match_context", None) or {}
     evidence = {
         "schema_version": 3,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -154,6 +163,23 @@ def _match_meta(result, lineups, minutes_before: float | None) -> dict:
         "referee": fixture.get("referee"),
         "lineups": summarize_lineups(lineups),
     }
+
+
+def _player_form_for(intent: dict | None, player_index: dict) -> dict | None:
+    """The form row for a player-specific market.
+
+    Returns ``None`` for non-player markets (so no key is added), ``{}`` for a
+    named player with no form sample, or the matched player's exact row. Matching
+    by name (via ``player_matches``) removes the wrong-row risk of leaving the
+    model to pick from the match-level list.
+    """
+    player = (intent or {}).get("player")
+    if not player or player == "None":
+        return None
+    for row in player_index.values():
+        if player_matches(player, row.get("name", "")):
+            return row
+    return {}
 
 
 def _fixture_referee(result) -> str | None:

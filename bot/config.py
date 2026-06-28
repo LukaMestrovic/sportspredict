@@ -40,6 +40,29 @@ ODDS_REGIONS = os.environ.get("ODDS_REGIONS", "eu,uk,us")
 WC_LEAGUE_ID = 1
 WC_SEASON = 2026
 
+
+def _int_list(value: str) -> list[int]:
+    return [int(x) for x in value.split(",") if x.strip()]
+
+
+# Referee discipline history. API-Football has no referee endpoint and rejects a
+# referee filter on /fixtures, so we scan these competitions' fixtures (shared,
+# cached) and match the assigned referee by name across them — far deeper than the
+# 1-3 games a referee gets in the WC alone. Elite international referees mostly
+# work top UEFA leagues + continental + confederation competitions, so this set
+# captures the bulk of their recent matches. Override via REFEREE_SCAN_LEAGUES.
+REFEREE_SCAN_LEAGUES = _int_list(os.environ.get(
+    "REFEREE_SCAN_LEAGUES",
+    # WC, UCL, UEL, UECL, Euro, Copa America, then the big domestic top flights.
+    "1,2,3,848,4,9,39,140,135,78,61,94,88,71,128",
+))
+# Seasons to scan for the domestic/continental leagues above (the current WC is
+# always included separately via the cached WC fixtures). Recent completed
+# seasons give the freshest card profile.
+REFEREE_SCAN_SEASONS = _int_list(os.environ.get(
+    "REFEREE_SCAN_SEASONS", f"{WC_SEASON - 1},{WC_SEASON - 2}",
+))
+
 # Model for structured question parsing. Parser responses are cached to disk
 # (see parser.chat_json), so the model is a one-time tournament cost and we use
 # the most reliable affordable option rather than the cheapest. gpt-5.4-mini

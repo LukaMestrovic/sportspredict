@@ -7,6 +7,7 @@ from bot import match_context
 def _fixture(fid, home_id, home, away_id, away, gh, ga, date, ref=None):
     return {
         "fixture": {"id": fid, "date": date, "status": {"short": "FT"}, "referee": ref},
+        "league": {"name": "World Cup"},
         "teams": {"home": {"id": home_id, "name": home},
                   "away": {"id": away_id, "name": away}},
         "goals": {"home": gh, "away": ga},
@@ -68,6 +69,19 @@ _FIXTURE_PLAYERS = {
 }
 
 
+# A non-WC fixture (different competition) the same referee also officiated,
+# proving the profile spans more than this tournament.
+_OTHER_LEAGUE_FX = {
+    "fixture": {"id": 50, "date": "2026-05-01T00:00:00Z", "status": {"short": "FT"},
+                "referee": "J. Smith"},
+    "league": {"name": "Primeira Liga"},
+    "teams": {"home": {"id": 900, "name": "Porto"}, "away": {"id": 901, "name": "Benfica"}},
+    "goals": {"home": 1, "away": 1},
+}
+_STATS[50] = [_stat(900, 10, 4, 5, 12, 1, 4, 0, "1.0"),
+              _stat(901, 9, 3, 4, 13, 2, 2, 1, "0.9")]
+
+
 class _FakeAF:
     def __init__(self, *, fail=None):
         self.fail = fail or set()
@@ -76,6 +90,14 @@ class _FakeAF:
         if "fixtures" in self.fail:
             raise RuntimeError("boom")
         return _FIXTURES
+
+    def league_fixtures(self, league_id, season):
+        if "league" in self.fail:
+            raise RuntimeError("boom")
+        # One configured league/season returns a Pinheiro match in another comp.
+        if league_id == 94 and season == 2025:
+            return [_OTHER_LEAGUE_FX]
+        return []
 
     def settled_statistics(self, fid):
         if "stats" in self.fail:
@@ -132,13 +154,23 @@ class MatchContextTests(unittest.TestCase):
         self.assertEqual(striker["goals"], 1)
         self.assertAlmostEqual(striker["sot_per90"], round(3 / 170 * 90, 2))
 
-    def test_referee_profile_from_competition_fixtures(self):
+    def test_player_index_keeps_players_dropped_from_capped_list(self):
+        ctx = match_context.build(_FakeAF(), _TARGET, "Alpha", "Beta", _LINEUPS)
+        # Sub Three is scoped out of the list but must remain in the full index,
+        # so a named prop on a bench player can still find an exact row.
+        self.assertNotIn("Sub Three", [p["name"] for p in ctx["player_form"]["home"]])
+        self.assertIn("Sub Three", ctx["player_index"])
+        self.assertEqual(ctx["player_index"]["Sub Three"]["minutes"], 20)
+
+    def test_referee_profile_spans_competitions(self):
         ctx = match_context.build(_FakeAF(), _TARGET, "Alpha", "Beta", None)
         ref = ctx["referee_profile"]
         self.assertEqual(ref["name"], "J. Smith")
-        self.assertEqual(ref["games"], 2)            # fixtures 1 and 3 (J. Smith)
-        self.assertEqual(ref["yellows_per_game"], 4.0)  # (2+3) and (1+2) -> 5,3
-        self.assertEqual(ref["reds_per_game"], 0.0)
+        # WC fixtures 1 and 3 plus the Primeira Liga fixture 50.
+        self.assertEqual(ref["games"], 3)
+        self.assertEqual(ref["competitions"], {"World Cup": 2, "Primeira Liga": 1})
+        self.assertAlmostEqual(ref["yellows_per_game"], round((5 + 3 + 6) / 3, 2))
+        self.assertAlmostEqual(ref["reds_per_game"], round(1 / 3, 2))
 
     def test_referee_profile_empty_on_name_miss(self):
         target = _fixture(999, 100, "Alpha", 200, "Beta", 0, 0,

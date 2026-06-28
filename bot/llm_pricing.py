@@ -319,6 +319,11 @@ def _markdown_report(result, evidence: dict, evidence_path: Path | None, respons
         lines.append(f"- reasoning summary: {audit.get('reasoning_summary')}")
         _append_audit_list(lines, "Sources", audit.get("sources"))
         qe = evidence_by_market.get(mid, {})
+        if "player_form" in qe:
+            pf = qe["player_form"]
+            lines.append("- player form (this player): "
+                         + (json.dumps(pf, ensure_ascii=False, sort_keys=True)
+                            if pf else "no sample found"))
         if not (audit.get("provided_odds_used") or audit.get("online_odds_found")):
             lines.append("- audit note: no direct or online odds were used; related evidence follows.")
         if qe.get("direct_odds"):
