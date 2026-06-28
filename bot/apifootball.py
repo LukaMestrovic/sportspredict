@@ -114,19 +114,6 @@ class APIFootball:
             ttl=0,
         )
 
-    def referee_fixtures(self, referee: str, season: int) -> list[dict]:
-        """Fixtures a referee officiated in a season (cached 24h).
-
-        Career discipline history for the assigned referee; spans all leagues, so
-        it is far deeper than the handful of WC games per referee. Empty on a name
-        miss, which the caller treats as 'no profile'.
-        """
-        return cache.get_or_fetch(
-            "af_referee_fixtures", f"{referee}|{season}",
-            lambda: self._get("/fixtures", referee=referee, season=season)["response"],
-            ttl=24 * 3600,
-        )
-
     def injuries(self, team_id: int, season: int) -> list[dict]:
         """Injury/suspension list for a team in a season (cached 10 min).
 

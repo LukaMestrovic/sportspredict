@@ -32,16 +32,6 @@ class NewEndpointTests(unittest.TestCase):
         self.assertEqual(again, out)
         self.assertEqual(self.calls, [("/fixtures/players", {"fixture": 42})])
 
-    def test_referee_fixtures_keys_on_name_and_season(self):
-        with tempfile.TemporaryDirectory() as tmp, patch.object(
-            cache, "CACHE_DIR", Path(tmp)
-        ):
-            af = self._client([{"fixture": {"id": 7}}])
-            out = af.referee_fixtures("J. Smith", 2026)
-
-        self.assertEqual(out, [{"fixture": {"id": 7}}])
-        self.assertEqual(self.calls, [("/fixtures", {"referee": "J. Smith", "season": 2026})])
-
     def test_injuries_refreshes_with_refresh_odds(self):
         responses = iter([
             [{"player": {"name": "Old"}}],

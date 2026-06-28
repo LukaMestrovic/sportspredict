@@ -87,13 +87,6 @@ class _FakeAF:
             raise RuntimeError("boom")
         return _FIXTURE_PLAYERS.get(fid, [])
 
-    def referee_fixtures(self, referee, season):
-        if "referee" in self.fail:
-            raise RuntimeError("boom")
-        if season == 2026 and referee == "J. Smith":
-            return [_FIXTURES[0], _FIXTURES[2]]
-        return []
-
     def injuries(self, team_id, season):
         if "injuries" in self.fail:
             raise RuntimeError("boom")
@@ -139,13 +132,19 @@ class MatchContextTests(unittest.TestCase):
         self.assertEqual(striker["goals"], 1)
         self.assertAlmostEqual(striker["sot_per90"], round(3 / 170 * 90, 2))
 
-    def test_referee_profile_from_career_fixtures(self):
+    def test_referee_profile_from_competition_fixtures(self):
         ctx = match_context.build(_FakeAF(), _TARGET, "Alpha", "Beta", None)
         ref = ctx["referee_profile"]
         self.assertEqual(ref["name"], "J. Smith")
-        self.assertEqual(ref["games"], 2)            # fixtures 1 and 3
+        self.assertEqual(ref["games"], 2)            # fixtures 1 and 3 (J. Smith)
         self.assertEqual(ref["yellows_per_game"], 4.0)  # (2+3) and (1+2) -> 5,3
         self.assertEqual(ref["reds_per_game"], 0.0)
+
+    def test_referee_profile_empty_on_name_miss(self):
+        target = _fixture(999, 100, "Alpha", 200, "Beta", 0, 0,
+                          "2026-06-28T00:00:00Z", "Nobody At All")
+        ctx = match_context.build(_FakeAF(), target, "Alpha", "Beta", None)
+        self.assertEqual(ctx["referee_profile"], {})
 
     def test_injuries_dedup_by_player(self):
         ctx = match_context.build(_FakeAF(), _TARGET, "Alpha", "Beta", None)
@@ -155,14 +154,14 @@ class MatchContextTests(unittest.TestCase):
 
     def test_each_block_degrades_independently(self):
         ctx = match_context.build(
-            _FakeAF(fail={"players", "referee", "injuries"}),
+            _FakeAF(fail={"players", "injuries"}),
             _TARGET, "Alpha", "Beta", None,
         )
-        # Team form still works; the failing blocks fall back to empty. Player
-        # form degrades per-fixture, so it stays a well-formed empty-list dict.
+        # Team form and referee still work; the failing blocks fall back to empty.
+        # Player form degrades per-fixture, so it stays a well-formed empty dict.
         self.assertTrue(ctx["team_form"]["home"])
+        self.assertTrue(ctx["referee_profile"])
         self.assertEqual(ctx["player_form"], {"home": [], "away": []})
-        self.assertEqual(ctx["referee_profile"], {})
         self.assertEqual(ctx["injuries"], {})
 
     def test_total_fetch_failure_yields_empty_blocks(self):

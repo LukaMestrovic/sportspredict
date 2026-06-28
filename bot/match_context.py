@@ -23,7 +23,6 @@ _TEAM_FORM_GAMES = 6
 _PLAYER_FORM_GAMES = 8
 _MAX_PLAYERS_PER_TEAM = 16
 _REFEREE_GAMES = 12
-_REFEREE_SEASONS = 3  # current WC season + the prior two
 
 # settled_statistics "type" -> our short key.
 _STAT_MAP = {
@@ -56,7 +55,7 @@ def build(af, fixture, home, away, lineups) -> dict:
     return {
         "team_form": _safe(_team_form_both, af, played, home_id, away_id),
         "player_form": _safe(_player_form_both, af, played, home_id, away_id, lineups),
-        "referee_profile": _safe(_referee_profile, af, fx.get("referee")),
+        "referee_profile": _safe(_referee_profile, af, fx.get("referee"), played),
         "injuries": _safe(_injuries_both, af, home_id, away_id),
     }
 
@@ -295,18 +294,18 @@ def _name_in(name, lineup_names) -> bool:
 
 # --- referee ----------------------------------------------------------------
 
-def _referee_profile(af, referee) -> dict:
+def _referee_profile(af, referee, played) -> dict:
+    """Referee discipline from this competition's played fixtures.
+
+    API-Football's plan does not support a referee filter on /fixtures (the
+    ``referee`` param is rejected), so we derive the profile from the WC fixtures
+    we already cache, matched by name. The sample is therefore tournament-only and
+    can be thin; the prompt tells the model to weight a low game count cautiously.
+    """
     if not referee:
         return {}
-    fixtures, seen = [], set()
-    for season in (config.WC_SEASON - i for i in range(_REFEREE_SEASONS)):
-        for fx in af.referee_fixtures(referee, season) or []:
-            fid = (fx.get("fixture") or {}).get("id")
-            status = (((fx.get("fixture") or {}).get("status")) or {}).get("short")
-            if status in _PLAYED and fid not in seen:
-                seen.add(fid)
-                fixtures.append(fx)
-    fixtures.sort(key=lambda f: (f.get("fixture") or {}).get("date") or "", reverse=True)
+    fixtures = [fx for fx in played
+                if player_matches(referee, (fx.get("fixture") or {}).get("referee") or "")]
     yellows, reds, sample = [], [], []
     for fx in fixtures[:_REFEREE_GAMES]:
         by_team = _stats_by_team(_stats(af, (fx.get("fixture") or {}).get("id")))
