@@ -128,7 +128,6 @@ class SubmissionTests(unittest.TestCase):
             summary, run_ids = submit_with_ledger(
                 sp, "event", "lobby", [result],
                 window_min=5, minutes_before=4.8,
-                calibration_snapshot=None,
             )
         record.assert_called_once_with("event", "lobby", result, 5, 4.8)
         submitted.assert_called_once_with("run")
@@ -148,38 +147,9 @@ class SubmissionTests(unittest.TestCase):
             "bot.pipeline.ledger.mark_submitted"
         ) as submitted, patch("bot.pipeline.ledger.mark_failed") as failed:
             submit_with_ledger(sp, "event", "lobby", [result],
-                               window_min=5, minutes_before=4.8,
-                               calibration_snapshot=None)
+                               window_min=5, minutes_before=4.8)
         failed.assert_called_once()
         submitted.assert_not_called()
-
-    def test_submission_boundary_enforces_snapshot_and_preserves_raw(self):
-        sp = _SP()
-        prediction = Prediction("m", "Will Home win the match?", 0.60, 60, 1, "l")
-        result = MatchResult(
-            {"id": "match", "name": "Home vs Away",
-             "opening_time": "2026-06-22T17:00:00Z"},
-            None, "Home", "Away", predictions=[prediction],
-            markets=[{"id": "m", "question": prediction.question}],
-            intents={"m": {"market": "match_winner", "subject": "home"}},
-        )
-        snapshot = _Snapshot(40)
-        with patch("bot.pipeline.calibration.load_active_snapshot",
-                   return_value=snapshot), patch(
-            "bot.pipeline.ledger.record_run", return_value="run"
-        ), patch("bot.pipeline.ledger.mark_submitted"):
-            summary, _ = submit_with_ledger(sp, "event", "lobby", [result])
-        self.assertEqual(summary["payload"][0]["probability"], 40)
-        self.assertEqual(prediction.raw_probability_int, 60)
-        self.assertEqual(prediction.probability_int, 40)
-        self.assertEqual(prediction.calibration_delta_int, -20)
-        self.assertEqual(prediction.calibration_model_id, "snapshot-40")
-
-        # A later snapshot recomputes from 60, never from the calibrated 40.
-        from bot import calibration
-        calibration.apply_result(result, _Snapshot(50))
-        self.assertEqual(prediction.raw_probability_int, 60)
-        self.assertEqual(prediction.probability_int, 50)
 
 
 class _AF:
@@ -214,16 +184,6 @@ class _SP:
     def update_prediction(self, prediction_id, probability):
         self.updated.append((prediction_id, probability))
         return {"id": prediction_id, "probability": probability}
-
-
-class _Snapshot:
-    def __init__(self, value):
-        self.value = value
-        self.model_id = f"snapshot-{value}"
-
-    def apply(self, raw_probability_int, family, cohort, *, enabled=True):
-        assert raw_probability_int == 60
-        return self.value / 100.0, self.value, self.value != 60, "calibrated"
 
 
 if __name__ == "__main__":

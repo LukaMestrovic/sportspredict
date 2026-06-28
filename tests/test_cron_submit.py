@@ -41,31 +41,18 @@ class DispatchTest(unittest.TestCase):
         root = Path(self._tmp.name)
         self._orig = (cron_submit.STATE_DIR, cron_submit.LOCK_PATH,
                       cron_submit.SportPredict, cron_submit._process_match,
-                      cron_submit.calibration.sync_and_refit,
-                      cron_submit.calibration.load_active_snapshot,
-                      cron_submit.WebAPI, sys.argv)
+                      sys.argv)
         cron_submit.STATE_DIR = root / "state"
         cron_submit.LOCK_PATH = root / "submit.lock"
         sys.argv = ["cron_submit"]
         self.processed: list[str] = []
-        self.synced: list[str] = []
-        cron_submit.calibration.sync_and_refit = (
-            lambda sp, web, event, lobby: self.synced.append(lobby["id"]) or {
-                "observations_imported": 0, "observations_total": 0,
-                "refit": False, "model_id": None, "global_gate": None,
-            }
-        )
-        cron_submit.calibration.load_active_snapshot = lambda _lobby_id: None
-        cron_submit.WebAPI = lambda: object()
         cron_submit._process_match = (
             lambda sp_match, kickoff, *a, **k: self.processed.append(sp_match["name"])
         )
 
     def tearDown(self):
         (cron_submit.STATE_DIR, cron_submit.LOCK_PATH, cron_submit.SportPredict,
-         cron_submit._process_match, cron_submit.calibration.sync_and_refit,
-         cron_submit.calibration.load_active_snapshot, cron_submit.WebAPI,
-         sys.argv) = self._orig
+         cron_submit._process_match, sys.argv) = self._orig
         self._tmp.cleanup()
 
     def _match(self, name, mins_to_ko):
@@ -86,21 +73,10 @@ class DispatchTest(unittest.TestCase):
         # A due match is processed; a far one in the same tick is not.
         self._run([self._match("A vs B", 29), self._match("C vs D", 300)])
         self.assertEqual(self.processed, ["A vs B"])
-        self.assertEqual(self.synced, ["l1"])
 
     def test_nothing_due_processes_nothing(self):
         self._run([self._match("A vs B", 120), self._match("C vs D", 200)])
         self.assertEqual(self.processed, [])
-        self.assertEqual(self.synced, ["l1"])
-
-    def test_status_and_dry_run_do_not_sync_calibration(self):
-        sys.argv = ["cron_submit", "--status"]
-        self._run([self._match("A vs B", 120)])
-        self.assertEqual(self.synced, [])
-
-        sys.argv = ["cron_submit", "--dry-run"]
-        self._run([self._match("A vs B", 30)])
-        self.assertEqual(self.synced, [])
 
 
 class ProcessMatchTest(unittest.TestCase):

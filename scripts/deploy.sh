@@ -87,7 +87,6 @@ echo ">> smoke-test image (--status, no submit) ..."
 set -a; . ./.env; set +a
 docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -e SPORTSPREDICT_KEY -e APIFOOTBALL_KEY -e ODDS_API_KEY -e OPENAI_API_KEY \
-  -e CALIBRATION_ENABLED \
   -v "$ROOT/cache:/app/cache" -v "$ROOT/logs:/app/logs" \
   "$IMAGE:$TAG" --status
 
