@@ -108,7 +108,7 @@ def build_match_evidence(
         all_obs.extend(item["direct_odds"])
         all_obs.extend(item["related_odds"])
     evidence = {
-        "schema_version": 4,
+        "schema_version": 5,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "match": _match_meta(result, lineups, minutes_before),
         "team_form": context.get("team_form") or {},

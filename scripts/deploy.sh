@@ -35,7 +35,8 @@ for required in \
   "$HYBRID_ROOT/data/processed/rate_model.json" \
   "$HYBRID_ROOT/data/processed/team_ratings.parquet" \
   "$HYBRID_ROOT/data/processed/event_timing.json" \
-  "$HYBRID_ROOT/data/processed/player_shares.parquet"
+  "$HYBRID_ROOT/data/processed/player_shares.parquet" \
+  "$HYBRID_ROOT/data/processed/simulation_evidence.json"
 do
   if [ ! -f "$required" ]; then
     echo "FATAL: required hybrid deploy artifact missing: $required" >&2
@@ -54,6 +55,7 @@ cp -a \
   "$HYBRID_ROOT/data/processed/team_ratings.parquet" \
   "$HYBRID_ROOT/data/processed/event_timing.json" \
   "$HYBRID_ROOT/data/processed/player_shares.parquet" \
+  "$HYBRID_ROOT/data/processed/simulation_evidence.json" \
   "$HYBRID_SNAPSHOT/data/processed/"
 if [ -f "$HYBRID_ROOT/data/raw/elo.csv" ]; then
   cp -a "$HYBRID_ROOT/data/raw/elo.csv" "$HYBRID_SNAPSHOT/data/raw/"
@@ -70,10 +72,12 @@ docker build --provenance=false -f docker/Dockerfile -t "$IMAGE:$TAG" .
 
 # 4) Smoke-test the baked hybrid bridge without any secrets. This proves the
 #    deployed image uses its internal /sportspredict-hybrid snapshot (not either
-#    live working tree) AND that config + both fitted artifacts load: the goal/
-#    card windows exercise event_timing.json and the any-player brace exercises
-#    player_shares.parquet. Missing artifacts would degrade to neutral priors, so
-#    a returned, non-degenerate probability for each family is the real check.
+#    live working tree) AND that config + all fitted artifacts load: the goal/card
+#    windows exercise event_timing.json, the any-player brace exercises
+#    player_shares.parquet, and the brace's populated historical_evidence proves
+#    simulation_evidence.json was baked and loaded. Missing artifacts would
+#    degrade to neutral priors / unavailable evidence, so a returned non-degenerate
+#    probability AND a contract_key AND live brace history are the real checks.
 echo ">> smoke-test image hybrid bridge ..."
 docker run --rm --entrypoint python -e SPORTSPREDICT_HYBRID_N_SIMS=500 \
   "$IMAGE:$TAG" -c '
@@ -94,7 +98,12 @@ out = simulator_estimates(markets, ctx, direct_by_market=direct,
 assert set(out) == {"pen", "goal", "card", "brace"}, out
 assert {v["model"]["rate_model"] for v in out.values()} == {"LearnedRateModel"}, out
 assert all(0.0 < v["probability"] < 1.0 for v in out.values()), out
-print("hybrid bridge OK:", {k: (v["family"], v["probability_pct"]) for k, v in sorted(out.items())})
+# Schema 2.0 projection: every estimate carries a stable contract_key.
+assert all(v.get("contract_key") for v in out.values()), out
+# simulation_evidence.json baked + loaded: brace has a real all-history rate.
+brace_hist = (out["brace"].get("historical_evidence") or {}).get("empirical_rate", {})
+assert brace_hist.get("all_history", {}).get("available") is True, out["brace"]
+print("hybrid bridge OK:", {k: (v["family"], v["contract_key"], v["probability_pct"]) for k, v in sorted(out.items())})
 '
 
 # 5) Smoke-test the image without submitting: it must reach SportPredict and

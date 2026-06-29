@@ -8,9 +8,12 @@ LLM cannot price from a direct bookmaker contract.
 
 The bridge contract (see sibling ``docs/simulation_report.md``): one JSON object
 on stdin with ``home``/``away``/``questions`` and optional ``kickoff``/``stage``/
-``referee``/``lineups``/``market_odds``/``n_sims``. It returns ``question_reports``
-(one YES probability + deterministic ``explanation`` per supported question,
-``evidence_role=model_context``) and a separate ``unsupported_questions`` list,
+``referee``/``lineups``/``market_odds``/``n_sims``. Schema 2.0 returns
+``question_reports`` per supported question — a YES probability, the resolved
+``family`` and stable ``contract_key``, a deterministic ``explanation`` and
+``adjustment_guidance``, ``historical_evidence`` (rolling-origin Brier and
+empirical rates with sample sizes, all-history and WC2026), and
+``evidence_role=model_context`` — plus a separate ``unsupported_questions`` list,
 which we never turn into estimates. We do not duplicate the simulator's
 question-feasibility rules here: the report preflights both its frozen wheel and
 its additive parser and returns genuinely unsupported templates separately.
@@ -158,12 +161,24 @@ def _reports_by_market(raw: dict) -> dict[str, dict]:
     """Key supported ``question_reports`` by market id; drop unsupported ones.
 
     Each value is exactly one report item (the sibling's per-question contract)
-    plus compact model provenance and the not-an-anchor reminder. Match-level
-    internals, other questions' probabilities and ``unsupported_questions`` are
-    intentionally not attached.
+    plus compact model provenance and the not-an-anchor reminder. We carry the
+    schema-2.0 fields through verbatim: ``contract_key`` (the stable semantic
+    key), ``adjustment_guidance`` (deterministic pre-match directions), and
+    ``historical_evidence`` (rolling-origin Brier and empirical rates with their
+    sample sizes, all-history and WC2026, each scope possibly ``available:
+    false``) — the pricing LLM needs those scopes and counts intact to weight the
+    estimate. Match-level internals, other questions' probabilities and
+    ``unsupported_questions`` are intentionally not attached.
     """
     raw = raw or {}
     model_meta = raw.get("model") or {}
+    # Provenance is identical for every question in a match; build it once.
+    model = {
+        "engine": model_meta.get("engine"),
+        "rate_model": model_meta.get("rate_model"),
+        "n_sims": model_meta.get("n_sims"),
+        "odds_anchor_applied": model_meta.get("odds_anchor_applied"),
+    }
     out: dict[str, dict] = {}
     for rep in raw.get("question_reports") or []:
         mid = str(rep.get("market_id") or "")
@@ -173,16 +188,14 @@ def _reports_by_market(raw: dict) -> dict[str, dict]:
         out[mid] = {
             "source": rep.get("source") or "sportspredict-hybrid",
             "family": rep.get("family"),
+            "contract_key": rep.get("contract_key"),
             "probability": round(prob, 6),
             "probability_pct": round(prob * 100.0, 2),
             "explanation": rep.get("explanation"),
+            "adjustment_guidance": rep.get("adjustment_guidance"),
+            "historical_evidence": rep.get("historical_evidence"),
             "evidence_role": rep.get("evidence_role") or "model_context",
-            "model": {
-                "engine": model_meta.get("engine"),
-                "rate_model": model_meta.get("rate_model"),
-                "n_sims": model_meta.get("n_sims"),
-                "odds_anchor_applied": model_meta.get("odds_anchor_applied"),
-            },
+            "model": model,
             "note": (
                 "Learned-rate simulator context only; not a final anchor. The "
                 "pricing LLM must weigh it against direct odds, related odds, "

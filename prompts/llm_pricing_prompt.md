@@ -10,8 +10,12 @@ selected model-sensitive penalty/shots-on-target markets), it may also contain a
 learned-rate simulator estimate from the sibling sportspredict-hybrid model —
 covering families such as first scorer, goal/card/corner/offside timing windows
 (e.g. before/after a hydration break, stoppage time), substitutions, substitute
-scorers, any-player shots-on-target or brace, penalties, and goal-condition
-compounds. Each carries a deterministic one-sentence explanation of its basis.
+scorers, any-player shots-on-target or brace, total shots (on+off target), win
+margin/result, red cards, both-teams-carded, first-half cards, regulation-only
+named-player score/assist/shots-on-target, penalties, and goal-condition
+compounds. Each carries a deterministic one-sentence explanation of its basis,
+deterministic adjustment guidance, and where available historical Brier and
+empirical-rate evidence with sample sizes.
 Your job is to combine that evidence with web research and return the
 best YES probabilities for every SportPredict market. These probabilities are
 submitted directly, so price each market as your final, honest estimate.
@@ -50,17 +54,35 @@ HOW TO USE THE PROVIDED ODDS
 - Simulator model estimates (`simulator_model_estimates`) are context only, but
   they are your strongest signal for the markets with no direct contract — timing
   windows, first scorer, substitutions/substitute scorers, any-player props,
-  penalties and goal compounds. Each item gives a YES `probability`/
-  `probability_pct`, the resolved `family`, and a deterministic `explanation` of
-  exactly what it is built from. Read that explanation and give the estimate
-  serious weight where supplied (it beats the local baseline and a round-number
-  guess), but never copy it mechanically. Challenge it against any direct/related
-  odds, confirmed lineups/minutes, tactical fit, expected game state, referee
-  effects, and freshness before setting the submitted probability. For markets
-  that DO have a liquid direct price, that direct price stays the stronger
-  evidence — a simulator estimate may only nudge it. In the per-market audit,
-  state whether you used or downweighted the simulator estimate and why (cite it
-  in non_odds_factors_used or ignored_or_downweighted_evidence as appropriate).
+  total shots, win margin, red/both-team cards, regulation-only named-player
+  props, penalties and goal compounds. Each item gives a YES `probability`/
+  `probability_pct`, the resolved `family` and `contract_key`, a deterministic
+  `explanation` of exactly what it is built from, `adjustment_guidance`, and
+  `historical_evidence`. Read the `explanation` and follow the deterministic
+  `adjustment_guidance` — it tells you which confirmed lineups, referee, odds and
+  game-state factors should raise or lower this exact contract, and which
+  directions to avoid (e.g. no extra-time uplift on a regulation-only window).
+  Give the estimate serious weight where supplied (it beats the local baseline and
+  a round-number guess), but never copy it mechanically. Challenge it against any
+  direct/related odds, confirmed lineups/minutes, tactical fit, expected game
+  state, referee effects, and freshness before setting the submitted probability.
+  For markets that DO have a liquid direct price, that direct price stays the
+  stronger evidence — a simulator estimate may only nudge it. In the per-market
+  audit, state whether you used or downweighted the simulator estimate and why
+  (cite it in non_odds_factors_used or ignored_or_downweighted_evidence).
+- Interpret `historical_evidence` by its sample sizes, never at face value. It has
+  `model_performance` (the simulator's out-of-sample Brier versus the 0.25
+  always-50% baseline, with `delta_vs_always_50` and a sample count) and
+  `empirical_rate` (observed YES `rate` with its denominator), each split into
+  `all_history` and `wc2026`; any scope may be `available: false`. A strongly
+  negative all-history delta over thousands of matches means the simulator is
+  well-calibrated for that contract — trust the probability more. Treat empirical
+  rates as a base-rate sanity check, weighted by their denominator. A tiny WC2026
+  sample (a handful of matches, sometimes `matches: 1`) is noise: it must NEVER
+  override the broad all-history result, a liquid direct odd, or confirmed
+  team-specific evidence. When a scope is unavailable, just rely on the
+  probability, explanation, guidance and odds. Cite the evidence you leaned on (or
+  the small sample you discounted) in the audit.
 - Do not average blindly. Consider market liquidity, bookmaker independence,
   line relevance, lineup certainty, tactical fit, weather, referee, and whether
   a price is stale or one-sided.

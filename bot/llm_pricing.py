@@ -21,11 +21,16 @@ from . import cache, config
 from .pipeline import Prediction
 
 
-LLM_PRICING_VERSION = "lp5"
+LLM_PRICING_VERSION = "lp6"
 MODEL = os.environ.get("LLM_PRICING_MODEL", "gpt-5.4-mini")
 PROMPT_PATH = config.ROOT / "prompts" / "llm_pricing_prompt.md"
 ENABLED = os.environ.get("LLM_PRICING_ENABLED", "1") != "0"
-TIMEOUT = 300
+# Read timeout (seconds) for the single per-match OpenAI call. This model does
+# web search + medium reasoning over a large evidence payload, which has been
+# observed to exceed 300s; a timeout makes the T-30 cron skip every market for
+# that match. 600s is comfortably above the observed need, and even the two
+# internal retries (worst case 2x) stay inside the 30-minute (1800s) T-30 window.
+TIMEOUT = int(os.environ.get("LLM_PRICING_TIMEOUT", "600"))
 
 _PRICES = {
     "gpt-5.5": (5.0, 30.0), "gpt-5": (1.25, 10.0), "gpt-5-mini": (0.25, 2.0),
@@ -330,6 +335,20 @@ def _markdown_report(result, evidence: dict, evidence_path: Path | None, respons
             lines.append(f"- provided direct odds available: {len(qe['direct_odds'])}")
         if qe.get("related_odds"):
             lines.append(f"- provided related odds available: {len(qe['related_odds'])}")
+        sim = qe.get("simulator_model_estimates") or []
+        if sim:
+            est = sim[0]
+            mp = ((est.get("historical_evidence") or {})
+                  .get("model_performance", {}).get("all_history") or {})
+            suffix = (
+                f", all-history Brier {mp.get('brier')} vs {mp.get('always_50_brier')} "
+                f"(n={mp.get('matches')})"
+                if mp.get("available") else ""
+            )
+            lines.append(
+                f"- simulator estimate: {est.get('probability_pct')}% "
+                f"[{est.get('family')} | {est.get('contract_key')}]{suffix}"
+            )
         if context_avail:
             lines.append(f"- structured context available: {', '.join(context_avail)}")
     return "\n".join(lines)

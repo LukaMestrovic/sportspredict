@@ -15,7 +15,7 @@ def _ctx():
 
 def _bridge_response(reports, *, unsupported=None, model=None):
     return {
-        "schema_version": "1.0",
+        "schema_version": "2.0",
         "match": {"team_a": "Brazil", "team_b": "Japan", "stage": "group"},
         "model": model or {
             "engine": "HybridEngine", "rate_model": "LearnedRateModel",
@@ -27,15 +27,51 @@ def _bridge_response(reports, *, unsupported=None, model=None):
     }
 
 
-def _report(market_id, question, family, probability):
+def _unavailable_evidence(key):
+    """A schema-2.0 historical_evidence block with every scope unavailable."""
+    missing = {"available": False, "reason": "No exact historical label set for this contract."}
+    return {
+        "contract_key": key,
+        "model_performance": {"all_history": dict(missing), "wc2026": dict(missing)},
+        "empirical_rate": {"all_history": dict(missing), "wc2026": dict(missing)},
+    }
+
+
+def _populated_evidence(key):
+    """A historical_evidence block mixing populated and explicitly-unavailable scopes."""
+    return {
+        "contract_key": key,
+        "empirical_rate": {
+            "all_history": {"available": True, "matches": 2974, "observations": 2974,
+                            "rate": 0.234701, "yes_events": 698},
+            "wc2026": {"available": True, "matches": 34, "observations": 34,
+                       "rate": 0.382353, "yes_events": 13},
+        },
+        "model_performance": {
+            "all_history": {"available": True, "always_50_brier": 0.25, "brier": 0.168899,
+                            "delta_vs_always_50": -0.081101, "matches": 2277, "questions": 2277,
+                            "test_folds": [2021, 2022, 2023, 2024, 2025, 2026]},
+            "wc2026": {"available": False, "reason": "No unseen settled questions for this contract."},
+        },
+    }
+
+
+def _report(market_id, question, family, probability, *, contract_key=None,
+            historical_evidence=None, adjustment_guidance=None):
+    key = contract_key or f"{family}:reg"
     return {
         "market_id": market_id,
         "question": question,
         "source": "sportspredict-hybrid",
         "family": family,
+        "contract_key": key,
         "probability": probability,
         "probability_pct": round(probability * 100, 2),
         "explanation": f"Deterministic basis for {family}.",
+        "adjustment_guidance": adjustment_guidance or f"Adjust {family} for lineups, referee and odds.",
+        "historical_evidence": (
+            historical_evidence if historical_evidence is not None else _unavailable_evidence(key)
+        ),
         "evidence_role": "model_context",
     }
 
@@ -65,10 +101,61 @@ class ReportParsingTests(unittest.TestCase):
         self.assertEqual(item["probability_pct"], 40.2)
         self.assertEqual(item["evidence_role"], "model_context")
         self.assertIn("Deterministic basis", item["explanation"])
+        self.assertEqual(item["contract_key"], "goal_window:reg")
+        self.assertIn("Adjust goal_window", item["adjustment_guidance"])
         self.assertEqual(item["model"]["rate_model"], "LearnedRateModel")
         self.assertEqual(item["model"]["n_sims"], 8000)
         self.assertTrue(item["model"]["odds_anchor_applied"])
         self.assertIn("not a final anchor", item["note"])
+
+    def test_schema2_evidence_fields_pass_through_unchanged(self):
+        markets = [{"id": "brace", "question": "Will any player score a brace?"}]
+        key = "any_player_threshold:goals:>:1:reg"
+        hist = _populated_evidence(key)
+        resp = _bridge_response([_report(
+            "brace", markets[0]["question"], "any_player_threshold", 0.2347,
+            contract_key=key, adjustment_guidance="Raise when team-goal odds concentrate.",
+            historical_evidence=hist)])
+        out, _ = self._run(markets, {"brace": []}, resp)
+
+        item = out["brace"]
+        self.assertEqual(item["contract_key"], key)
+        self.assertEqual(item["adjustment_guidance"], "Raise when team-goal odds concentrate.")
+        # historical_evidence is carried through verbatim, populated AND unavailable scopes.
+        self.assertEqual(item["historical_evidence"], hist)
+        self.assertEqual(
+            item["historical_evidence"]["empirical_rate"]["all_history"]["rate"], 0.234701)
+        self.assertIs(
+            item["historical_evidence"]["model_performance"]["wc2026"]["available"], False)
+
+    def test_explicitly_unavailable_scopes_survive(self):
+        markets = [{"id": "pen", "question": "Will a penalty kick be awarded in the match?"}]
+        hist = _unavailable_evidence("penalty_awarded:match")
+        resp = _bridge_response([_report(
+            "pen", markets[0]["question"], "penalty_awarded", 0.235,
+            contract_key="penalty_awarded:match", historical_evidence=hist)])
+        out, _ = self._run(markets, {"pen": []}, resp)
+
+        self.assertEqual(out["pen"]["historical_evidence"], hist)
+        for layer in ("model_performance", "empirical_rate"):
+            for scope in ("all_history", "wc2026"):
+                self.assertIs(
+                    out["pen"]["historical_evidence"][layer][scope]["available"], False)
+
+    def test_missing_schema2_fields_degrade_to_none(self):
+        # An older bridge that omits the schema-2.0 fields must not crash; the
+        # projection simply yields None for them (fail-soft, no KeyError).
+        markets = [{"id": "m1", "question": "Will a goal be scored?"}]
+        bare = {
+            "market_id": "m1", "question": markets[0]["question"],
+            "source": "sportspredict-hybrid", "family": "goal_window",
+            "probability": 0.4, "probability_pct": 40.0,
+            "explanation": "x", "evidence_role": "model_context",
+        }
+        out, _ = self._run(markets, {"m1": []}, _bridge_response([bare]))
+        self.assertIsNone(out["m1"]["contract_key"])
+        self.assertIsNone(out["m1"]["adjustment_guidance"])
+        self.assertIsNone(out["m1"]["historical_evidence"])
 
     def test_unsupported_questions_are_omitted(self):
         markets = [
@@ -105,6 +192,12 @@ class ReportParsingTests(unittest.TestCase):
             ("sub_scorer", "Will a substitute score in the match?", "substitute_score"),
             ("any_sot", "Will any player have 3 or more shots on target?", "any_player_threshold"),
             ("any_brace", "Will any player score a brace?", "any_player_threshold"),
+            ("total_shots", "Will there be over 20 total shots in the match?", "total_shots_threshold"),
+            ("win_margin", "Will the home team win by 2 or more goals?", "win_margin"),
+            ("red_card", "Will a red card be shown in the match?", "red_card"),
+            ("both_card", "Will both teams receive at least one card?", "both_teams_card"),
+            ("player_score", "Will Vinicius Junior score in regulation?", "player_score"),
+            ("player_soa", "Will Vinicius Junior score or assist in regulation?", "player_score_or_assist"),
         ]
         markets = [{"id": mid, "question": q} for mid, q, _ in families]
         reports = [_report(mid, q, fam, 0.3) for mid, q, fam in families]

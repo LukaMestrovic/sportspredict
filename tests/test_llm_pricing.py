@@ -56,6 +56,21 @@ class LLMFinalPricingTests(unittest.TestCase):
         self.assertIn("structured context available: team form, player form, referee, injuries",
                       report)
 
+    def test_report_surfaces_simulator_estimate(self):
+        llm_pricing._ask = lambda evidence, **_kw: {
+            "briefing": "b", "sources": [], "markets": [_audit("m1", 57)],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            result = llm_pricing.price_match(
+                _result(), _evidence(with_simulator=True),
+                Path(tmp) / "evidence.json", 30.0, force=True,
+            )
+            report = Path(result.llm_pricing_report_path).read_text()
+
+        self.assertIn("simulator estimate: 23.47%", report)
+        self.assertIn("any_player_threshold:goals:>:1:reg", report)
+        self.assertIn("all-history Brier 0.168899", report)
+
     def test_missing_audit_field_skips_market(self):
         bad = _audit("m1", 57)
         bad.pop("online_odds_found")
@@ -111,17 +126,37 @@ def _result():
     )
 
 
-def _evidence(with_context=False):
+def _evidence(with_context=False, with_simulator=False):
+    question = {
+        "market_id": "m1",
+        "direct_odds": [{"probability": 0.55}],
+        "related_odds": [],
+    }
+    if with_simulator:
+        question["simulator_model_estimates"] = [{
+            "source": "sportspredict-hybrid",
+            "family": "any_player_threshold",
+            "contract_key": "any_player_threshold:goals:>:1:reg",
+            "probability": 0.2347,
+            "probability_pct": 23.47,
+            "historical_evidence": {
+                "model_performance": {
+                    "all_history": {"available": True, "brier": 0.168899,
+                                    "always_50_brier": 0.25, "matches": 2277},
+                    "wc2026": {"available": False, "reason": "no unseen settled"},
+                },
+                "empirical_rate": {
+                    "all_history": {"available": True, "rate": 0.234701, "matches": 2974},
+                    "wc2026": {"available": True, "rate": 0.382353, "matches": 34},
+                },
+            },
+        }]
     evidence = {
-        "schema_version": 3,
+        "schema_version": 5,
         "evidence_hash": "abc",
         "match": {"match_id": "match", "home": "Home", "away": "Away",
                   "kickoff": "2026-06-22T17:00:00Z"},
-        "question_evidence": [{
-            "market_id": "m1",
-            "direct_odds": [{"probability": 0.55}],
-            "related_odds": [],
-        }],
+        "question_evidence": [question],
     }
     if with_context:
         evidence.update({
