@@ -5,7 +5,7 @@
 # scripts/deploy.sh rebuild. Installed into cron by scripts/deploy.sh; you
 # normally never call this by hand.
 #
-#   scripts/run.sh [--status|--dry-run]
+#   scripts/run.sh [--status|--dry-run|--settle]
 set -uo pipefail
 export PATH="/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 

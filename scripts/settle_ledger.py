@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from bot import ledger
+from bot import ledger, simulator_benchmark
 from bot.sportspredict import SportPredict
 from bot.web import WebAPI
 
@@ -62,6 +62,26 @@ def _print_match_detail(detail: dict) -> None:
                 print(f"{'':>30}  {label}: {len(items)} item(s)")
 
 
+def settle_open(path: Path = ledger.LEDGER_PATH) -> tuple[dict, dict]:
+    """Settle explicit platform outcomes and refresh the live simulator benchmark."""
+    sp = SportPredict()
+    event = sp.event()
+    lobby = sp.lobby(event["id"])
+    web = WebAPI()
+
+    match_ids = ledger.unsettled_match_ids(lobby["id"], path=path)
+    results = sp.results(lobby["id"]) if match_ids else []
+    outcomes: dict[str, int] = {}
+    for match_id in match_ids:
+        for market in web.crowd_stats(match_id, lobby["id"]):
+            value = market.get("current_value")
+            if value in (0, 100):
+                outcomes[market["id"]] = value // 100
+    stats = ledger.settle_results(outcomes, results, path=path)
+    snapshot = simulator_benchmark.refresh(path)
+    return stats, snapshot
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -82,23 +102,14 @@ def main() -> None:
         _print_match_detail(detail)
         return
 
-    sp = SportPredict()
-    event = sp.event()
-    lobby = sp.lobby(event["id"])
-    web = WebAPI()
-
-    match_ids = ledger.unsettled_match_ids(lobby["id"], path=args.ledger)
-    results = sp.results(lobby["id"]) if match_ids else []
-    outcomes: dict[str, int] = {}
-    for match_id in match_ids:
-        for market in web.crowd_stats(match_id, lobby["id"]):
-            value = market.get("current_value")
-            if value in (0, 100):
-                outcomes[market["id"]] = value // 100
-    stats = ledger.settle_results(outcomes, results, path=args.ledger)
+    stats, benchmark = settle_open(args.ledger)
     print(
         f"Settled {stats['settled_predictions']} predictions; "
         f"{stats['remaining_predictions']} still open."
+    )
+    print(
+        f"Live simulator benchmark: {benchmark['comparable_simulator_questions']} "
+        f"questions across {benchmark['matches']} matches."
     )
     for row in ledger.performance(path=args.ledger):
         if row["group"] == "overall":

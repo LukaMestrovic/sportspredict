@@ -26,7 +26,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from bot import llm_pricing
+from bot import ledger, llm_pricing, simulator_benchmark
 from bot.apifootball import APIFootball
 from bot.config import ROOT
 from bot.oddsapi import OddsAPI
@@ -67,6 +67,8 @@ def main() -> None:
                     help="price the next match but never submit or write markers")
     ap.add_argument("--status", action="store_true",
                     help="print the next match and minutes-to-kickoff, then exit")
+    ap.add_argument("--settle", action="store_true",
+                    help="settle completed ledger rows and refresh live benchmarks")
     args = ap.parse_args()
 
     STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -79,7 +81,18 @@ def main() -> None:
         except BlockingIOError:
             _log("skip: previous run still in progress")
             return
-        _dispatch(args)
+        if args.settle:
+            from scripts.settle_ledger import settle_open
+
+            stats, benchmark = settle_open()
+            _log(
+                f"SETTLE updated={stats['settled_predictions']} "
+                f"remaining={stats['remaining_predictions']} "
+                f"benchmark_questions={benchmark['comparable_simulator_questions']} "
+                f"benchmark_matches={benchmark['matches']}"
+            )
+        else:
+            _dispatch(args)
 
 
 def _dispatch(args) -> None:
@@ -147,6 +160,12 @@ def _process_match(
         return
 
     _log(f"FIRING {window}-min window for {head} (kickoff in {mins:.1f} min)")
+    # Rebuild from any newly settled frozen predictions immediately before the
+    # evidence handoff. This is local/cheap and never infers a match outcome.
+    try:
+        simulator_benchmark.refresh(ledger.LEDGER_PATH)
+    except Exception as exc:
+        _log(f"  live benchmark refresh warning: {exc}")
     # Each scheduled window must observe the market again. Provider instances
     # still deduplicate lookups within this run, but bypass older disk entries.
     af = APIFootball(refresh_odds=True)

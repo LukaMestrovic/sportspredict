@@ -11,13 +11,14 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts import cron_submit  # noqa: E402
+from scripts import cron_submit, settle_ledger  # noqa: E402
 
 
 class _FakeSP:
@@ -78,18 +79,30 @@ class DispatchTest(unittest.TestCase):
         self._run([self._match("A vs B", 120), self._match("C vs D", 200)])
         self.assertEqual(self.processed, [])
 
+    def test_settle_tick_refreshes_benchmark_without_dispatching(self):
+        sys.argv = ["cron_submit", "--settle"]
+        result = (
+            {"settled_predictions": 3, "remaining_predictions": 2},
+            {"comparable_simulator_questions": 4, "matches": 2},
+        )
+        with patch.object(settle_ledger, "settle_open", return_value=result) as settle:
+            cron_submit.main()
+        settle.assert_called_once_with()
+        self.assertEqual(self.processed, [])
+
 
 class ProcessMatchTest(unittest.TestCase):
     def setUp(self):
         self._orig = (
             cron_submit.APIFootball, cron_submit.OddsAPI, cron_submit.run_match,
-            cron_submit.submit_with_ledger,
+            cron_submit.submit_with_ledger, cron_submit.simulator_benchmark.refresh,
         )
+        cron_submit.simulator_benchmark.refresh = lambda _path: {}
 
     def tearDown(self):
         (
             cron_submit.APIFootball, cron_submit.OddsAPI, cron_submit.run_match,
-            cron_submit.submit_with_ledger,
+            cron_submit.submit_with_ledger, cron_submit.simulator_benchmark.refresh,
         ) = self._orig
 
     def test_cron_fire_refreshes_odds_lineups_and_llm_pricing(self):

@@ -54,11 +54,14 @@ out = simulator_estimates(markets, ctx, direct_by_market=direct,
 assert set(out) == {"pen", "goal", "card", "brace"}, out
 assert {v["model"]["rate_model"] for v in out.values()} == {"LearnedRateModel"}, out
 assert all(0.0 < v["probability"] < 1.0 for v in out.values()), out
-# Schema 2.0 projection: every estimate carries a stable contract_key.
+# Schema 2.1 projection: every estimate carries a stable contract key and family benchmark.
 assert all(v.get("contract_key") for v in out.values()), out
 # simulation_evidence.json baked + loaded: brace has a real all-history rate.
 brace_hist = (out["brace"].get("historical_evidence") or {}).get("empirical_rate", {})
 assert brace_hist.get("all_history", {}).get("available") is True, out["brace"]
+brace_family = (out["brace"].get("historical_evidence") or {}).get("family_performance", {})
+assert brace_family.get("all_history", {}).get("available") is True, out["brace"]
+assert "empirical_rate" in brace_family["all_history"]["brier"], out["brace"]
 print("simulator bridge OK:", {k: (v["family"], v["contract_key"], v["probability_pct"]) for k, v in sorted(out.items())})
 '
 
@@ -81,6 +84,9 @@ $begin
 # Runs the immutable $IMAGE:$TAG image, so working-tree edits never affect a live
 # tick; it is a fast no-op until a match is within 30 minutes of kickoff.
 * * * * * $ROOT/scripts/run.sh >> $ROOT/logs/cron.log 2>&1
+# Every five minutes: settle explicit SportPredict outcomes and rebuild the
+# leakage-safe live WC2026 simulator-family benchmark from frozen evidence.
+*/5 * * * * $ROOT/scripts/run.sh --settle >> $ROOT/logs/settle.log 2>&1
 $end
 EOF
 )"

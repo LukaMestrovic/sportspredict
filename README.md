@@ -127,7 +127,8 @@ tail -f logs/cron.log
 1. builds `sportspredict-llm:v1` from `docker/Dockerfile`;
 2. smoke-tests the bundled learned model and its audit artifacts without keys;
 3. runs a read-only SportPredict status check with keys passed at runtime; and
-4. idempotently installs one per-minute cron block.
+4. idempotently installs the per-minute T−30 dispatcher and five-minute
+   settlement/benchmark refresh cron entries.
 
 The dispatcher is normally a fast no-op. At T−30 it refreshes provider odds
 once, fetches current lineups, forces a fresh cached pricing/web-search call for
@@ -138,6 +139,12 @@ this stays current across short-lived containers without rebuilding the frozen
 image after every match. It then submits through the ledger and writes its
 audit. A file lock prevents overlapping ticks and a per-match marker prevents
 duplicate fires.
+
+A second cron tick runs settlement every five minutes. It accepts only explicit
+SportPredict `current_value` outcomes, then rebuilds a live WC2026 simulator
+benchmark from the simulator probabilities and empirical rates frozen in each
+pre-match evidence file. The T−30 tick refreshes this local snapshot again before
+pricing, so each new LLM evidence bundle sees every result settled so far.
 
 The image is immutable between deploys. Re-run `scripts/deploy.sh` to ship new
 code. `scripts/run.sh` bind-mounts this checkout's `cache/` and `logs/`, so paid
@@ -158,7 +165,8 @@ For every match, the evidence file contains:
   an exact quote nor a defensible simulator counter exists;
 - lineups, injuries, team/referee history, venue, weather, and match metadata;
 - `sportspredict-simulator` reports with stable contract keys, disclosed
-  conditioning inputs, and historical performance; and
+  conditioning inputs, exact-contract empirical rates, and family-level Brier
+  comparisons against always-50% and leakage-safe empirical-rate baselines; and
 - provenance and freshness timestamps.
 
 The pricing model must return `probability_int`, odds used, independent online
@@ -179,6 +187,13 @@ Settlement is idempotent and joins by SportPredict `market_id`. It accepts only
 the platform's explicit `current_value` of 0 or 100; it never infers results from
 scores, web search, or Brier values.
 
+Each settlement also refreshes `cache/simulator_family_benchmark.json`. Static
+`all_history` and WC2026 comparisons in the shipped artifact use rolling-origin
+predictions whose model and exact-contract empirical-rate baseline were fitted
+before the test fold. The live scope uses only actual pre-match simulator
+estimates frozen in ledger evidence. Every scope reports unique-match sample
+size, match-clustered uncertainty, and an explicit small-sample warning.
+
 ```bash
 # One match, selected by id or name substring
 .venv/bin/python -m scripts.settle_ledger --match "Portugal"
@@ -196,6 +211,8 @@ scores, web search, or Brier values.
 - Final API-Football event timelines are fetched once and retained permanently;
   each T−30 fire rebuilds `cache/wc2026_empirical.json` with a strict target-time
   cutoff and separate all-stage/knockout coverage counts.
+- Settled frozen predictions rebuild `cache/simulator_family_benchmark.json`
+  every five minutes and immediately before each T−30 evidence handoff.
 - The T−30 job deliberately refreshes odds once, with identical requests
   deduplicated inside the run.
 - Parser and compound fallback calls are cached by prompt version, model, and
@@ -259,4 +276,12 @@ cache/                   retained runtime cache; git-ignored
 logs/                    retained evidence, audits, and ledger; git-ignored
 run.py                   manual predict/submit CLI
 validate.py              deterministic settled-fixture validation
+```
+
+The tracked family benchmark artifact is regenerated from the separate research
+workspace without copying training data into production:
+
+```bash
+.venv/bin/python analysis/build_simulator_family_benchmarks.py \
+  --source-root ../sportspredict-hybrid
 ```
