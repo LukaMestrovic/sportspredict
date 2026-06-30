@@ -338,14 +338,21 @@ def _markdown_report(result, evidence: dict, evidence_path: Path | None, respons
             est = sim[0]
             history = est.get("historical_evidence") or {}
             family = (history.get("family_performance") or {}).get("all_history") or {}
-            suffix = (
-                f", family Brier sim={family.get('brier', {}).get('simulator')} "
-                f"emp={family.get('brier', {}).get('empirical_rate')} "
-                f"50={family.get('brier', {}).get('always_50')} "
-                f"signal={family.get('comparison_signal')} "
-                f"(matches={family.get('matches')})"
-                if family.get("available") else ""
-            )
+            if family.get("available"):
+                suffix = (
+                    f", family Brier sim={family.get('brier', {}).get('simulator')} "
+                    f"emp={family.get('brier', {}).get('empirical_rate')} "
+                    f"50={family.get('brier', {}).get('always_50')} "
+                    f"signal={family.get('comparison_signal')} "
+                    f"(matches={family.get('matches')})"
+                )
+            else:
+                legacy = (history.get("model_performance") or {}).get("all_history") or {}
+                suffix = (
+                    f", all-history Brier {legacy.get('brier')} vs "
+                    f"{legacy.get('always_50_brier')} (n={legacy.get('matches')})"
+                    if legacy.get("available") else ""
+                )
             lines.append(
                 f"- simulator estimate: {est.get('probability_pct')}% "
                 f"[{est.get('family')} | {est.get('contract_key')}]{suffix}"
