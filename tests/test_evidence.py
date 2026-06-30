@@ -92,7 +92,7 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(estimates.call_args.kwargs["intents"], result.intents)
         q = evidence["question_evidence"][0]
-        self.assertEqual(evidence["schema_version"], 6)
+        self.assertEqual(evidence["schema_version"], 7)
         self.assertEqual(q["simulator_model_estimates"], [sim])
         self.assertIn("fallback simulator context", q["audit_requirement"])
 
@@ -132,6 +132,33 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(evidence["question_evidence"][0]["simulator_model_estimates"], [])
 
+    def test_full_match_knockout_scope_rejects_regulation_odds(self):
+        result = _result({
+            "first": {
+                "market": "first_team_to_score", "subject": "home",
+                "comparator": "yes", "threshold": None, "period": "match",
+                "time_scope": "full_match",
+            },
+        }, question="Will Home score the first goal of the match?")
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None, stage="knockout")
+        sim = {"contract_key": "first_goal:full:et:team", "probability": 0.45}
+
+        with patch("bot.evidence.simulator.simulator_estimates",
+                   return_value={"first": sim}):
+            bundle = build_match_evidence(
+                result, ctx, lineups=None, minutes_before=30,
+            )
+
+        question = bundle["question_evidence"][0]
+        self.assertEqual(bundle["schema_version"], 7)
+        self.assertIsNone(question["direct_market_spec"])
+        self.assertEqual(question["direct_odds"], [])
+        self.assertEqual(question["simulator_model_estimates"], [sim])
+        self.assertEqual(question["contract_scope"], {
+            "time_scope": "full_match",
+            "interpretation": "Full match: include extra time if played; exclude shootout events.",
+        })
+
 
 class ContextEvidenceTests(unittest.TestCase):
     def test_match_context_blocks_are_embedded_at_top_level(self):
@@ -150,7 +177,7 @@ class ContextEvidenceTests(unittest.TestCase):
         with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
-        self.assertEqual(evidence["schema_version"], 6)
+        self.assertEqual(evidence["schema_version"], 7)
         self.assertEqual(evidence["team_form"]["home"]["gf_avg"], 1.7)
         self.assertEqual(evidence["player_form"]["home"][0]["name"], "Striker One")
         self.assertEqual(evidence["referee_profile"]["yellows_per_game"], 4.0)

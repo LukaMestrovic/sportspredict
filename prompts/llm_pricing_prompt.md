@@ -25,6 +25,24 @@ used, what online odds you found, what tactical/weather/context factors mattered
 what evidence you ignored or downweighted, and a concise reasoning summary.
 Nothing may be skipped silently.
 
+CONTRACT SCOPE IS STRICT
+- Read each question's `contract_scope` and `intent.time_scope` before using any
+  odd or simulator estimate. `regulation` means 90 minutes plus stoppage time and
+  excludes extra time. `full_match` includes extra time if it is played (but not
+  shootout events); `to_advance` includes the shootout result when required.
+- Omission of "in regulation" is meaningful in these knockout questions. In
+  particular, "first goal of the match", "red card shown in the match", and
+  "after the second hydration break" without a regulation qualifier include
+  potential extra time. Their otherwise-identical regulation versions do not.
+- Never use a standard 90-minute bookmaker line as direct odds for a `full_match`
+  contract. The evidence builder omits such mismatched lines; do not reintroduce
+  them from web research. You may cite them only as explicitly downweighted
+  regulation context, then add ET exposure using the regulation draw probability
+  and the supplied full-match simulator contract.
+- Treat `direct_market_spec`, `direct_odds`, and a simulator `contract_key` as
+  exact only when their scope agrees with `contract_scope`. If anything conflicts,
+  follow `contract_scope`, reject the mismatched evidence, and say so in the audit.
+
 RESEARCH REQUIREMENTS
 - Search for additional market prices or odds online where available: Kalshi,
   Polymarket, Pinnacle, Betfair Exchange, and relevant betting platforms.

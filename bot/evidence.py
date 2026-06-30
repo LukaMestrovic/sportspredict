@@ -84,6 +84,7 @@ def build_match_evidence(
             "market_id": mid,
             "question": question,
             "intent": intent,
+            "contract_scope": _contract_scope(intent),
             "direct_market_spec": spec_by_market[mid],
             "direct_odds": direct,
             "simulator_model_estimates": (
@@ -106,7 +107,7 @@ def build_match_evidence(
     for item in question_evidence:
         all_obs.extend(item["direct_odds"])
     evidence = {
-        "schema_version": 6,
+        "schema_version": 7,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "match": _match_meta(result, lineups, minutes_before),
         "team_form": context.get("team_form") or {},
@@ -187,6 +188,21 @@ def _player_form_for(intent: dict | None, player_index: dict) -> dict | None:
         if player_matches(player, row.get("name", "")):
             return row
     return {}
+
+
+def _contract_scope(intent: dict | None) -> dict:
+    """Plain-language settlement scope for the pricing-model handoff."""
+    intent = intent or {}
+    time_scope = intent.get("time_scope") or "unknown"
+    if intent.get("market") == "to_advance":
+        interpretation = "Qualification outcome after extra time and penalties if required."
+    elif time_scope == "regulation":
+        interpretation = "Regulation only: 90 minutes plus stoppage time; exclude extra time."
+    elif time_scope == "full_match":
+        interpretation = "Full match: include extra time if played; exclude shootout events."
+    else:
+        interpretation = "Scope was not resolved; do not assume regulation odds are exact."
+    return {"time_scope": time_scope, "interpretation": interpretation}
 
 
 def _fixture_referee(result) -> str | None:
