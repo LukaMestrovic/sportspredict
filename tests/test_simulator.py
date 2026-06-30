@@ -234,22 +234,21 @@ class TargetSelectionTests(unittest.TestCase):
         sent = {q["market_id"] for q in payload["questions"]}
         self.assertEqual(sent, {"no_direct"})
 
-    def test_model_sensitive_penalty_sent_even_with_direct_odds(self):
+    def test_penalty_with_direct_odds_skips_simulator(self):
         markets = [{"id": "pen", "question": "Will a penalty kick be awarded in the match?"}]
         direct = {"pen": [{"probability": 0.27}]}  # has a direct price
         payload = self._capture_payload(markets, direct)
 
-        sent = {q["market_id"] for q in payload["questions"]}
-        self.assertIn("pen", sent)
+        self.assertIsNone(payload)
 
-    def test_model_sensitive_sot_sent_even_with_direct_odds(self):
+    def test_sot_with_direct_odds_skips_simulator(self):
         markets = [{"id": "sot", "question": "Will Home have more shots on target than Away in the second half?"}]
         intents = {"sot": {"market": "shots_on_target_compare", "subject": "home",
                            "comparator": "more", "threshold": None, "period": "2H"}}
         direct = {"sot": [{"probability": 0.52}]}
         payload = self._capture_payload(markets, direct, intents=intents)
 
-        self.assertIn("sot", {q["market_id"] for q in payload["questions"]})
+        self.assertIsNone(payload)
 
     def test_all_markets_have_direct_and_none_model_sensitive_skips_bridge(self):
         markets = [{"id": "win", "question": "Will the home team win?"}]

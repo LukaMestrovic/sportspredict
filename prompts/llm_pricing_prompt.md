@@ -3,10 +3,9 @@ competition. You price every binary SportPredict market for ONE match.
 
 There are NO anchors. The deterministic system has only prepared a MATCH
 EVIDENCE JSON containing bookmaker odds converted into probabilities, raw odds,
-provider/bookmaker names, lineups when available, venue/referee metadata, parsed
-questions, related market odds, and deterministic model estimates clearly
-marked as context. For any market with no exact direct bookmaker price (and for
-selected model-sensitive penalty/shots-on-target markets), it may also contain a
+provider/bookmaker names, lineups when available, venue/referee metadata, and
+parsed questions. Each question contains either exact direct bookmaker odds or,
+when no exact price is available, a
 learned-rate estimate from the simulator bundled with this bot —
 covering families such as first scorer, goal/card/corner/offside timing windows
 (e.g. before/after a hydration break, stoppage time), substitutions, substitute
@@ -47,10 +46,6 @@ HOW TO USE THE PROVIDED ODDS
   estimate toward the market instead. A direct shots/scorer price already encodes
   the book's expected minutes for that player, so if the lineup is unconfirmed,
   fade it only modestly.
-- Related odds are not anchors. They are context for pricing markets without a
-  direct contract or for sanity-checking direct prices.
-- Deterministic estimates are context only, not final answers. You may use or
-  downweight them, but explain why.
 - Simulator model estimates (`simulator_model_estimates`) are context only, but
   they are your strongest signal for the markets with no direct contract — timing
   windows, first scorer, substitutions/substitute scorers, any-player props,
@@ -63,18 +58,19 @@ HOW TO USE THE PROVIDED ODDS
   game-state factors should raise or lower this exact contract, and which
   directions to avoid (e.g. no extra-time uplift on a regulation-only window).
   Give the estimate serious weight where supplied (it beats the local baseline and
-  a round-number guess), but never copy it mechanically. Challenge it against any
-  direct/related odds, confirmed lineups/minutes, tactical fit, expected game
+  a round-number guess), but never copy it mechanically. Challenge it against its
+  disclosed `conditioning_inputs`, confirmed lineups/minutes, tactical fit, expected game
   state, referee effects, and freshness before setting the submitted probability.
-  For markets that DO have a liquid direct price, that direct price stays the
-  stronger evidence — a simulator estimate may only nudge it. In the per-market
+  A simulator fallback is not supplied when exact direct odds exist. In the per-market
   audit, state whether you used or downweighted the simulator estimate and why
   (cite it in non_odds_factors_used or ignored_or_downweighted_evidence).
 - Interpret `historical_evidence` by its sample sizes, never at face value. It has
   `model_performance` (the simulator's out-of-sample Brier versus the 0.25
   always-50% baseline, with `delta_vs_always_50` and a sample count) and
-  `empirical_rate` (observed YES `rate` with its denominator), each split into
-  `all_history` and `wc2026`; any scope may be `available: false`. A strongly
+  `empirical_rate` (observed YES `rate` with its denominator), split where
+  available into `all_history`, `knockout_history`, `wc2026`, and
+  `wc2026_knockout`; any scope may be `available: false`. Compare available
+  scopes and weight them by denominator and freshness; do not average them. A strongly
   negative all-history delta over thousands of matches means the simulator is
   well-calibrated for that contract — trust the probability more. Treat empirical
   rates as a base-rate sanity check, weighted by their denominator. A tiny WC2026
@@ -82,7 +78,9 @@ HOW TO USE THE PROVIDED ODDS
   override the broad all-history result, a liquid direct odd, or confirmed
   team-specific evidence. When a scope is unavailable, just rely on the
   probability, explanation, guidance and odds. Cite the evidence you leaned on (or
-  the small sample you discounted) in the audit.
+  the small sample you discounted) in the audit. For extra-time-sensitive
+  knockout contracts, give knockout scopes more relevance while retaining the
+  larger all-history rate as the broad prior.
 - Do not average blindly. Consider market liquidity, bookmaker independence,
   line relevance, lineup certainty, tactical fit, weather, referee, and whether
   a price is stale or one-sided.
@@ -129,7 +127,8 @@ number. Build the probability from a base rate:
   P(>=1) = 1 - exp(-L). Use this table: L=0.5->39%, 0.7->50%, 1.0->63%, 1.4->75%,
   2.0->86%.
 - State the rate, the window fraction, L, and the resulting P in reasoning_summary
-  so the math is auditable, then sanity-check against any related odds.
+  so the math is auditable, then sanity-check against the simulator and its
+  disclosed conditioning inputs.
 
 DIRECTIONAL TRAPS
 - Offsides depend strongly on the opponent's defensive line, not just attacking
@@ -198,4 +197,4 @@ EVERY market_id in the evidence JSON:
 
 If no direct or online odds exist for a market, keep provided_odds_used and/or
 online_odds_found as empty arrays, and explicitly explain in
-reasoning_summary which related odds and non-odds factors drove the estimate.
+reasoning_summary which conditioning inputs and non-odds factors drove the estimate.

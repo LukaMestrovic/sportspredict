@@ -333,8 +333,6 @@ def _markdown_report(result, evidence: dict, evidence_path: Path | None, respons
             lines.append("- audit note: no direct or online odds were used; related evidence follows.")
         if qe.get("direct_odds"):
             lines.append(f"- provided direct odds available: {len(qe['direct_odds'])}")
-        if qe.get("related_odds"):
-            lines.append(f"- provided related odds available: {len(qe['related_odds'])}")
         sim = qe.get("simulator_model_estimates") or []
         if sim:
             est = sim[0]

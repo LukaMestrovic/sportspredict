@@ -49,9 +49,8 @@ def simulator_estimates(
 ) -> dict[str, dict]:
     """Return learned-rate simulator estimates keyed by market id.
 
-    A market is sent to the simulator when it has **no exact direct price**, plus
-    the model-sensitive penalty/shot-on-target families we keep even when a
-    direct price exists (see :func:`model_estimate_kind`). The simulator decides
+    A market is sent to the simulator only when it has **no exact direct price**.
+    The simulator decides
     what it can actually resolve; unsupported templates come back separately and
     are dropped. A missing bundled runtime, missing dependencies, a timeout, or
     a parse error all fail open to an empty result so evidence building stays
@@ -77,20 +76,17 @@ def _targets(
     direct_by_market: dict[str, list] | None,
     intents: dict[str, dict] | None,
 ) -> list[dict]:
-    """Markets to price with the simulator: every no-direct market, plus the
-    retained model-sensitive penalty/shot-on-target targets even with direct odds."""
+    """Markets to price with the simulator: every market without exact odds."""
     direct_by_market = direct_by_market or {}
     intents = intents or {}
     targets = []
     for market in markets:
         raw_mid = market["id"]
         mid = str(raw_mid)
-        question = str(market.get("question") or "")
         has_direct = bool(direct_by_market.get(raw_mid) or direct_by_market.get(mid))
-        model_sensitive = model_estimate_kind(question, intents.get(mid) or intents.get(raw_mid)) is not None
-        if has_direct and not model_sensitive:
+        if has_direct:
             continue
-        targets.append({"market_id": mid, "question": question})
+        targets.append({"market_id": mid, "question": str(market.get("question") or "")})
     return targets
 
 
@@ -189,11 +185,12 @@ def _reports_by_market(raw: dict) -> dict[str, dict]:
             "explanation": rep.get("explanation"),
             "adjustment_guidance": rep.get("adjustment_guidance"),
             "historical_evidence": rep.get("historical_evidence"),
+            "conditioning_inputs": rep.get("conditioning_inputs") or {},
             "evidence_role": rep.get("evidence_role") or "model_context",
             "model": model,
             "note": (
                 "Learned-rate simulator context only; not a final anchor. The "
-                "pricing LLM must weigh it against direct odds, related odds, "
+                "pricing LLM must weigh it against its disclosed conditioning inputs, "
                 "lineups, tactics, game state, referee, and market freshness."
             ),
         }
@@ -285,13 +282,29 @@ def _market_odds_from_ctx(ctx: PriceCtx) -> dict:
     total_cards = derive._infer_total_rate(ctx.af_books, 80)
     home_goals = derive._infer_total_rate(ctx.af_books, 16)
     away_goals = derive._infer_total_rate(ctx.af_books, 17)
+    draw_probability = _regulation_draw_probability(ctx)
     if total_goals is not None:
         out["total_goals_mean"] = round(total_goals, 6)
     if total_cards is not None:
         out["total_cards"] = round(total_cards, 6)
     if home_goals is not None and away_goals is not None:
         out["team_goals"] = [round(home_goals, 6), round(away_goals, 6)]
+    if draw_probability is not None:
+        out["regulation_draw_probability"] = round(draw_probability, 6)
     return out
+
+
+def _regulation_draw_probability(ctx: PriceCtx) -> float | None:
+    """Free API-Football same-book de-vigged draw consensus for ET exposure."""
+    from .matcher import match_intent
+    from .predictor import predict
+
+    spec = match_intent({
+        "market": "match_draw", "subject": "match", "player": None,
+        "comparator": "yes", "threshold": None, "period": "match",
+    }, ctx.home, ctx.away)
+    out = predict(ctx.af_books, spec) if spec else None
+    return float(out["probability"]) if out else None
 
 
 def _as_probability(value) -> float | None:

@@ -1,10 +1,9 @@
 """Build auditable per-match evidence for the LLM pricing layer.
 
 The evidence file is the deterministic handoff between provider odds and the
-raw LLM judgement. It contains per-book de-vigged probabilities, raw odds, and
-why each observation is relevant to each SportPredict question. Deterministic
-derived/empirical estimates may be included as context, but they are not final
-anchors and are labeled separately from bookmaker odds.
+raw LLM judgement. It contains per-book de-vigged probabilities and raw odds for
+the exact SportPredict contract, or one simulator fallback when no exact price
+exists. Broad related-market bundles are deliberately excluded.
 """
 from __future__ import annotations
 
@@ -15,19 +14,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
-from . import config, derive, simulator
+from . import config, simulator
 from . import oddsapi as oapi
 from . import predictor as afpred
 from .matcher import match_intent, match_intent_oddsapi
-from .parser import parse_questions
 from .pricing import PriceCtx
 from .teams import player_matches
 
 
 EVIDENCE_DIR = config.ROOT / "logs" / "llm_pricing_runs"
-MAX_RELATED_ODDS_PER_QUESTION = 30
-
-
 def build_match_evidence(
     result,
     ctx: PriceCtx,
@@ -37,15 +32,12 @@ def build_match_evidence(
     """Return the full JSON-serialisable evidence bundle for one match."""
     direct_by_market: dict[str, list[dict]] = {}
     spec_by_market: dict[str, dict | None] = {}
-    estimates_by_market: dict[str, list[dict]] = {}
-
     for market in result.markets:
         mid = market["id"]
         intent = result.intents.get(mid)
         direct, spec = _direct_odds(intent, ctx)
         direct_by_market[mid] = _tag_observations(direct, "direct", "exact mapped contract")
         spec_by_market[mid] = spec
-        estimates_by_market[mid] = _deterministic_estimates(market["question"], intent, ctx)
 
     # Direct odds are computed first so the simulator only prices the markets
     # without an exact direct contract (plus the retained model-sensitive
@@ -71,29 +63,19 @@ def build_match_evidence(
         question = market["question"]
         intent = result.intents.get(mid)
         direct = direct_by_market[mid]
-        related = _related_odds(question, intent, ctx)
-        if not direct:
-            related.extend(_other_direct_odds(mid, direct_by_market))
-        related = _limit_observations(
-            [_compact_related_observation(obs) for obs in _dedupe_observations(related, exclude=direct)],
-            MAX_RELATED_ODDS_PER_QUESTION,
-        )
-
         item = {
             "market_id": mid,
             "question": question,
             "intent": intent,
             "direct_market_spec": spec_by_market[mid],
             "direct_odds": direct,
-            "related_odds": related,
-            "deterministic_estimates": estimates_by_market[mid],
             "simulator_model_estimates": (
-                [simulator_by_market[mid]] if mid in simulator_by_market else []
+                [simulator_by_market[mid]] if not direct and mid in simulator_by_market else []
             ),
             "audit_requirement": (
-                "The raw LLM response must explain which provided odds, online "
-                "odds, simulator/model context, and non-odds factors were used "
-                "or downweighted."
+                "The raw LLM response must explain which exact provided odds or "
+                "fallback simulator context, online odds, and non-odds factors "
+                "were used or downweighted."
             ),
         }
         # For a player-specific market, attach THAT player's exact form row so the
@@ -106,9 +88,8 @@ def build_match_evidence(
     all_obs = []
     for item in question_evidence:
         all_obs.extend(item["direct_odds"])
-        all_obs.extend(item["related_odds"])
     evidence = {
-        "schema_version": 5,
+        "schema_version": 6,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "match": _match_meta(result, lineups, minutes_before),
         "team_form": context.get("team_form") or {},
@@ -243,199 +224,6 @@ def _direct_odds(intent: dict | None, ctx: PriceCtx) -> tuple[list[dict], dict |
     return obs, af_spec or oa_spec
 
 
-def _related_odds(question: str, intent: dict | None, ctx: PriceCtx) -> list[dict]:
-    related = []
-    for related_intent, why in _related_intents(question, intent, ctx.home, ctx.away):
-        obs, _spec = _direct_odds(related_intent, ctx)
-        related.extend(_tag_observations(obs, "related", why))
-    related.extend(_extra_related_observations(question, intent, ctx))
-    return related
-
-
-# Per-15-minute goal distribution (API-Football select Yes/No bets). The whole
-# ladder lets the LLM interpolate ANY window — a hydration break (22'/67') or
-# stoppage time — instead of collapsing it onto the 45' half boundary.
-_GOAL_INTERVAL_BETS = {
-    144: "goal in 1-15'", 145: "goal in 16-30'", 146: "goal in 31-45'",
-    147: "goal in 46-60'", 148: "goal in 61-75'", 149: "goal in 76-90'",
-}
-
-
-def _extra_related_observations(
-    question: str, intent: dict | None, ctx: PriceCtx
-) -> list[dict]:
-    """Targeted related odds for families with no single mapped contract.
-
-    These pull specific API-Football bet IDs that have no clean intent (goal
-    timing, ET/penalty deciders, half-specific discipline). Each is de-vigged by
-    the normal predictor, so absent markets simply yield nothing.
-    """
-    lower = question.lower()
-    market = (intent or {}).get("market")
-    out: list[dict] = []
-
-    def add(spec: dict, why: str) -> None:
-        out.extend(_tag_observations(
-            afpred.observations(ctx.af_books, spec), "related", why))
-
-    goal_timing = (
-        ("hydration break" in lower and ("goal" in lower or "scored" in lower))
-        or "stoppage time" in lower
-    )
-    if goal_timing:
-        window = (
-            "the first ~22 min, BEFORE the 22' hydration break (not the 45' half)"
-            if "before the first" in lower else
-            "from the 67' hydration break to full time (not the whole 2nd half)"
-            if "after the second" in lower else
-            "the stoppage-time window only"
-        )
-        for bet_id, name in _GOAL_INTERVAL_BETS.items():
-            add({"type": "select", "bet_id": bet_id, "value": "Yes", "label": name},
-                f"per-15' goal distribution ({name}); interpolate {window}")
-        add({"type": "ou", "bet_id": 6, "side": "Over", "line": 0.5, "label": "1H goal"},
-            "first-half goal rate (loose bound for an early window)")
-        add({"type": "ou", "bet_id": 26, "side": "Over", "line": 0.5, "label": "2H goal"},
-            "second-half goal rate (loose bound for a late window)")
-
-    # Regulation-result contracts: how often the tie is broken only in ET/pens.
-    if market in ("win_margin", "to_advance", "match_winner", "match_draw") or (
-        "end in a tie" in lower or "win in regulation" in lower
-    ):
-        add({"type": "select", "bet_id": 225, "value": "Yes", "label": "decided in ET"},
-            "P(match goes to extra time) — regulation contracts exclude it")
-        add({"type": "select", "bet_id": 224, "value": "Yes", "label": "decided on pens"},
-            "P(match goes to penalties) — regulation contracts exclude it")
-
-    # Discipline timing/severity for red-card and after-break card questions.
-    if market == "red_card" or ("card" in lower and "hydration break" in lower):
-        add({"type": "select", "bet_id": 342, "value": "Yes", "label": "red card 1H"},
-            "first-half red-card price as a discipline-severity signal")
-
-    return out
-
-
-def _related_intents(
-    question: str, intent: dict | None, home: str, away: str
-) -> list[tuple[dict, str]]:
-    base = [
-        (_intent("match_winner", "home", "win"), f"{home} win price informs team strength"),
-        (_intent("match_winner", "away", "win"), f"{away} win price informs team strength"),
-        (_intent("match_draw", "match"), "draw price completes the match-result view"),
-        (_intent("total_goals", "match", "gte", 3), "goal environment context"),
-        (_intent("total_goals", "match", "lte", 2), "low-scoring environment context"),
-        (_intent("btts", "match"), "both-teams-to-score context"),
-        (_intent("total_corners", "match", "gte", 10), "corner volume context"),
-        (_intent("total_cards", "match", "gte", 4), "card temperature context"),
-        (_intent("total_shots_on_target", "match", "gte", 8), "shot quality/volume context"),
-        (_intent("total_shots", "match", "gte", 22), "total shot (on+off target) volume context"),
-        (_intent("to_advance", "home"), f"{home} to-advance price (knockout qualification)"),
-        (_intent("to_advance", "away"), f"{away} to-advance price (knockout qualification)"),
-        (_intent("corners_compare", "home", "more"), f"{home} territorial/corner edge"),
-        (_intent("corners_compare", "away", "more"), f"{away} territorial/corner edge"),
-        (_intent("cards_compare", "home", "more"), f"{home} card-risk comparison"),
-        (_intent("cards_compare", "away", "more"), f"{away} card-risk comparison"),
-        (_intent("shots_on_target_compare", "home", "more"), f"{home} shot-on-target edge"),
-        (_intent("shots_on_target_compare", "away", "more"), f"{away} shot-on-target edge"),
-    ]
-    if not intent:
-        return base
-
-    market = intent.get("market")
-    subject = intent.get("subject")
-    period = intent.get("period", "match")
-    player = intent.get("player")
-    threshold = intent.get("threshold")
-    out = list(base)
-
-    if subject in ("home", "away"):
-        side_team = home if subject == "home" else away
-        out.extend([
-            (_intent("team_score", subject), f"{side_team} to-score price informs attacking base"),
-            (_intent("team_total_goals", subject, "gte", 1), f"{side_team} goal-total context"),
-            (_intent("team_total_goals", subject, "gte", 2), f"{side_team} upside scoring context"),
-            (_intent("team_corners", subject, "gte", 5), f"{side_team} corner-volume context"),
-            (_intent("team_cards", subject, "gte", 2), f"{side_team} card-volume context"),
-            (_intent("team_offsides", subject, "gte", 2), f"{side_team} offside-volume context"),
-            (_intent("team_fouls", subject, "gte", 10), f"{side_team} foul-volume context"),
-        ])
-    if period in ("1H", "2H"):
-        out.extend([
-            (_intent("match_winner", "home", "win", period=period), f"{period} home edge context"),
-            (_intent("match_winner", "away", "win", period=period), f"{period} away edge context"),
-            (_intent("match_draw", "match", period=period), f"{period} draw context"),
-            (_intent("total_goals", "match", "gte", 1, period=period), f"{period} goal context"),
-            (_intent("btts", "match", period=period), f"{period} BTTS context"),
-        ])
-    if player:
-        out.extend([
-            (_intent("player_goal_scorer", "player", player=player),
-             f"{player} anytime-scorer context"),
-            (_intent("player_score_or_assist", "player", player=player),
-             f"{player} score-or-assist context"),
-            (_intent("player_card", "player", player=player), f"{player} booking context"),
-        ])
-        if threshold is not None:
-            out.append((_intent("player_shots_on_target", "player", "gte", threshold,
-                                player=player), f"{player} shots-on-target context"))
-    if market == "none":
-        out.extend(_compound_component_intents(question, home, away))
-    return _dedupe_intents(out)
-
-
-def _compound_component_intents(question: str, home: str, away: str) -> list[tuple[dict, str]]:
-    try:
-        split = derive._split(question)  # deterministic templates first, cached LLM fallback.
-    except Exception:
-        return []
-    if not split:
-        return []
-    out = []
-    for key in ("a", "b"):
-        subq = split.get(key)
-        if not subq:
-            continue
-        try:
-            parsed = parse_questions([{"id": key, "question": subq}], home, away).get(key)
-        except Exception:
-            parsed = None
-        if parsed:
-            out.append((parsed, f"component odds for compound leg: {subq}"))
-    return out
-
-
-def _deterministic_estimates(question: str, intent: dict | None, ctx: PriceCtx) -> list[dict]:
-    estimates = []
-    try:
-        if derive.is_compound_question(question):
-            out, source = derive.price_compound(question, ctx)
-        else:
-            out, source = derive.price_empirical(question, intent, ctx)
-    except Exception:
-        out = source = None
-    if out:
-        estimates.append({
-            "source": source,
-            "label": out.get("label"),
-            "probability": round(out["probability"], 6),
-            "probability_pct": round(out["probability"] * 100, 2),
-            "note": "Deterministic model context only; not a final anchor.",
-        })
-    return estimates
-
-
-def _other_direct_odds(market_id: str, direct_by_market: dict[str, list[dict]]) -> list[dict]:
-    obs = []
-    for other_id, direct in direct_by_market.items():
-        if other_id == market_id:
-            continue
-        obs.extend(_tag_observations(
-            direct, "related",
-            f"direct odds for another SportPredict market in this match ({other_id})",
-        ))
-    return obs
-
-
 def _tag_observations(observations: Iterable[dict], role: str, why: str) -> list[dict]:
     tagged = []
     for obs in observations:
@@ -461,37 +249,6 @@ def _dedupe_observations(
     return out
 
 
-def _limit_observations(observations: list[dict], limit: int) -> list[dict]:
-    """Keep a bounded but diverse related-odds set for prompt size control."""
-    if len(observations) <= limit:
-        return observations
-    buckets: dict[tuple, list[dict]] = {}
-    for obs in observations:
-        key = (obs.get("source"), obs.get("market_key"), obs.get("contract"))
-        buckets.setdefault(key, []).append(obs)
-    selected = []
-    while len(selected) < limit and buckets:
-        for key in list(buckets):
-            if buckets[key]:
-                selected.append(buckets[key].pop(0))
-                if len(selected) >= limit:
-                    break
-            if not buckets.get(key):
-                buckets.pop(key, None)
-    return selected
-
-
-def _compact_related_observation(obs: dict) -> dict:
-    """Related odds keep the audit essentials but omit bulky raw outcome arrays."""
-    return {
-        key: value for key, value in obs.items()
-        if key in {
-            "source", "bookmaker", "market_key", "market_name", "contract",
-            "probability", "probability_pct", "devig_method", "role", "why_relevant",
-        }
-    }
-
-
 def _provider_odds_summary(observations: list[dict]) -> dict:
     by_source: dict[str, int] = {}
     by_market: dict[str, int] = {}
@@ -512,35 +269,6 @@ def _obs_key(obs: dict) -> tuple:
         obs.get("source"), obs.get("bookmaker"), obs.get("market_key"),
         obs.get("contract"), obs.get("probability"),
     )
-
-
-def _dedupe_intents(items: Iterable[tuple[dict, str]]) -> list[tuple[dict, str]]:
-    seen = set()
-    out = []
-    for intent, why in items:
-        key = json.dumps(intent, sort_keys=True)
-        if key not in seen:
-            seen.add(key)
-            out.append((intent, why))
-    return out
-
-
-def _intent(
-    market: str,
-    subject: str = "match",
-    comparator: str = "yes",
-    threshold: int | None = None,
-    period: str = "match",
-    player: str | None = None,
-) -> dict:
-    return {
-        "market": market,
-        "subject": subject,
-        "player": player,
-        "comparator": comparator,
-        "threshold": threshold,
-        "period": period,
-    }
 
 
 def _slug(value: str) -> str:

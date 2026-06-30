@@ -32,8 +32,8 @@ The main boundaries are:
    wording is handled in at most one cached fallback call per match.
 2. `bot/matcher.py`, `bot/predictor.py`, and `bot/oddsapi.py` map provider
    contracts and de-vig coherent outcomes from the same bookmaker.
-3. `bot/evidence.py` combines direct odds, related odds, lineups, structured
-   context, and labeled deterministic estimates into one JSON file.
+3. `bot/evidence.py` emits exact odds when available, otherwise one bundled
+   simulator fallback, plus structured match context in one JSON file.
 4. `simulator/` contains the learned-rate simulator source, configuration, and
    fitted artifacts. `bot/simulator.py` invokes it through a JSON child-process
    boundary so numerical dependencies never leak into the lightweight bot.
@@ -143,11 +143,11 @@ survive image rebuilds. Never delete those directories during deployment.
 For every match, the evidence file contains:
 
 - raw provider odds and per-book de-vigged probabilities for exact contracts;
-- related contracts for questions without a direct quote;
+- one simulator fallback for questions without an exact direct quote (never a
+  broad related-odds bundle);
 - lineups, injuries, team/referee history, venue, weather, and match metadata;
-- deterministic estimates labeled as context, including optional
-  `sportspredict-simulator` reports with stable contract keys and historical
-  performance; and
+- `sportspredict-simulator` reports with stable contract keys, disclosed
+  conditioning inputs, and historical performance; and
 - provenance and freshness timestamps.
 
 The pricing model must return `probability_int`, odds used, independent online

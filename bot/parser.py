@@ -250,7 +250,7 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
         return _intent("none")
 
     # Time-window / match-state questions with no single pre-match contract: the
-    # web-grounded LLM layer prices them from enriched related odds. A hydration
+    # web-grounded LLM layer prices them from the simulator fallback. A hydration
     # break is NOT a half (the breaks are at 22' and 67'), so these stay
     # market="none", period="match" — never a 1H/2H line.
     if ("hydration break" in lower
@@ -262,7 +262,7 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
 
     # Discipline events: emit dedicated intents so the matcher takes the exact
     # line (penalty bet 163 / red card 335/86) when a book quotes it, and degrades
-    # to related odds + the deterministic estimate otherwise.
+    # to the simulator fallback otherwise.
     if "penalty kick be awarded" in lower:
         return _intent("penalty_awarded", period=period)
     if "red card" in lower and "shown" in lower:

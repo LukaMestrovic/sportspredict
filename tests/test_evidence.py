@@ -58,7 +58,7 @@ class EvidenceTests(unittest.TestCase):
         self.assertIn("DraftKings", books)
         self.assertTrue(all(obs["raw_odds"] for obs in q["direct_odds"]))
 
-    def test_unmapped_question_receives_related_odds_for_audit(self):
+    def test_unmapped_question_omits_broad_related_odds(self):
         result = _result({
             "odd": {"market": "none", "subject": "match",
                     "comparator": "yes", "threshold": None, "period": "match"},
@@ -68,8 +68,8 @@ class EvidenceTests(unittest.TestCase):
 
         q = evidence["question_evidence"][0]
         self.assertEqual(q["direct_odds"], [])
-        self.assertTrue(q["related_odds"])
-        self.assertTrue(all(obs["why_relevant"] for obs in q["related_odds"]))
+        self.assertNotIn("related_odds", q)
+        self.assertNotIn("deterministic_estimates", q)
 
     def test_penalty_question_receives_simulator_context(self):
         result = _result({
@@ -92,9 +92,9 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(estimates.call_args.kwargs["intents"], result.intents)
         q = evidence["question_evidence"][0]
-        self.assertEqual(evidence["schema_version"], 5)
+        self.assertEqual(evidence["schema_version"], 6)
         self.assertEqual(q["simulator_model_estimates"], [sim])
-        self.assertIn("simulator/model context", q["audit_requirement"])
+        self.assertIn("fallback simulator context", q["audit_requirement"])
 
     def test_sot_question_receives_simulator_context(self):
         result = _result({
@@ -150,7 +150,7 @@ class ContextEvidenceTests(unittest.TestCase):
         with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
-        self.assertEqual(evidence["schema_version"], 5)
+        self.assertEqual(evidence["schema_version"], 6)
         self.assertEqual(evidence["team_form"]["home"]["gf_avg"], 1.7)
         self.assertEqual(evidence["player_form"]["home"][0]["name"], "Striker One")
         self.assertEqual(evidence["referee_profile"]["yellows_per_game"], 4.0)

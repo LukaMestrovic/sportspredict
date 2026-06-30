@@ -37,7 +37,7 @@ from .teams import canonical_name
 
 SCHEMA_VERSION = "2.0"
 EVIDENCE_ROLE = (
-    "Model context only: weigh this estimate against direct/related odds, confirmed lineups, "
+    "Model context only: weigh this estimate against disclosed conditioning inputs, confirmed lineups, "
     "tactics, game state, referee and information freshness."
 )
 
@@ -207,15 +207,21 @@ def _adjustment_guidance(market: str, params: dict, question: str) -> str:
                 "and fast-start tactical evidence; lower for conservative shapes or key-attacker absences."
             )
         if window == "after_second_hydration":
-            tail = (
-                " Higher draw odds also raise it through the extra-time branch."
-                if params.get("include_et") else
-                " Do not use extra-time likelihood because this version is regulation-only."
-            )
+            if params.get("include_et"):
+                return (
+                    "This contract includes regulation after minute 67 plus any extra time. "
+                    "Calibrate the simulator against the overall, current-WC and knockout-stage "
+                    "empirical rates, weighted by sample size rather than averaged. Explicitly "
+                    "use the de-vigged regulation-draw probability: a higher draw probability "
+                    "raises extra-time exposure and therefore the chance of a later goal. Also "
+                    "raise for higher goal totals, attacking benches and likely late chasing; "
+                    "lower for low totals and defensive benches. Do not double-count draw odds "
+                    "if they are already reflected in the estimate."
+                )
             return (
                 "Raise with higher goal totals, strong attacking benches, a close match that may require "
                 "late chasing, and vulnerable late defenses; lower for low totals and defensive benches."
-                + tail
+                " Do not use extra-time likelihood because this contract is explicitly regulation-only."
             )
         return (
             "Raise with higher goal totals and evidence for long added time (VAR, injuries, time-wasting "
@@ -248,8 +254,12 @@ def _adjustment_guidance(market: str, params: dict, question: str) -> str:
         )
     if market in {RED_CARD, BOTH_TEAMS_CARD} or "card" in market or "card" in lower:
         return (
-            "Raise for higher card/red-card odds, a strict referee, rivalry or knockout tension and teams "
-            "with high foul/card rates; lower for a lenient referee and low-contact tactical matchup."
+            "Calibrate against the overall, current-WC and knockout-stage empirical rates, weighted "
+            "by sample size rather than averaged. Raise for direct red-card evidence, a referee with "
+            "high red-card incidence, team red-card/foul profiles and genuine knockout tension; lower "
+            "for a lenient referee and low-contact matchup. For match-scope knockout contracts, higher "
+            "regulation-draw odds modestly raise extra-time exposure. Do not treat ordinary yellow-card "
+            "totals as equivalent to red-card risk."
         )
     if "penalt" in market or "penalty" in lower:
         return (
@@ -268,7 +278,7 @@ def _adjustment_guidance(market: str, params: dict, question: str) -> str:
         )
     if market == TOTAL_SHOTS_THRESHOLD or "shot" in market or "shot" in lower:
         return (
-            "Raise with direct/related shot totals, attacking lineups, territorial dominance and high-tempo "
+            "Raise with disclosed shot-total conditioning, attacking lineups, territorial dominance and high-tempo "
             "tactics; lower for low possession, missing creators or conservative game plans."
         )
     return (
@@ -340,6 +350,13 @@ def build_simulation_report(
             "probability_pct": round(probability * 100.0, 2),
             "explanation": _explanation(str(pred.market), pred.params or {}, pred.notes),
             "historical_evidence": historical.get(key),
+            "conditioning_inputs": {
+                "regulation_draw_probability": market_odds.get("regulation_draw_probability"),
+                "interpretation": (
+                    "Same-book de-vigged regulation draw probability; for match-scope knockout "
+                    "contracts, higher values increase expected extra-time exposure."
+                ),
+            } if market_odds and market_odds.get("regulation_draw_probability") is not None else {},
             "adjustment_guidance": _adjustment_guidance(
                 str(pred.market), pred.params or {}, item["question"],
             ),

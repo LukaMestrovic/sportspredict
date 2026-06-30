@@ -250,8 +250,11 @@ def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
     if "goal" in core and "before the first hydration break" in core:
         return ExtSpec(GOAL_WINDOW, {"window": "before_first_hydration"}, question)
     if "goal" in core and "after the second hydration break" in core:
+        regulation_only = any(token in raw_lower for token in (
+            "regulation", "90 minutes", "excluding extra time",
+        ))
         return ExtSpec(GOAL_WINDOW, {
-            "window": "after_second_hydration", "include_et": "extra time" in core,
+            "window": "after_second_hydration", "include_et": not regulation_only,
         }, question)
     if "goal" in core and re.search(
         r"stoppage(?:\s*\(added\))?\s+time|added\s+time", core
