@@ -44,6 +44,43 @@ def refresh(
     path: Path = SNAPSHOT_PATH,
 ) -> dict:
     """Rebuild exact WC2026 rates using only final matches before ``target_kickoff``."""
+    requested = set(contract_keys or ()) | CORE_CONTRACTS
+    cutoff, eligible, covered, failures = collect_fixture_facts(
+        af, target_kickoff, requested,
+    )
+
+    contracts = {}
+    for key in sorted(requested):
+        if not _supports(key):
+            continue
+        contracts[key] = {
+            "wc2026": _scope_rate(key, eligible, covered, stage=None, cutoff=cutoff),
+            "wc2026_knockout": _scope_rate(
+                key, eligible, covered, stage="knockout", cutoff=cutoff,
+            ),
+        }
+
+    snapshot = {
+        "schema_version": 1,
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "target_kickoff": cutoff.isoformat(),
+        "eligible_matches": len(eligible),
+        "covered_matches": len(covered),
+        "complete": not failures,
+        "data_through": covered[-1]["kickoff"] if covered else None,
+        "failures": failures,
+        "contracts": contracts,
+    }
+    _write_atomic(path, snapshot)
+    return snapshot
+
+
+def collect_fixture_facts(
+    af,
+    target_kickoff: str,
+    contract_keys: set[str],
+) -> tuple[datetime, list[dict], list[dict], list[dict]]:
+    """Collect immutable final-match facts shared by rates and simulator scoring."""
     cutoff = _parse_datetime(target_kickoff)
     eligible = [
         fixture for fixture in af.fixtures()
@@ -51,10 +88,8 @@ def refresh(
         and _fixture_status(fixture) in FINAL_STATUSES
     ]
     eligible.sort(key=_fixture_time)
-
-    requested = set(contract_keys or ()) | CORE_CONTRACTS
-    needs_statistics = any(_needs_statistics(key) for key in requested)
-    needs_players = any(_needs_players(key) for key in requested)
+    needs_statistics = any(_needs_statistics(key) for key in contract_keys)
+    needs_players = any(_needs_players(key) for key in contract_keys)
     covered = []
     failures = []
     for fixture in eligible:
@@ -86,6 +121,7 @@ def refresh(
                     "error": str(exc)[:200],
                 })
         covered.append({
+            "fixture": fixture,
             "fixture_id": fixture_id,
             "kickoff": fixture["fixture"]["date"],
             "stage": _stage(fixture),
@@ -93,31 +129,17 @@ def refresh(
                 fixture, events=events, statistics=statistics, players=players,
             ),
         })
+    return cutoff, eligible, covered, failures
 
-    contracts = {}
-    for key in sorted(requested):
-        if not _supports(key):
-            continue
-        contracts[key] = {
-            "wc2026": _scope_rate(key, eligible, covered, stage=None, cutoff=cutoff),
-            "wc2026_knockout": _scope_rate(
-                key, eligible, covered, stage="knockout", cutoff=cutoff,
-            ),
-        }
 
-    snapshot = {
-        "schema_version": 1,
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "target_kickoff": cutoff.isoformat(),
-        "eligible_matches": len(eligible),
-        "covered_matches": len(covered),
-        "complete": not failures,
-        "data_through": covered[-1]["kickoff"] if covered else None,
-        "failures": failures,
-        "contracts": contracts,
-    }
-    _write_atomic(path, snapshot)
-    return snapshot
+def supports_contract(key: str) -> bool:
+    """Whether final API-Football data can label this exact contract."""
+    return _supports(key)
+
+
+def labels_for_contract(key: str, facts: dict) -> list[bool] | None:
+    """Return the contract's natural observation units for one settled fixture."""
+    return _labels(key, facts)
 
 
 def overlay(estimates: dict[str, dict], snapshot: dict) -> dict[str, dict]:
