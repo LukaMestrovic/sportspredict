@@ -336,12 +336,15 @@ def _markdown_report(result, evidence: dict, evidence_path: Path | None, respons
         sim = qe.get("simulator_model_estimates") or []
         if sim:
             est = sim[0]
-            mp = ((est.get("historical_evidence") or {})
-                  .get("model_performance", {}).get("all_history") or {})
+            history = est.get("historical_evidence") or {}
+            family = (history.get("family_performance") or {}).get("all_history") or {}
             suffix = (
-                f", all-history Brier {mp.get('brier')} vs {mp.get('always_50_brier')} "
-                f"(n={mp.get('matches')})"
-                if mp.get("available") else ""
+                f", family Brier sim={family.get('brier', {}).get('simulator')} "
+                f"emp={family.get('brier', {}).get('empirical_rate')} "
+                f"50={family.get('brier', {}).get('always_50')} "
+                f"signal={family.get('comparison_signal')} "
+                f"(matches={family.get('matches')})"
+                if family.get("available") else ""
             )
             lines.append(
                 f"- simulator estimate: {est.get('probability_pct')}% "

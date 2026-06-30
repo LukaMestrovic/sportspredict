@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
-from . import config, simulator, wc2026_evidence
+from . import config, simulator, simulator_benchmark, wc2026_evidence
 from . import oddsapi as oapi
 from . import predictor as afpred
 from .matcher import match_intent, match_intent_oddsapi
@@ -75,6 +75,9 @@ def build_match_evidence(
                 "complete": False,
                 "error": f"WC2026 evidence refresh failed: {exc}",
             }
+    live_benchmark = simulator_benchmark.load()
+    if simulator_by_market:
+        simulator_benchmark.overlay(simulator_by_market, live_benchmark)
 
     context = getattr(result, "match_context", None) or {}
     player_index = context.get("player_index") or {}
@@ -112,7 +115,7 @@ def build_match_evidence(
     for item in question_evidence:
         all_obs.extend(item["direct_odds"])
     evidence = {
-        "schema_version": 7,
+        "schema_version": 8,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "match": _match_meta(result, lineups, minutes_before),
         "team_form": context.get("team_form") or {},
@@ -127,6 +130,13 @@ def build_match_evidence(
         "question_evidence": question_evidence,
         "provider_odds_summary": _provider_odds_summary(_dedupe_observations(all_obs)),
         "wc2026_evidence_refresh": wc2026_refresh,
+        "live_simulator_benchmark": {
+            key: live_benchmark.get(key)
+            for key in (
+                "generated_at", "settled_ledger_questions",
+                "comparable_simulator_questions", "matches",
+            )
+        } if live_benchmark else None,
         "llm_research_requirements": [
             "Find any additional market prices or odds available online, including "
             "Kalshi, Polymarket, Pinnacle, Betfair Exchange, and betting platforms.",

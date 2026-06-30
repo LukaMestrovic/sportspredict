@@ -35,7 +35,7 @@ from .postsim.contracts import contract_key
 from .postsim.evidence import HistoricalEvidence
 from .teams import canonical_name
 
-SCHEMA_VERSION = "2.0"
+SCHEMA_VERSION = "2.1"
 EVIDENCE_ROLE = (
     "Model context only: weigh this estimate against disclosed conditioning inputs, confirmed lineups, "
     "tactics, game state, referee and information freshness."
@@ -371,7 +371,7 @@ def build_simulation_report(
             "probability": round(probability, 6),
             "probability_pct": round(probability * 100.0, 2),
             "explanation": _explanation(str(pred.market), pred.params or {}, pred.notes),
-            "historical_evidence": historical.get(key),
+            "historical_evidence": historical.get(key, family=str(pred.market)),
             "conditioning_inputs": {
                 "regulation_draw_probability": market_odds.get("regulation_draw_probability"),
                 "interpretation": (

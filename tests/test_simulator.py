@@ -15,7 +15,7 @@ def _ctx():
 
 def _bridge_response(reports, *, unsupported=None, model=None):
     return {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "match": {"team_a": "Brazil", "team_b": "Japan", "stage": "group"},
         "model": model or {
             "engine": "SimulatorEngine", "rate_model": "LearnedRateModel",
@@ -28,7 +28,7 @@ def _bridge_response(reports, *, unsupported=None, model=None):
 
 
 def _unavailable_evidence(key):
-    """A schema-2.0 historical_evidence block with every scope unavailable."""
+    """A schema-2.1 historical_evidence block with every scope unavailable."""
     missing = {"available": False, "reason": "No exact historical label set for this contract."}
     return {
         "contract_key": key,
@@ -143,7 +143,7 @@ class ReportParsingTests(unittest.TestCase):
                     out["pen"]["historical_evidence"][layer][scope]["available"], False)
 
     def test_missing_schema2_fields_degrade_to_none(self):
-        # An older bridge that omits the schema-2.0 fields must not crash; the
+        # An older bridge that omits the schema-2.1 fields must not crash; the
         # projection simply yields None for them (fail-soft, no KeyError).
         markets = [{"id": "m1", "question": "Will a goal be scored?"}]
         bare = {

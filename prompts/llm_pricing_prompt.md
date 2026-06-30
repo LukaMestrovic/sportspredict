@@ -75,30 +75,45 @@ HOW TO USE THE PROVIDED ODDS
   `adjustment_guidance` — it tells you which confirmed lineups, referee, odds and
   game-state factors should raise or lower this exact contract, and which
   directions to avoid (e.g. no extra-time uplift on a regulation-only window).
-  Give the estimate serious weight where supplied (it beats the local baseline and
-  a round-number guess), but never copy it mechanically. Challenge it against its
+  Give the estimate serious consideration where supplied, but never copy it
+  mechanically. Challenge it against its
   disclosed `conditioning_inputs`, confirmed lineups/minutes, tactical fit, expected game
   state, referee effects, and freshness before setting the submitted probability.
   A simulator fallback is not supplied when exact direct odds exist. In the per-market
   audit, state whether you used or downweighted the simulator estimate and why
   (cite it in non_odds_factors_used or ignored_or_downweighted_evidence).
-- Interpret `historical_evidence` by its sample sizes, never at face value. It has
-  `model_performance` (the simulator's out-of-sample Brier versus the 0.25
-  always-50% baseline, with `delta_vs_always_50` and a sample count) and
-  `empirical_rate` (observed YES `rate` with its denominator), split where
-  available into `all_history`, `knockout_history`, `wc2026`, and
-  `wc2026_knockout`; any scope may be `available: false`. Compare available
-  scopes and weight them by denominator and freshness; do not average them. A strongly
-  negative all-history delta over thousands of matches means the simulator is
-  well-calibrated for that contract — trust the probability more. Treat empirical
-  rates as a base-rate sanity check, weighted by their denominator. A tiny WC2026
-  sample (a handful of matches, sometimes `matches: 1`) is noise: it must NEVER
-  override the broad all-history result, a liquid direct odd, or confirmed
-  team-specific evidence. When a scope is unavailable, just rely on the
-  probability, explanation, guidance and odds. Cite the evidence you leaned on (or
-  the small sample you discounted) in the audit. For extra-time-sensitive
-  knockout contracts, give knockout scopes more relevance while retaining the
-  larger all-history rate as the broad prior.
+- Use `historical_evidence.family_performance` to decide whether to lean toward
+  the simulator probability or the empirical rate for this FAMILY. Its
+  `all_history`, `wc2026`, and (when settled live predictions exist)
+  `live_wc2026` scopes score three rules on identical unseen rows: the simulator,
+  always 50%, and "always predict the prior exact-contract empirical YES rate."
+  Brier is lower-is-better. A negative
+  `delta_brier.simulator_minus_empirical_rate` favors the simulator; a positive
+  value favors the empirical rate. Prefer `comparison_signal` over the raw point
+  difference because it also uses the paired, match-clustered 95% interval.
+  This comparison is family-level: the empirical rule is still fitted separately
+  for each exact contract before results are aggregated, so unlike thresholds
+  are not assigned one nonsensical shared rate.
+- Obey `family_performance.*.sample_size`. `too_small` is inconclusive and must
+  not choose either signal. `limited` is only a weak directional check even when
+  its point estimate or interval names a winner. Let the large rolling-origin
+  `all_history` scope dominate a small WC2026 scope; use WC2026 as corroboration
+  only as its unique-match sample grows. Never let a small tournament sample
+  override liquid direct odds or strong confirmed match-specific evidence. If
+  the broad family result reliably says `simulator_better`, lean more toward the
+  simulator estimate; if it says `empirical_rate_better`, lean more toward this
+  contract's available empirical rate. If it is `inconclusive`, combine both as
+  checks and decide from the exact contract, odds, and match context. State which
+  signal you favored and why in the audit.
+- `historical_evidence.empirical_rate` contains the exact-contract observed YES
+  rate and denominator, with `all_history`, `knockout_history`, `wc2026`, and
+  `wc2026_knockout` where available. Weight rates by denominator and freshness;
+  do not average scopes. The legacy exact-contract `model_performance` versus
+  always 50% remains an additional check, not the simulator-versus-empirical
+  decision rule. When a scope is unavailable, rely on the remaining probability,
+  explanation, guidance, and odds. For extra-time-sensitive knockout contracts,
+  give knockout rates more relevance while retaining the larger all-history
+  rate as the broad prior.
 - Do not average blindly. Consider market liquidity, bookmaker independence,
   line relevance, lineup certainty, tactical fit, weather, referee, and whether
   a price is stale or one-sided.

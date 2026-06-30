@@ -52,13 +52,17 @@ class BundledSimulatorTests(unittest.TestCase):
 
         self.assertEqual(proc.returncode, 0, proc.stderr)
         report = json.loads(proc.stdout)
-        self.assertEqual(report["schema_version"], "2.0")
+        self.assertEqual(report["schema_version"], "2.1")
         self.assertEqual(report["model"]["rate_model"], "LearnedRateModel")
         by_id = {item["market_id"]: item for item in report["question_reports"]}
         self.assertEqual(set(by_id), {"penalty", "brace"})
         self.assertEqual(by_id["penalty"]["contract_key"], "penalty_awarded:match")
         brace_history = by_id["brace"]["historical_evidence"]["empirical_rate"]
         self.assertTrue(brace_history["all_history"]["available"])
+        family = by_id["brace"]["historical_evidence"]["family_performance"]
+        self.assertEqual(family["family"], "any_player_threshold")
+        self.assertTrue(family["all_history"]["available"])
+        self.assertIn("empirical_rate", family["all_history"]["brier"])
 
     def test_late_goal_template_includes_extra_time_by_default(self):
         payload = {

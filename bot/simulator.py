@@ -7,11 +7,12 @@ the LLM cannot price from a direct bookmaker contract.
 
 The bridge accepts one JSON object on stdin with ``home``/``away``/``questions``
 and optional ``kickoff``/``stage``/
-``referee``/``lineups``/``market_odds``/``n_sims``. Schema 2.0 returns
+``referee``/``lineups``/``market_odds``/``n_sims``. Schema 2.1 returns
 ``question_reports`` per supported question — a YES probability, the resolved
 ``family`` and stable ``contract_key``, a deterministic ``explanation`` and
-``adjustment_guidance``, ``historical_evidence`` (rolling-origin Brier and
-empirical rates with sample sizes, all-history and WC2026), and
+``adjustment_guidance``, ``historical_evidence`` (exact-contract empirical rates
+and family-level unseen Brier comparisons against 50/50 and empirical-rate
+baselines, with sample sizes for all-history and WC2026), and
 ``evidence_role=model_context`` — plus a separate ``unsupported_questions`` list,
 which we never turn into estimates. We do not duplicate the simulator's
 question-feasibility rules here: the report preflights its baseline and additive
@@ -153,10 +154,11 @@ def _reports_by_market(raw: dict) -> dict[str, dict]:
 
     Each value is exactly one report item (the simulator's per-question contract)
     plus compact model provenance and the not-an-anchor reminder. We carry the
-    schema-2.0 fields through verbatim: ``contract_key`` (the stable semantic
+    schema-2.1 fields through verbatim: ``contract_key`` (the stable semantic
     key), ``adjustment_guidance`` (deterministic pre-match directions), and
-    ``historical_evidence`` (rolling-origin Brier and empirical rates with their
-    sample sizes, all-history and WC2026, each scope possibly ``available:
+    ``historical_evidence`` (exact-contract empirical rates plus family Brier
+    comparisons against both 50/50 and prior empirical-rate baselines, with
+    sample sizes for all-history and WC2026, each scope possibly ``available:
     false``) — the pricing LLM needs those scopes and counts intact to weight the
     estimate. Match-level internals, other questions' probabilities and
     ``unsupported_questions`` are intentionally not attached.
