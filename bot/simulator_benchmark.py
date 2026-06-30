@@ -1,145 +1,207 @@
-"""Tournament-wide WC2026 simulator benchmark on settled questions.
+"""Exhaustive frozen-simulator benchmark on settled WC2026 fixtures.
 
-The learned artifacts were fitted before WC2026.  A tracked replay seed covers
-the settled tournament at build time; after deployment, each newly settled
-match is replayed once with the same frozen simulator and retained in cache.
-This measures the simulator itself, without using LLM prices or reasoning.
+Unlike the live SportPredict inventory, this evaluator applies every supported
+exact contract to every labelable tournament fixture. Team-relative contracts
+produce home and away observations; match contracts produce one observation.
+Named-player contracts are intentionally excluded because selecting players
+from post-match participation would leak the outcome population.
 """
-
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import math
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config, simulator
+from . import config, simulator, wc2026_evidence
 from .pricing import PriceCtx
+from .simulator_contracts import observation_unit, questions_for_contract
 
 
 SNAPSHOT_PATH = config.ROOT / "cache" / "simulator_family_benchmark.json"
-REPLAY_DIR = config.ROOT / "cache" / "wc2026_simulator_replay"
-SEED_PATH = (
-    config.ROOT / "simulator" / "data" / "processed"
-    / "wc2026_simulator_replay_seed.json"
+REPLAY_DIR = config.ROOT / "cache" / "wc2026_simulator_contract_replay"
+ARTIFACT_PATH = (
+    config.ROOT / "simulator" / "data" / "processed" / "simulation_evidence.json"
 )
+SCHEMA_VERSION = 3
+REPLAY_VERSION = 1
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _seed() -> dict:
+def _artifact() -> dict:
     try:
-        return json.loads(SEED_PATH.read_text())
+        return json.loads(ARTIFACT_PATH.read_text())
     except (OSError, json.JSONDecodeError):
-        return {"rows": []}
+        return {"contracts": {}}
 
 
-def _cached_rows() -> tuple[list[dict], set[str]]:
-    rows = []
-    match_ids = set()
-    if not REPLAY_DIR.is_dir():
-        return rows, match_ids
-    for path in sorted(REPLAY_DIR.glob("*.json")):
-        try:
-            replay = json.loads(path.read_text())
-            match_id = str(replay.get("match_id") or path.stem)
-            match_ids.add(match_id)
-            rows.extend(replay.get("rows") or [])
-        except (OSError, json.JSONDecodeError):
+def _benchmark_contracts(artifact: dict) -> dict[str, dict]:
+    contracts = {}
+    for key, record in (artifact.get("contracts") or {}).items():
+        if not wc2026_evidence.supports_contract(key):
             continue
-    return rows, match_ids
-
-
-def _team_name(match: dict, side: str) -> str | None:
-    competitors = match.get(f"{side}_competitors") or []
-    return competitors[0].get("name") if competitors else None
-
-
-def _stage(match: dict) -> str:
-    label = str(match.get("season_type") or "").lower()
-    return "group" if "group" in label else "knockout"
-
-
-def _replay_match(match: dict, markets: list[dict]) -> dict:
-    home = _team_name(match, "home")
-    away = _team_name(match, "away")
-    if not home or not away:
-        return {"match_id": match.get("id"), "rows": [], "error": "missing team names"}
-    settled = [
-        market for market in markets
-        if market.get("current_value") in (0, 100)
-        and market.get("question")
-    ]
-    targets = [
-        {"id": str(market["id"]), "question": str(market["question"])}
-        for market in settled
-    ]
-    estimates = simulator.simulator_estimates(
-        targets,
-        PriceCtx(home, away, [], None, None),
-        direct_by_market={market["id"]: [] for market in targets},
-        kickoff=match.get("opening_time"),
-        stage=_stage(match),
-    )
-    rows = []
-    for market in settled:
-        estimate = estimates.get(str(market["id"]))
-        if not estimate:
+        if not questions_for_contract(key, "Home", "Away"):
             continue
-        history = estimate.get("historical_evidence") or {}
-        empirical = (history.get("empirical_rate") or {}).get("all_history") or {}
-        p_empirical = empirical.get("rate") if empirical.get("available") else None
-        rows.append({
-            "match_id": str(match["id"]),
-            "kickoff": match.get("opening_time"),
-            "family": str(estimate.get("family") or "unknown"),
-            "contract_key": estimate.get("contract_key"),
-            "p_model": float(estimate["probability"]),
-            "p_empirical": float(p_empirical) if p_empirical is not None else None,
-            "outcome": int(market["current_value"]) // 100,
-        })
-    return {
-        "schema_version": 1,
-        "generated_at": _now(),
-        "match_id": str(match["id"]),
-        "match_name": match.get("name"),
-        "kickoff": match.get("opening_time"),
-        "rows": rows,
-    }
+        empirical = ((record.get("empirical_rate") or {}).get("all_history") or {})
+        contracts[key] = {
+            "p_empirical": (
+                float(empirical["rate"])
+                if empirical.get("available") and empirical.get("rate") is not None
+                else None
+            ),
+            "empirical_training_observations": empirical.get("observations"),
+        }
+    return contracts
 
 
-def _write_replay(match_id: str, replay: dict) -> None:
+def _catalog_hash(contracts: dict[str, dict]) -> str:
+    payload = [
+        (key, record.get("p_empirical"), questions_for_contract(key, "Home", "Away"))
+        for key, record in sorted(contracts.items())
+    ]
+    return hashlib.sha256(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+    ).hexdigest()[:16]
+
+
+def _team_name(fixture: dict, side: str) -> str | None:
+    return str(((fixture.get("teams") or {}).get(side) or {}).get("name") or "") or None
+
+
+def _replay_path(fixture_id: int) -> Path:
+    return REPLAY_DIR / f"{fixture_id}.json"
+
+
+def _load_replay(fixture_id: int, catalog_hash: str) -> dict | None:
+    try:
+        replay = json.loads(_replay_path(fixture_id).read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    if (
+        replay.get("replay_version") != REPLAY_VERSION
+        or replay.get("catalog_hash") != catalog_hash
+    ):
+        return None
+    return replay
+
+
+def _write_replay(fixture_id: int, replay: dict) -> None:
     REPLAY_DIR.mkdir(parents=True, exist_ok=True)
-    path = REPLAY_DIR / f"{match_id}.json"
+    path = _replay_path(fixture_id)
     temporary = path.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(replay, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    temporary.write_text(
+        json.dumps(replay, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    )
     temporary.replace(path)
 
 
+def _replay_fixture(
+    covered: dict,
+    contracts: dict[str, dict],
+    catalog_hash: str,
+) -> dict:
+    fixture = covered["fixture"]
+    fixture_id = int(covered["fixture_id"])
+    home = _team_name(fixture, "home")
+    away = _team_name(fixture, "away")
+    if not home or not away:
+        return {
+            "replay_version": REPLAY_VERSION,
+            "catalog_hash": catalog_hash,
+            "fixture_id": fixture_id,
+            "rows": [],
+            "error": "missing team names",
+        }
+
+    markets = []
+    metadata = {}
+    for key, baseline in contracts.items():
+        labels = wc2026_evidence.labels_for_contract(key, covered["facts"])
+        questions = questions_for_contract(key, home, away)
+        if labels is None or len(labels) != len(questions):
+            continue
+        for index, (question, outcome) in enumerate(zip(questions, labels, strict=True)):
+            market_id = f"c{len(markets)}"
+            markets.append({"id": market_id, "question": question})
+            metadata[market_id] = {
+                "contract_key": key,
+                "observation_index": index,
+                "outcome": int(bool(outcome)),
+                **baseline,
+            }
+
+    estimates = simulator.simulator_estimates(
+        markets,
+        PriceCtx(home, away, [], None, None),
+        direct_by_market={market["id"]: [] for market in markets},
+        kickoff=covered["kickoff"],
+        stage=covered["stage"],
+    )
+    rows = []
+    mismatches = []
+    for market in markets:
+        market_id = market["id"]
+        estimate = estimates.get(market_id)
+        meta = metadata[market_id]
+        if not estimate:
+            continue
+        if estimate.get("contract_key") != meta["contract_key"]:
+            mismatches.append({
+                "expected": meta["contract_key"],
+                "actual": estimate.get("contract_key"),
+                "question": market["question"],
+            })
+            continue
+        rows.append({
+            "fixture_id": fixture_id,
+            "kickoff": covered["kickoff"],
+            "family": str(estimate.get("family") or "unknown"),
+            "contract_key": meta["contract_key"],
+            "observation_index": meta["observation_index"],
+            "observation_unit": observation_unit(meta["contract_key"]),
+            "p_model": float(estimate["probability"]),
+            "p_empirical": meta["p_empirical"],
+            "empirical_training_observations": meta[
+                "empirical_training_observations"
+            ],
+            "outcome": meta["outcome"],
+        })
+    return {
+        "replay_version": REPLAY_VERSION,
+        "catalog_hash": catalog_hash,
+        "generated_at": _now(),
+        "fixture_id": fixture_id,
+        "match": f"{home} vs {away}",
+        "kickoff": covered["kickoff"],
+        "stage": covered["stage"],
+        "requested_observations": len(markets),
+        "rows": rows,
+        "mismatches": mismatches,
+    }
+
+
 def _clustered_ci(rows: list[dict]) -> list[float] | None:
-    differences = [
-        (
-            row["match_id"],
+    clusters: dict[int, list[float]] = defaultdict(list)
+    for row in rows:
+        clusters[int(row["fixture_id"])].append(
             (row["p_model"] - row["outcome"]) ** 2
-            - (row["p_empirical"] - row["outcome"]) ** 2,
+            - (row["p_empirical"] - row["outcome"]) ** 2
         )
-        for row in rows
-    ]
-    clusters: dict[str, list[float]] = defaultdict(list)
-    for match_id, value in differences:
-        clusters[match_id].append(value)
-    if len(differences) < 2 or len(clusters) < 2:
+    count = sum(len(values) for values in clusters.values())
+    if count < 2 or len(clusters) < 2:
         return None
-    mean = sum(value for _, value in differences) / len(differences)
+    mean = sum(sum(values) for values in clusters.values()) / count
     sums = [sum(value - mean for value in values) for values in clusters.values()]
     variance = (
         len(clusters) / (len(clusters) - 1)
         * sum(value * value for value in sums)
-        / (len(differences) ** 2)
+        / (count * count)
     )
     margin = 1.96 * math.sqrt(max(variance, 0.0))
     return [round(mean - margin, 6), round(mean + margin, 6)]
@@ -148,178 +210,154 @@ def _clustered_ci(rows: list[dict]) -> list[float] | None:
 def _sample_size(matches: int) -> dict:
     if matches < 30:
         level = "too_small"
-        guidance = "Treat as inconclusive; do not choose the simulator or empirical rate from it."
+        guidance = "Treat as inconclusive; do not choose a baseline from it."
     elif matches < 75:
         level = "limited"
-        guidance = "Use only as a weak directional check; the tournament sample is small."
+        guidance = "Use only as a weak directional check."
     elif matches < 200:
         level = "moderate"
-        guidance = "Use as supporting evidence with contract and match-specific checks."
+        guidance = "Use as supporting evidence with match-specific checks."
     else:
         level = "large"
-        guidance = "Use as a meaningful family-level reliability signal."
+        guidance = "Use as a meaningful reliability signal."
     return {
         "level": level,
-        "basis": "unique settled WC2026 matches in the frozen-model replay",
+        "basis": "unique settled labelable WC2026 fixtures",
         "guidance": guidance,
     }
 
 
-def _summaries(rows: list[dict]) -> dict[str, dict]:
-    family_totals: dict[str, list[dict]] = defaultdict(list)
-    for row in rows:
-        family_totals[row["family"]].append(row)
-    summaries = {}
-    for family, all_family_rows in sorted(family_totals.items()):
-        family_rows = [
-            row for row in all_family_rows if row.get("p_empirical") is not None
-        ]
-        if not family_rows:
-            questions = len(all_family_rows)
-            matches = len({row["match_id"] for row in all_family_rows})
-            model_brier = sum(
-                (row["p_model"] - row["outcome"]) ** 2 for row in all_family_rows
-            ) / questions
-            summaries[family] = {
-                "available": True,
-                "scope": "wc2026_frozen_pre2026_simulator_replay",
-                "family": family,
-                "evaluation": (
-                    "Frozen pre-2026 learned simulator replayed on settled WC2026 "
-                    "questions. This is simulator-only performance. No pre-2026 "
-                    "exact-contract empirical baseline is available for this family."
-                ),
-                "questions": questions,
-                "matches": matches,
-                "contracts": len({row["contract_key"] for row in all_family_rows}),
-                "coverage": {
-                    "comparable_questions": 0,
-                    "simulator_questions": questions,
-                },
-                "brier": {
-                    "simulator": round(model_brier, 6),
-                    "always_50": 0.25,
-                },
-                "comparison_signal": "empirical_baseline_unavailable",
-                "sample_size": _sample_size(matches),
-            }
-            continue
-        questions = len(family_rows)
-        matches = len({row["match_id"] for row in family_rows})
-        model_brier = sum(
-            (row["p_model"] - row["outcome"]) ** 2 for row in family_rows
-        ) / questions
-        empirical_brier = sum(
-            (row["p_empirical"] - row["outcome"]) ** 2 for row in family_rows
-        ) / questions
-        ci = _clustered_ci(family_rows)
-        sample = _sample_size(matches)
-        if sample["level"] == "too_small":
-            signal = "inconclusive_small_sample"
-        elif ci and ci[1] < 0:
-            signal = "simulator_better"
-        elif ci and ci[0] > 0:
-            signal = "empirical_rate_better"
-        else:
-            signal = "inconclusive"
-        summaries[family] = {
-            "available": True,
-            "scope": "wc2026_frozen_pre2026_simulator_replay",
-            "family": family,
-            "evaluation": (
-                "Frozen pre-2026 learned simulator replayed on settled WC2026 questions. "
-                "This is simulator-only performance, not LLM-layer performance. The "
-                "baseline always predicts the pre-WC2026 exact-contract empirical rate."
-            ),
-            "questions": questions,
-            "matches": matches,
-            "contracts": len({row["contract_key"] for row in family_rows}),
-            "coverage": {
-                "comparable_questions": questions,
-                "simulator_questions": len(all_family_rows),
-            },
-            "brier": {
-                "simulator": round(model_brier, 6),
-                "always_50": 0.25,
-                "empirical_rate": round(empirical_brier, 6),
-            },
-            "delta_brier": {
-                "simulator_minus_always_50": round(model_brier - 0.25, 6),
-                "simulator_minus_empirical_rate": round(model_brier - empirical_brier, 6),
-                "negative_favors_simulator": True,
-            },
-            "simulator_minus_empirical_rate_95pct_ci": ci,
-            "comparison_signal": signal,
-            "sample_size": sample,
-        }
-    return summaries
+def _summary(rows: list[dict], *, scope: str, contracts: int) -> dict:
+    all_matches = len({row["fixture_id"] for row in rows})
+    comparable = [row for row in rows if row.get("p_empirical") is not None]
+    scored = comparable or rows
+    observations = len(scored)
+    matches = len({row["fixture_id"] for row in scored})
+    model_brier = sum(
+        (row["p_model"] - row["outcome"]) ** 2 for row in scored
+    ) / observations
+    summary = {
+        "available": True,
+        "scope": scope,
+        "evaluation": (
+            "Frozen pre-2026 simulator applied to every labelable settled WC2026 "
+            "fixture, independent of SportPredict question publication."
+        ),
+        "matches": matches,
+        "observations": observations,
+        "contracts": contracts,
+        "coverage": {
+            "labelable_matches": all_matches,
+            "simulator_observations": len(rows),
+            "comparable_matches": len({
+                row["fixture_id"] for row in comparable
+            }),
+            "comparable_observations": len(comparable),
+        },
+        "brier": {
+            "simulator": round(model_brier, 6),
+            "always_50": 0.25,
+        },
+        "sample_size": _sample_size(matches),
+    }
+    if not comparable:
+        summary["comparison_signal"] = "empirical_baseline_unavailable"
+        return summary
+
+    empirical_brier = sum(
+        (row["p_empirical"] - row["outcome"]) ** 2 for row in comparable
+    ) / len(comparable)
+    ci = _clustered_ci(comparable)
+    if summary["sample_size"]["level"] == "too_small":
+        signal = "inconclusive_small_sample"
+    elif ci and ci[1] < 0:
+        signal = "simulator_better"
+    elif ci and ci[0] > 0:
+        signal = "empirical_rate_better"
+    else:
+        signal = "inconclusive"
+    summary["brier"]["empirical_rate"] = round(empirical_brier, 6)
+    summary["delta_brier"] = {
+        "simulator_minus_always_50": round(model_brier - 0.25, 6),
+        "simulator_minus_empirical_rate": round(model_brier - empirical_brier, 6),
+        "negative_favors_simulator": True,
+    }
+    summary["simulator_minus_empirical_rate_95pct_ci"] = ci
+    summary["comparison_signal"] = signal
+    return summary
 
 
-def _contract_rates(rows: list[dict]) -> dict[str, dict]:
+def _summaries(rows: list[dict], group_key: str, scope: str) -> dict[str, dict]:
     grouped: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
-        if row.get("contract_key"):
-            grouped[str(row["contract_key"])].append(row)
+        grouped[str(row[group_key])].append(row)
     result = {}
-    for key, contract_rows in sorted(grouped.items()):
+    for key, grouped_rows in sorted(grouped.items()):
+        contracts = len({row["contract_key"] for row in grouped_rows})
         result[key] = {
-            "available": True,
-            "basis": "settled SportPredict WC2026 question instances",
-            "population": "settled_question_instances",
-            "yes_events": sum(int(row["outcome"]) for row in contract_rows),
-            "observations": len(contract_rows),
-            "matches": len({row["match_id"] for row in contract_rows}),
-            "rate": round(
-                sum(int(row["outcome"]) for row in contract_rows) / len(contract_rows), 6,
-            ),
-            "data_through": max(
-                (str(row.get("kickoff") or "") for row in contract_rows), default=None,
-            ),
-            "complete": True,
+            **_summary(grouped_rows, scope=scope, contracts=contracts),
+            group_key: key,
         }
+        if group_key == "contract_key":
+            result[key]["observation_unit"] = observation_unit(key)
     return result
 
 
-def refresh(sp, web, event_id: str, lobby_id: str, *, path: Path = SNAPSHOT_PATH) -> dict:
-    """Replay newly settled matches and atomically rebuild the tournament benchmark."""
-    seed = _seed()
-    seed_rows = list(seed.get("rows") or [])
-    seed_matches = {str(row["match_id"]) for row in seed_rows}
-    cached_rows, cached_matches = _cached_rows()
-    cached_rows = [
-        row for row in cached_rows if str(row["match_id"]) not in seed_matches
-    ]
-    existing = seed_rows + cached_rows
-    known_matches = seed_matches | cached_matches
-    settled_matches = web.settled_matches(event_id, refresh=True)
-    replayed = 0
-    for match in settled_matches:
-        match_id = str(match["id"])
-        if match_id in known_matches:
-            continue
-        replay = _replay_match(match, web.settled_crowd_stats(match_id, lobby_id))
-        _write_replay(match_id, replay)
-        existing.extend(replay.get("rows") or [])
-        known_matches.add(match_id)
-        replayed += 1
+def refresh(af, target_kickoff: str | None = None, *, path: Path = SNAPSHOT_PATH) -> dict:
+    """Replay new final fixtures and atomically rebuild exhaustive comparisons."""
+    artifact = _artifact()
+    contracts = _benchmark_contracts(artifact)
+    catalog_hash = _catalog_hash(contracts)
+    target_kickoff = target_kickoff or _now()
+    cutoff, eligible, covered, failures = wc2026_evidence.collect_fixture_facts(
+        af, target_kickoff, set(contracts),
+    )
+    rows = []
+    newly_replayed = 0
+    replay_failures = []
+    for fixture in covered:
+        fixture_id = int(fixture["fixture_id"])
+        replay = _load_replay(fixture_id, catalog_hash)
+        if replay is None:
+            replay = _replay_fixture(fixture, contracts, catalog_hash)
+            _write_replay(fixture_id, replay)
+            newly_replayed += 1
+        rows.extend(replay.get("rows") or [])
+        if replay.get("error") or replay.get("mismatches"):
+            replay_failures.append({
+                "fixture_id": fixture_id,
+                "error": replay.get("error"),
+                "mismatches": replay.get("mismatches") or [],
+            })
 
     snapshot = {
-        "schema_version": 2,
+        "schema_version": SCHEMA_VERSION,
         "generated_at": _now(),
-        "evaluation": "simulator_only_frozen_pre2026_wc2026_replay",
-        "settled_tournament_matches": len(settled_matches),
-        "replayed_matches": len({row["match_id"] for row in existing}),
-        "simulator_questions": len(existing),
-        "comparable_simulator_questions": sum(
-            row.get("p_empirical") is not None for row in existing
+        "target_kickoff": cutoff.isoformat(),
+        "evaluation": "exhaustive_frozen_pre2026_simulator_on_wc2026",
+        "population": "all_labelable_settled_fixtures",
+        "eligible_matches": len(eligible),
+        "replayed_matches": len({row["fixture_id"] for row in rows}),
+        "simulator_observations": len(rows),
+        "comparable_simulator_observations": sum(
+            row.get("p_empirical") is not None for row in rows
         ),
-        "new_matches_replayed": replayed,
-        "families": _summaries(existing),
-        "contracts": _contract_rates(existing),
+        "contracts_evaluated": len({row["contract_key"] for row in rows}),
+        "new_matches_replayed": newly_replayed,
+        "complete": not failures and not replay_failures,
+        "failures": failures + replay_failures,
+        "families": _summaries(
+            rows, "family", "wc2026_exhaustive_family_contracts",
+        ),
+        "contracts": _summaries(
+            rows, "contract_key", "wc2026_exhaustive_exact_contract",
+        ),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    temporary.write_text(
+        json.dumps(snapshot, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    )
     temporary.replace(path)
     return snapshot
 
@@ -329,11 +367,11 @@ def load(path: Path = SNAPSHOT_PATH) -> dict:
         snapshot = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError):
         return {}
-    return snapshot if snapshot.get("schema_version") == 2 else {}
+    return snapshot if snapshot.get("schema_version") == SCHEMA_VERSION else {}
 
 
 def overlay(estimates: dict[str, dict], snapshot: dict) -> dict[str, dict]:
-    """Replace stale tournament scopes with the current simulator-only replay."""
+    """Attach exact-contract and family exhaustive WC2026 performance."""
     families = snapshot.get("families") or {}
     contracts = snapshot.get("contracts") or {}
     for estimate in estimates.values():
@@ -345,12 +383,8 @@ def overlay(estimates: dict[str, dict], snapshot: dict) -> dict[str, dict]:
             performance["wc2026"] = copy.deepcopy(families[family])
 
         key = estimate.get("contract_key")
-        question_rate = contracts.get(key)
-        empirical = history.setdefault("empirical_rate", {})
-        current = empirical.get("wc2026") or {}
-        # Prefer all-labelable API data when available. Otherwise replace the
-        # stale shipped tournament slice with current settled question instances.
-        if question_rate and current.get("population") != "all_labelable_matches":
-            empirical["wc2026"] = copy.deepcopy(question_rate)
+        contract_performance = history.setdefault("contract_performance", {})
+        if key in contracts:
+            contract_performance["wc2026"] = copy.deepcopy(contracts[key])
         estimate["historical_evidence"] = history
     return estimates

@@ -108,7 +108,7 @@ def build_match_evidence(
         question_evidence.append(item)
 
     evidence = {
-        "schema_version": 10,
+        "schema_version": 11,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "match": _match_meta(result, lineups, minutes_before),
         "team_form": context.get("team_form") or {},
@@ -250,36 +250,66 @@ def _compact_simulator_estimate(estimate: dict) -> dict:
     if empirical_rates:
         compact["empirical_rates"] = empirical_rates
 
-    comparisons = {}
-    for scope, row in (history.get("family_performance") or {}).items():
-        if scope in {"family", "live_refresh"} or not isinstance(row, dict):
-            continue
-        if not row.get("available"):
-            continue
-        sample = (row.get("sample_size") or {}).get("level")
-        comparison = {
-            "signal": row.get("comparison_signal"),
-            "matches": row.get("matches"),
-            "questions": row.get("questions"),
-            "sample": sample,
-            "basis": (
-                "simulator_only_frozen_pre2026_replay"
-                if scope == "wc2026" else "rolling_origin_unseen_matches"
-            ),
-        }
-        # Do not expose unstable point estimates from explicitly tiny samples.
-        if sample != "too_small":
-            brier = row.get("brier") or {}
-            comparison["brier"] = {
-                key: brier.get(key)
-                for key in ("simulator", "empirical_rate", "always_50")
-                if brier.get(key) is not None
+    def compact_comparisons(source: dict, *, exact_contract: bool) -> dict:
+        comparisons = {}
+        for scope, row in source.items():
+            if scope in {"family", "live_refresh"} or not isinstance(row, dict):
+                continue
+            if not row.get("available"):
+                continue
+            sample = (row.get("sample_size") or {}).get("level")
+            coverage = row.get("coverage") or {}
+            comparison = {
+                "signal": row.get("comparison_signal"),
+                "sample": sample,
+                "basis": (
+                    (
+                        "exhaustive_exact_contract_on_all_labelable_wc2026_matches"
+                        if exact_contract else
+                        "exhaustive_family_contracts_on_all_labelable_wc2026_matches"
+                    )
+                    if scope == "wc2026" else "rolling_origin_unseen_matches"
+                ),
             }
-        comparisons[scope] = {
-            key: value for key, value in comparison.items() if value is not None
-        }
+            if scope == "wc2026":
+                comparison.update({
+                    "labelable_matches": coverage.get("labelable_matches"),
+                    "comparable_matches": coverage.get("comparable_matches"),
+                    "simulator_observations": coverage.get("simulator_observations"),
+                    "comparable_observations": coverage.get("comparable_observations"),
+                })
+                if exact_contract:
+                    comparison["observation_unit"] = row.get("observation_unit")
+                else:
+                    comparison["contracts"] = row.get("contracts")
+            else:
+                comparison.update({
+                    "matches": row.get("matches"),
+                    "questions": row.get("questions"),
+                })
+            # Do not expose unstable point estimates from explicitly tiny samples.
+            if sample != "too_small":
+                brier = row.get("brier") or {}
+                comparison["brier"] = {
+                    key: brier.get(key)
+                    for key in ("simulator", "empirical_rate", "always_50")
+                    if brier.get(key) is not None
+                }
+            comparisons[scope] = {
+                key: value for key, value in comparison.items() if value is not None
+            }
+        return comparisons
+
+    comparisons = compact_comparisons(
+        history.get("family_performance") or {}, exact_contract=False,
+    )
     if comparisons:
         compact["family_comparison"] = comparisons
+    contract_comparisons = compact_comparisons(
+        history.get("contract_performance") or {}, exact_contract=True,
+    )
+    if contract_comparisons:
+        compact["contract_comparison"] = contract_comparisons
     return compact
 
 

@@ -83,7 +83,7 @@ class DispatchTest(unittest.TestCase):
         sys.argv = ["cron_submit", "--settle"]
         result = (
             {"settled_predictions": 3, "remaining_predictions": 2},
-            {"comparable_simulator_questions": 4, "replayed_matches": 2},
+            {"comparable_simulator_observations": 4, "replayed_matches": 2},
         )
         with patch.object(settle_ledger, "settle_open", return_value=result) as settle:
             cron_submit.main()

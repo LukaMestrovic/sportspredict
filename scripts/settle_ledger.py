@@ -80,13 +80,11 @@ def settle_open(path: Path = ledger.LEDGER_PATH) -> tuple[dict, dict]:
             if value in (0, 100):
                 outcomes[market["id"]] = value // 100
     stats = ledger.settle_results(outcomes, results, path=path)
-    snapshot = simulator_benchmark.refresh(
-        sp, web, event["id"], lobby["id"],
-    )
+    now = datetime.now(timezone.utc).isoformat()
+    af = APIFootball(refresh_odds=True)
+    snapshot = simulator_benchmark.refresh(af, now)
     empirical = wc2026_evidence.refresh(
-        APIFootball(refresh_odds=True),
-        datetime.now(timezone.utc).isoformat(),
-        wc2026_evidence.known_contract_keys() | set(snapshot.get("contracts") or {}),
+        af, now, wc2026_evidence.known_contract_keys(),
     )
     snapshot["empirical_refresh"] = {
         key: empirical.get(key)
@@ -124,9 +122,10 @@ def main() -> None:
         f"{stats['remaining_predictions']} still open."
     )
     print(
-        f"WC2026 simulator benchmark: {benchmark['comparable_simulator_questions']} "
-        f"comparable questions across {benchmark['replayed_matches']} replayed matches "
-        f"({benchmark['settled_tournament_matches']} settled)."
+        f"WC2026 simulator benchmark: "
+        f"{benchmark['comparable_simulator_observations']} comparable observations "
+        f"across {benchmark['replayed_matches']}/{benchmark['eligible_matches']} "
+        f"labelable settled matches."
     )
     for row in ledger.performance(path=args.ledger):
         if row["group"] == "overall":

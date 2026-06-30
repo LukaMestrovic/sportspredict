@@ -48,46 +48,74 @@ class StaticFamilyBenchmarkTests(unittest.TestCase):
         benchmark = artifact["families"]["goal_window"]
         self.assertEqual(artifact["schema_version"], 2)
         self.assertEqual(benchmark["all_history"]["sample_size"]["level"], "large")
-        self.assertEqual(benchmark["wc2026"]["matches"], 1)
-        self.assertEqual(benchmark["wc2026"]["sample_size"]["level"], "too_small")
-        seed = json.loads(Path(
-            "simulator/data/processed/wc2026_simulator_replay_seed.json"
-        ).read_text())
-        self.assertEqual(seed["matches"], 73)
 
 
 class TournamentFamilyBenchmarkTests(unittest.TestCase):
-    def test_refresh_uses_frozen_simulator_and_empirical_predictions(self):
+    def test_refresh_scores_exact_contract_for_both_teams_on_every_fixture(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            seed = root / "seed.json"
-            seed.write_text(json.dumps({"rows": [{
-                "match_id": "m1", "kickoff": "2026-06-30T12:00:00Z",
-                "family": "goal_window", "contract_key": "goal_window:test",
-                "p_model": 0.8, "p_empirical": 0.6, "outcome": 1,
-            }]}))
+            artifact = root / "artifact.json"
+            key = "count:shots_on_target:team:full:>=:6:reg"
+            artifact.write_text(json.dumps({"contracts": {key: {
+                "empirical_rate": {"all_history": {
+                    "available": True, "rate": 0.25, "observations": 8000,
+                }},
+            }}}))
+            fixture = {
+                "fixture": {"id": 1},
+                "teams": {
+                    "home": {"name": "Home"},
+                    "away": {"name": "Away"},
+                },
+            }
+            covered = {
+                "fixture": fixture, "fixture_id": 1,
+                "kickoff": "2026-06-30T12:00:00Z",
+                "stage": "group", "facts": {},
+            }
 
-            class _Web:
-                def settled_matches(self, event_id, refresh=False):
-                    return [{"id": "m1"}]
+            def estimates(markets, *_args, **_kwargs):
+                return {
+                    market["id"]: {
+                        "family": "count_threshold",
+                        "contract_key": key,
+                        "probability": probability,
+                    }
+                    for market, probability in zip(markets, (0.8, 0.2), strict=True)
+                }
 
-            with patch.object(simulator_benchmark, "SEED_PATH", seed), patch.object(
+            with patch.object(simulator_benchmark, "ARTIFACT_PATH", artifact), patch.object(
                 simulator_benchmark, "REPLAY_DIR", root / "replays"
+            ), patch.object(
+                simulator_benchmark.wc2026_evidence, "collect_fixture_facts",
+                return_value=(
+                    simulator_benchmark.datetime(2026, 7, 1, tzinfo=simulator_benchmark.timezone.utc),
+                    [fixture], [covered], [],
+                ),
+            ), patch.object(
+                simulator_benchmark.wc2026_evidence, "labels_for_contract",
+                return_value=[True, False],
+            ), patch.object(
+                simulator_benchmark.simulator, "simulator_estimates",
+                side_effect=estimates,
             ):
                 snapshot = simulator_benchmark.refresh(
-                    None, _Web(), "event", "lobby", path=root / "snapshot.json",
+                    object(), path=root / "snapshot.json",
                 )
 
-        family = snapshot["families"]["goal_window"]
-        self.assertEqual(family["questions"], 1)
-        self.assertAlmostEqual(family["brier"]["simulator"], 0.04)
-        self.assertAlmostEqual(family["brier"]["empirical_rate"], 0.16)
+        family = snapshot["families"]["count_threshold"]
+        contract = snapshot["contracts"][key]
+        self.assertEqual(contract["observations"], 2)
+        self.assertEqual(contract["matches"], 1)
+        self.assertEqual(contract["observation_unit"], "team")
+        self.assertAlmostEqual(contract["brier"]["simulator"], 0.04)
+        self.assertAlmostEqual(contract["brier"]["empirical_rate"], 0.3125)
         self.assertEqual(family["comparison_signal"], "inconclusive_small_sample")
         self.assertEqual(family["sample_size"]["level"], "too_small")
         self.assertEqual(snapshot["replayed_matches"], 1)
 
         estimates = {"q1": {
-            "family": "goal_window", "contract_key": "goal_window:test",
+            "family": "count_threshold", "contract_key": key,
             "historical_evidence": {"family_performance": {
                 "live_wc2026": {"available": True},
             }},
@@ -95,16 +123,16 @@ class TournamentFamilyBenchmarkTests(unittest.TestCase):
         simulator_benchmark.overlay(estimates, snapshot)
         performance = estimates["q1"]["historical_evidence"]["family_performance"]
         self.assertNotIn("live_wc2026", performance)
-        self.assertEqual(performance["wc2026"]["questions"], 1)
-        rate = estimates["q1"]["historical_evidence"]["empirical_rate"]["wc2026"]
-        self.assertEqual(rate["population"], "settled_question_instances")
+        self.assertEqual(performance["wc2026"]["observations"], 2)
+        exact = estimates["q1"]["historical_evidence"]["contract_performance"]["wc2026"]
+        self.assertEqual(exact["observations"], 2)
 
     def test_family_without_empirical_baseline_still_reports_simulator_vs_50(self):
-        summary = simulator_benchmark._summaries([{
-            "match_id": "m1", "family": "player_stat",
+        summary = simulator_benchmark._summary([{
+            "fixture_id": 1, "family": "total_goals",
             "contract_key": "player_stat:test", "p_model": 0.8,
             "p_empirical": None, "outcome": 1,
-        }])["player_stat"]
+        }], scope="test", contracts=1)
         self.assertEqual(
             summary["comparison_signal"], "empirical_baseline_unavailable",
         )

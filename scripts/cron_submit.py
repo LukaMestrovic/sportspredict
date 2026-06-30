@@ -32,7 +32,6 @@ from bot.config import ROOT
 from bot.oddsapi import OddsAPI
 from bot.pipeline import run_match, submit_with_ledger
 from bot.sportspredict import SportPredict
-from bot.web import WebAPI
 
 # Submit at these many minutes-before-kickoff (largest first). A window fires on
 # the first tick at or under its threshold, then is marked done for that match.
@@ -89,7 +88,8 @@ def main() -> None:
             _log(
                 f"SETTLE updated={stats['settled_predictions']} "
                 f"remaining={stats['remaining_predictions']} "
-                f"benchmark_questions={benchmark['comparable_simulator_questions']} "
+                f"benchmark_observations="
+                f"{benchmark['comparable_simulator_observations']} "
                 f"benchmark_matches={benchmark['replayed_matches']}"
             )
         else:
@@ -161,17 +161,15 @@ def _process_match(
         return
 
     _log(f"FIRING {window}-min window for {head} (kickoff in {mins:.1f} min)")
-    # Refresh the tournament-wide frozen-simulator replay immediately before the
-    # evidence handoff. Newly settled matches are replayed once and cached.
+    # Refresh exhaustive frozen-simulator WC2026 comparisons immediately before
+    # the evidence handoff. Newly settled fixtures are replayed once and cached.
+    af = APIFootball(refresh_odds=True)
     try:
-        simulator_benchmark.refresh(
-            sp, WebAPI(), event["id"], lobby["id"],
-        )
+        simulator_benchmark.refresh(af)
     except Exception as exc:
         _log(f"  WC2026 simulator benchmark refresh warning: {exc}")
     # Each scheduled window must observe the market again. Provider instances
     # still deduplicate lookups within this run, but bypass older disk entries.
-    af = APIFootball(refresh_odds=True)
     oa = OddsAPI(refresh_odds=True)
     markets = sp.markets(lobby["id"], sp_match["id"])
     lineups = None

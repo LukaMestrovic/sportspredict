@@ -101,8 +101,29 @@ class EvidenceTests(unittest.TestCase):
                     },
                     "wc2026": {
                         "available": True, "comparison_signal": "inconclusive_small_sample",
-                        "matches": 2, "sample_size": {"level": "too_small"},
+                        "matches": 2, "observations": 4,
+                        "sample_size": {"level": "too_small"},
+                        "contracts": 2,
+                        "coverage": {
+                            "labelable_matches": 2, "comparable_matches": 2,
+                            "simulator_observations": 4, "comparable_observations": 4,
+                        },
                         "brier": {"simulator": 0.1, "empirical_rate": 0.2,
+                                  "always_50": 0.25},
+                    },
+                },
+                "contract_performance": {
+                    "wc2026": {
+                        "available": True, "comparison_signal": "simulator_better",
+                        "matches": 77, "observations": 154,
+                        "observation_unit": "team",
+                        "sample_size": {"level": "moderate"},
+                        "coverage": {
+                            "labelable_matches": 77, "comparable_matches": 77,
+                            "simulator_observations": 154,
+                            "comparable_observations": 154,
+                        },
+                        "brier": {"simulator": 0.18, "empirical_rate": 0.21,
                                   "always_50": 0.25},
                     },
                 },
@@ -117,8 +138,21 @@ class EvidenceTests(unittest.TestCase):
             "simulator": 0.157, "empirical_rate": 0.156, "always_50": 0.25,
         })
         self.assertEqual(compact["family_comparison"]["wc2026"], {
-            "signal": "inconclusive_small_sample", "matches": 2,
-            "sample": "too_small", "basis": "simulator_only_frozen_pre2026_replay",
+            "signal": "inconclusive_small_sample", "sample": "too_small",
+            "basis": "exhaustive_family_contracts_on_all_labelable_wc2026_matches",
+            "labelable_matches": 2, "comparable_matches": 2,
+            "simulator_observations": 4, "comparable_observations": 4,
+            "contracts": 2,
+        })
+        self.assertEqual(compact["contract_comparison"]["wc2026"], {
+            "signal": "simulator_better", "sample": "moderate",
+            "basis": "exhaustive_exact_contract_on_all_labelable_wc2026_matches",
+            "labelable_matches": 77, "comparable_matches": 77,
+            "simulator_observations": 154, "comparable_observations": 154,
+            "observation_unit": "team",
+            "brier": {
+                "simulator": 0.18, "empirical_rate": 0.21, "always_50": 0.25,
+            },
         })
         for redundant in ("source", "model", "note", "historical_evidence", "probability"):
             self.assertNotIn(redundant, compact)
@@ -157,7 +191,7 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(estimates.call_args.kwargs["intents"], result.intents)
         q = evidence["question_evidence"][0]
-        self.assertEqual(evidence["schema_version"], 10)
+        self.assertEqual(evidence["schema_version"], 11)
         self.assertEqual(q["simulator_estimate"], {"probability_pct": 24.1})
         self.assertNotIn("simulator_model_estimates", q)
         self.assertNotIn("audit_requirement", q)
@@ -221,7 +255,7 @@ class EvidenceTests(unittest.TestCase):
             )
 
         question = bundle["question_evidence"][0]
-        self.assertEqual(bundle["schema_version"], 10)
+        self.assertEqual(bundle["schema_version"], 11)
         self.assertEqual(question["direct_market_spec"]["bet_id"], 14)
         self.assertEqual(len(question["direct_odds"]), 1)
         self.assertIn("regulation first-team-to-score proxy",
@@ -250,7 +284,7 @@ class ContextEvidenceTests(unittest.TestCase):
         with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
-        self.assertEqual(evidence["schema_version"], 10)
+        self.assertEqual(evidence["schema_version"], 11)
         self.assertEqual(evidence["team_form"]["home"]["gf_avg"], 1.7)
         self.assertEqual(evidence["player_form"]["home"][0]["name"], "Striker One")
         self.assertEqual(evidence["referee_profile"]["yellows_per_game"], 4.0)
