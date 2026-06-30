@@ -11,8 +11,6 @@ cd "$(dirname "$0")/.."
 ROOT="$PWD"
 IMAGE="${SPLLM_IMAGE:-sportspredict-llm}"
 TAG="${SPLLM_TAG:-v1}"
-HYBRID_ROOT="${SPORTSPREDICT_HYBRID_ROOT:-$ROOT/../sportspredict-hybrid}"
-HYBRID_SNAPSHOT="$ROOT/.deploy/hybrid_snapshot"
 
 # 1) Require the live keys.
 if [ ! -f .env ]; then
@@ -20,48 +18,7 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-# 2) Snapshot the sibling hybrid simulator so the deployed image is isolated
-#    from later edits in BOTH working trees. Keep this explicit: no raw caches,
-#    no secrets, only source/config/model artifacts needed by the bridge.
-if [ ! -d "$HYBRID_ROOT/src/sphybrid" ]; then
-  echo "FATAL: hybrid checkout not found at $HYBRID_ROOT (set SPORTSPREDICT_HYBRID_ROOT)." >&2
-  exit 1
-fi
-for required in \
-  "$HYBRID_ROOT/pyproject.toml" \
-  "$HYBRID_ROOT/README.md" \
-  "$HYBRID_ROOT/wheels/sportspredict-0.1.0-py3-none-any.whl" \
-  "$HYBRID_ROOT/data/processed/rate_model.joblib" \
-  "$HYBRID_ROOT/data/processed/rate_model.json" \
-  "$HYBRID_ROOT/data/processed/team_ratings.parquet" \
-  "$HYBRID_ROOT/data/processed/event_timing.json" \
-  "$HYBRID_ROOT/data/processed/player_shares.parquet" \
-  "$HYBRID_ROOT/data/processed/simulation_evidence.json"
-do
-  if [ ! -f "$required" ]; then
-    echo "FATAL: required hybrid deploy artifact missing: $required" >&2
-    exit 1
-  fi
-done
-
-echo ">> snapshot hybrid simulator from $HYBRID_ROOT ..."
-rm -rf "$HYBRID_SNAPSHOT"
-mkdir -p "$HYBRID_SNAPSHOT/data/processed" "$HYBRID_SNAPSHOT/data/raw"
-cp -a "$HYBRID_ROOT/pyproject.toml" "$HYBRID_ROOT/README.md" "$HYBRID_SNAPSHOT/"
-cp -a "$HYBRID_ROOT/src" "$HYBRID_ROOT/config" "$HYBRID_ROOT/wheels" "$HYBRID_SNAPSHOT/"
-cp -a \
-  "$HYBRID_ROOT/data/processed/rate_model.joblib" \
-  "$HYBRID_ROOT/data/processed/rate_model.json" \
-  "$HYBRID_ROOT/data/processed/team_ratings.parquet" \
-  "$HYBRID_ROOT/data/processed/event_timing.json" \
-  "$HYBRID_ROOT/data/processed/player_shares.parquet" \
-  "$HYBRID_ROOT/data/processed/simulation_evidence.json" \
-  "$HYBRID_SNAPSHOT/data/processed/"
-if [ -f "$HYBRID_ROOT/data/raw/elo.csv" ]; then
-  cp -a "$HYBRID_ROOT/data/raw/elo.csv" "$HYBRID_SNAPSHOT/data/raw/"
-fi
-
-# 3) Build the immutable image (source baked in; secrets never baked).
+# 2) Build the immutable image from this repository (secrets never baked).
 #    --provenance=false keeps this a single image manifest: the default BuildKit
 #    attestation manifest can fail to unpack on the containerd snapshotter
 #    ("failed to prepare extraction snapshot ... parent snapshot does not exist")
@@ -70,18 +27,17 @@ fi
 echo ">> docker build $IMAGE:$TAG ..."
 docker build --provenance=false -f docker/Dockerfile -t "$IMAGE:$TAG" .
 
-# 4) Smoke-test the baked hybrid bridge without any secrets. This proves the
-#    deployed image uses its internal /sportspredict-hybrid snapshot (not either
-#    live working tree) AND that config + all fitted artifacts load: the goal/card
+# 3) Smoke-test the bundled simulator without any secrets. This proves that
+#    config + all fitted artifacts load: the goal/card
 #    windows exercise event_timing.json, the any-player brace exercises
-#    player_shares.parquet, and the brace's populated historical_evidence proves
+#    player_shares.json, and the brace's populated historical_evidence proves
 #    simulation_evidence.json was baked and loaded. Missing artifacts would
 #    degrade to neutral priors / unavailable evidence, so a returned non-degenerate
 #    probability AND a contract_key AND live brace history are the real checks.
-echo ">> smoke-test image hybrid bridge ..."
-docker run --rm --entrypoint python -e SPORTSPREDICT_HYBRID_N_SIMS=500 \
+echo ">> smoke-test image simulator bridge ..."
+docker run --rm --entrypoint python -e SPORTSPREDICT_SIMULATOR_N_SIMS=500 \
   "$IMAGE:$TAG" -c '
-from bot.hybrid_model import simulator_estimates
+from bot.simulator import simulator_estimates
 from bot.pricing import PriceCtx
 markets = [
     {"id": "pen", "question": "Will a penalty kick be awarded in the match?"},
@@ -103,10 +59,10 @@ assert all(v.get("contract_key") for v in out.values()), out
 # simulation_evidence.json baked + loaded: brace has a real all-history rate.
 brace_hist = (out["brace"].get("historical_evidence") or {}).get("empirical_rate", {})
 assert brace_hist.get("all_history", {}).get("available") is True, out["brace"]
-print("hybrid bridge OK:", {k: (v["family"], v["contract_key"], v["probability_pct"]) for k, v in sorted(out.items())})
+print("simulator bridge OK:", {k: (v["family"], v["contract_key"], v["probability_pct"]) for k, v in sorted(out.items())})
 '
 
-# 5) Smoke-test the image without submitting: it must reach SportPredict and
+# 4) Smoke-test the image without submitting: it must reach SportPredict and
 #    report the next match. Keys are read from .env by reference, never argv.
 echo ">> smoke-test image (--status, no submit) ..."
 set -a; . ./.env; set +a
@@ -115,7 +71,7 @@ docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -v "$ROOT/cache:/app/cache" -v "$ROOT/logs:/app/logs" \
   "$IMAGE:$TAG" --status
 
-# 6) Install the cron schedule (idempotent: replace any sportspredict-llm block).
+# 5) Install the cron schedule (idempotent: replace any sportspredict-llm block).
 echo ">> installing cron schedule ..."
 begin="# >>> sportspredict-llm v1 >>>"
 end="# <<< sportspredict-llm v1 <<<"

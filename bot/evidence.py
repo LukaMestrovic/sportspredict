@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
-from . import config, derive, hybrid_model
+from . import config, derive, simulator
 from . import oddsapi as oapi
 from . import predictor as afpred
 from .matcher import match_intent, match_intent_oddsapi
@@ -51,7 +51,7 @@ def build_match_evidence(
     # without an exact direct contract (plus the retained model-sensitive
     # penalty/shot-on-target targets). It preserves direct-odds priority: a
     # liquid exact price is never displaced by simulator context.
-    simulator_by_market = hybrid_model.simulator_estimates(
+    simulator_by_market = simulator.simulator_estimates(
         result.markets,
         ctx,
         direct_by_market=direct_by_market,

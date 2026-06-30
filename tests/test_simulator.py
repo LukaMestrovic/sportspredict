@@ -1,11 +1,11 @@
-"""Tests for the sportspredict-hybrid simulation-report bridge."""
+"""Tests for the bundled simulator bridge."""
 import json
 import subprocess
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from bot import hybrid_model
+from bot import simulator
 from bot.pricing import PriceCtx
 
 
@@ -81,10 +81,10 @@ class ReportParsingTests(unittest.TestCase):
 
     def _run(self, markets, direct_by_market, bridge_response, **kwargs):
         run = MagicMock(return_value=bridge_response)
-        with patch.object(hybrid_model, "_sibling",
+        with patch.object(simulator, "_runtime",
                           return_value=(Path("/fake/root"), Path("/fake/py"))), \
-                patch.object(hybrid_model, "_run_bridge", run):
-            out = hybrid_model.simulator_estimates(
+                patch.object(simulator, "_run_bridge", run):
+            out = simulator.simulator_estimates(
                 markets, _ctx(), direct_by_market=direct_by_market, **kwargs)
         return out, run
 
@@ -214,10 +214,10 @@ class TargetSelectionTests(unittest.TestCase):
 
     def _capture_payload(self, markets, direct_by_market, **kwargs):
         run = MagicMock(return_value=_bridge_response([]))
-        with patch.object(hybrid_model, "_sibling",
+        with patch.object(simulator, "_runtime",
                           return_value=(Path("/fake/root"), Path("/fake/py"))), \
-                patch.object(hybrid_model, "_run_bridge", run):
-            hybrid_model.simulator_estimates(
+                patch.object(simulator, "_run_bridge", run):
+            simulator.simulator_estimates(
                 markets, _ctx(), direct_by_market=direct_by_market, **kwargs)
         if not run.call_args:
             return None
@@ -279,28 +279,27 @@ class TargetSelectionTests(unittest.TestCase):
 
 
 class FailOpenTests(unittest.TestCase):
-    """A missing sibling, timeout, nonzero exit or bad output must yield {}."""
+    """A missing runtime, timeout, nonzero exit or bad output must yield {}."""
 
-    def test_missing_sibling_returns_empty(self):
+    def test_missing_runtime_returns_empty(self):
         markets = [{"id": "m1", "question": "Will a goal be scored before the first hydration break?"}]
-        with patch.object(hybrid_model, "_hybrid_python", return_value=None):
-            out = hybrid_model.simulator_estimates(
-                markets, _ctx(), direct_by_market={"m1": []},
-                hybrid_root=Path("/does/not/exist/xyz"))
+        out = simulator.simulator_estimates(
+            markets, _ctx(), direct_by_market={"m1": []},
+            simulator_root=Path("/does/not/exist/xyz"))
         self.assertEqual(out, {})
 
-    def test_no_targets_returns_empty_without_touching_sibling(self):
+    def test_no_targets_returns_empty_without_touching_runtime(self):
         markets = [{"id": "win", "question": "Will the home team win?"}]
-        with patch.object(hybrid_model, "_sibling") as sibling:
-            out = hybrid_model.simulator_estimates(
+        with patch.object(simulator, "_runtime") as runtime:
+            out = simulator.simulator_estimates(
                 markets, _ctx(), direct_by_market={"win": [{"probability": 0.5}]})
         self.assertEqual(out, {})
-        sibling.assert_not_called()
+        runtime.assert_not_called()
 
     def _run_bridge(self, proc_mock=None, side_effect=None):
-        with patch.object(hybrid_model.subprocess, "run",
+        with patch.object(simulator.subprocess, "run",
                           MagicMock(return_value=proc_mock, side_effect=side_effect)):
-            return hybrid_model._run_bridge({"home": "A", "away": "B"},
+            return simulator._run_bridge({"home": "A", "away": "B"},
                                             Path("/fake/root"), Path("/fake/py"))
 
     def test_timeout_returns_empty(self):
@@ -334,13 +333,12 @@ class FailOpenTests(unittest.TestCase):
             captured["cwd"] = kwargs.get("cwd")
             return proc
 
-        with patch.object(hybrid_model.subprocess, "run", fake_run):
-            hybrid_model._run_bridge({"home": "A"}, Path("/fake/root"), Path("/fake/py"))
+        with patch.object(simulator.subprocess, "run", fake_run):
+            simulator._run_bridge({"home": "A"}, Path("/fake/root"), Path("/fake/py"))
 
-        self.assertEqual(captured["cmd"][1:], ["-m", "sphybrid.cli", "simulation-report"])
+        self.assertEqual(captured["cmd"][1:], ["-m", "sphybrid.bridge"])
         self.assertTrue(captured["env"]["PYTHONPATH"].startswith(str(Path("/fake/root/src"))))
-        # SPORTSPREDICT_ROOT must be pinned to the sibling root so the report's
-        # config/artifact resolution is deterministic in the deployed image.
+        # Config and artifact resolution is pinned to the tracked runtime.
         self.assertEqual(captured["env"]["SPORTSPREDICT_ROOT"], str(Path("/fake/root")))
         self.assertEqual(captured["cwd"], str(Path("/fake/root")))
 

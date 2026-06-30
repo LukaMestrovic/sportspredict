@@ -10,23 +10,17 @@ FROM python:3.14-slim AS runtime
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    SPORTSPREDICT_HYBRID_ROOT=/sportspredict-hybrid \
-    SPORTSPREDICT_HYBRID_PYTHON=/usr/local/bin/python
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
-# The LLM bot itself only needs requests; the optional hybrid simulator bridge
-# installs its heavier stack from the deployment snapshot below.
+# Keep the bot and numerical simulator dependency sets explicit and separate.
 COPY requirements.txt /app/
-RUN pip install -r requirements.txt
+COPY simulator/requirements.txt /app/simulator/requirements.txt
+RUN pip install -r requirements.txt -r simulator/requirements.txt
 
-# Bake a deployment-time snapshot of the sibling hybrid simulator. The deploy
-# script creates .deploy/hybrid_snapshot from ../sportspredict-hybrid immediately
-# before docker build, so later edits to either checkout cannot affect a running
-# cron tick until a new image is built.
-COPY .deploy/hybrid_snapshot/ /sportspredict-hybrid/
-RUN pip install --find-links /sportspredict-hybrid/wheels /sportspredict-hybrid
+# Bake the tracked simulator source, config, and fitted artifacts.
+COPY simulator/ /app/simulator/
 
 # Bake the source. No .env, no secrets (enforced by .dockerignore). cache/ and
 # logs/ are intentionally absent — they are bind-mounted at run time so state

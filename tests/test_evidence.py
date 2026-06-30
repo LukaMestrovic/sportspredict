@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from bot.evidence import build_match_evidence
-from bot.hybrid_model import model_estimate_kind
+from bot.simulator import model_estimate_kind
 from bot.pipeline import MatchResult
 from bot.pricing import PriceCtx
 
@@ -85,7 +85,7 @@ class EvidenceTests(unittest.TestCase):
             "note": "context only",
         }
 
-        with patch("bot.evidence.hybrid_model.simulator_estimates",
+        with patch("bot.evidence.simulator.simulator_estimates",
                    return_value={"pen": sim}) as estimates:
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
@@ -111,7 +111,7 @@ class EvidenceTests(unittest.TestCase):
             "note": "context only",
         }
 
-        with patch("bot.evidence.hybrid_model.simulator_estimates",
+        with patch("bot.evidence.simulator.simulator_estimates",
                    return_value={"sot": sim}) as estimates:
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
@@ -125,7 +125,7 @@ class EvidenceTests(unittest.TestCase):
         })
         ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
 
-        with patch("bot.evidence.hybrid_model.simulator_estimates",
+        with patch("bot.evidence.simulator.simulator_estimates",
                    return_value={}) as estimates:
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
@@ -147,7 +147,7 @@ class ContextEvidenceTests(unittest.TestCase):
         }
         ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
 
-        with patch("bot.evidence.hybrid_model.simulator_estimates", return_value={}):
+        with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
         self.assertEqual(evidence["schema_version"], 5)
@@ -172,7 +172,7 @@ class ContextEvidenceTests(unittest.TestCase):
         }
         ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
 
-        with patch("bot.evidence.hybrid_model.simulator_estimates", return_value={}):
+        with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
         q = evidence["question_evidence"][0]
@@ -188,7 +188,7 @@ class ContextEvidenceTests(unittest.TestCase):
         result.match_context = {"player_index": {"X": {"name": "X"}}}
         ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
 
-        with patch("bot.evidence.hybrid_model.simulator_estimates", return_value={}):
+        with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
         self.assertNotIn("player_form", evidence["question_evidence"][0])
@@ -200,7 +200,7 @@ class ContextEvidenceTests(unittest.TestCase):
         })  # no match_context attached
         ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
 
-        with patch("bot.evidence.hybrid_model.simulator_estimates", return_value={}):
+        with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
         self.assertEqual(evidence["team_form"], {})

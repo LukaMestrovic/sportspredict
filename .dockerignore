@@ -1,5 +1,5 @@
 # Build context hygiene: never ship secrets, the venv, or runtime state into the
-# image. The Dockerfile copies only requirements.txt, bot/, scripts/, run.py.
+# image. The Dockerfile copies only tracked runtime source and model artifacts.
 .env
 .env.*
 !.env.example
