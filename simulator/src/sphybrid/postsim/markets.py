@@ -29,6 +29,7 @@ CARD_WINDOW = "card_window"
 STAT_WINDOW = "stat_window"
 SUBSTITUTION_BEFORE_HALF = "substitution_before_halftime"
 SUBSTITUTE_SCORE = "substitute_score"
+TEAM_SCORE_NO_OWN = "team_score_no_own"
 ANY_PLAYER_THRESHOLD = "any_player_threshold"
 COMPOUND_AND = "compound_and"
 REGULATION_STANDARD = "regulation_standard"
@@ -180,6 +181,13 @@ def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
         return ExtSpec(SUBSTITUTION_BEFORE_HALF, {}, question)
     if re.search(r"\ba substitute score", core):
         return ExtSpec(SUBSTITUTE_SCORE, {"regulation": True}, question)
+    if "excluding own goals" in raw_lower and re.search(r"\bscore a goal\b", core):
+        teams = _teams_in_text(core, ctx)
+        if len(teams) == 1:
+            return ExtSpec(TEAM_SCORE_NO_OWN, {
+                "team": _LABEL[teams[0]],
+                "regulation": "regulation" in raw_lower or "90 minutes" in raw_lower,
+            }, question)
     if core.startswith("any player"):
         count = _threshold(core)
         if count and "shot" in core and "on target" in core:
@@ -467,6 +475,7 @@ def resolve_extended(
             return prob_substitute_scores(
                 outcome, ctx, player_shares, settings,
                 fallback_share=timing.parameter("substitute_goal_share", 0.12),
+                own_goal_share=timing.parameter("own_goal_share", 0.015),
             )
         return prob_any_player_threshold(
             outcome, ctx, spec.params["stat"], spec.params["comparator"],
@@ -476,6 +485,13 @@ def resolve_extended(
                 if spec.params["stat"] == "goals" else 0.0
             ),
         )
+    elif spec.market == TEAM_SCORE_NO_OWN:
+        goals = outcome.goals_team(
+            spec.params["team"], include_et=not spec.params.get("regulation", False),
+        )
+        own_goal_share = float(timing.parameter("own_goal_share", 0.015))
+        mask = 1.0 - own_goal_share ** np.asarray(goals, dtype=int)
+        return float(np.clip(np.mean(mask), 0.0, 1.0))
     elif spec.market == TOTAL_SHOTS_THRESHOLD:
         from .shots import total_shots_probability
 

@@ -24,11 +24,11 @@ class DirectContractTests(unittest.TestCase):
         spec = self.match(market="match_winner", subject="away", comparator="win", period="2H")
         self.assertEqual((spec["bet_id"], spec["value"]), (3, "Away"))
 
-    def test_card_comparison_uses_yellow_card_1x2(self):
+    def test_generic_card_comparison_rejects_yellow_only_contract(self):
         full = self.match(market="team_cards", subject="home", comparator="more", period="match")
         half = self.match(market="cards_compare", subject="away", comparator="more", period="2H")
-        self.assertEqual((full["bet_id"], full["value"]), (158, "Home"))
-        self.assertEqual((half["bet_id"], half["value"]), (162, "Away"))
+        self.assertIsNone(full)
+        self.assertIsNone(half)
 
     def test_half_corner_comparison_uses_half_1x2(self):
         spec = self.match(
@@ -93,6 +93,11 @@ class DirectContractTests(unittest.TestCase):
             (spec["type"], spec["bet_id"], spec["value"]),
             ("select", 59, "Yes"),
         )
+
+    def test_team_score_excluding_own_goals_rejects_scoreboard_contract(self):
+        intent = _I("team_score", "away")
+        intent["excludes_own_goals"] = True
+        self.assertIsNone(match_intent(intent, "Home", "Away"))
 
 
 class KnockoutMarketMappingTests(unittest.TestCase):

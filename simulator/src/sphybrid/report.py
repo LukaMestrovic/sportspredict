@@ -113,6 +113,11 @@ def _explanation(market: str, params: dict, notes: str | None) -> str:
         return "Estimated from simulated red-card counts, with regulation and extra time separated."
     if market == BOTH_TEAMS_CARD:
         return "Estimated when each team has at least one simulated yellow or red card in regulation."
+    if market == "team_score_no_own":
+        return (
+            "Estimated from the named team's simulated goal count after removing the learned "
+            "own-goal share, over the question's exact regulation/full-match scope."
+        )
     if market == TOTAL_SHOTS_THRESHOLD:
         return (
             "Estimated from simulated regulation shots on target plus a historical conditional "

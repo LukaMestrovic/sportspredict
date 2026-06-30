@@ -106,6 +106,23 @@ class BundledSimulatorTests(unittest.TestCase):
         self.assertEqual(by_id["reg"]["contract_key"], "first_goal:full:team")
         self.assertIn("regulation only", by_id["reg"]["explanation"])
 
+    def test_team_score_excluding_own_goals_has_dedicated_counter(self):
+        report = self._run_bridge({
+            "home": "England", "away": "Congo DR",
+            "kickoff": "2026-07-01T16:00:00Z", "stage": "knockout",
+            "questions": [{
+                "market_id": "team",
+                "question": (
+                    "Will DR Congo score a goal (excluding own goals) in regulation "
+                    "(90 minutes + stoppage time)?"
+                ),
+            }],
+            "n_sims": 100,
+        })
+        item = report["question_reports"][0]
+        self.assertEqual(item["family"], "team_score_no_own")
+        self.assertEqual(item["contract_key"], "team_score_no_own:reg")
+
     def _run_bridge(self, payload):
         env = os.environ.copy()
         env["PYTHONPATH"] = str(SIMULATOR / "src")

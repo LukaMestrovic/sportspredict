@@ -42,6 +42,7 @@ Field rules:
 - period: "match" | "1H" | "2H".
 - time_scope: "regulation" | "full_match". "full_match" includes extra time
   when it is played; explicit regulation/90-minute wording is "regulation".
+- excludes_own_goals: true only when the question explicitly excludes own goals.
 
 If the subject is a named PERSON (not one of the two teams), it is ALWAYS a
 player market with subject="player" — never a team_* market.
@@ -87,7 +88,7 @@ period to "1H"/"2H" for first/second-half or "at halftime" questions, else
 
 Return a JSON object: {{"intents": [{{"id": <int>, "market": ..., "subject": ...,
 "player": ..., "comparator": ..., "threshold": ..., "period": ...,
-"time_scope": ...}}, ...]}}
+"time_scope": ..., "excludes_own_goals": ...}}, ...]}}
 One intent per question, preserving the given id."""
 
 
@@ -493,6 +494,7 @@ def _repair_intent(
     intent["time_scope"] = (
         "regulation" if explicit_regulation or fixed_regulation_window else "full_match"
     )
+    intent["excludes_own_goals"] = "excluding own goals" in raw_lower
 
     # "At halftime, will the match be tied/level/a draw" -> 1st-half draw.
     if has_ht and re.search(r"\btied?\b|\bdraw\b|\blevel\b|\ball square\b", lower):

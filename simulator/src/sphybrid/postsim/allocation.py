@@ -175,13 +175,14 @@ def prob_any_player_threshold(
 
 def prob_substitute_scores(
     outcome: MatchOutcome, ctx, shares: PlayerShares | None, settings: Settings,
-    *, fallback_share: float,
+    *, fallback_share: float, own_goal_share: float = 0.0,
 ) -> float:
     """Probability a bench player scores, conditional on the simulated regulation goal totals."""
     no_sub_goal = np.ones(outcome.n_sims, dtype=float)
     for team_idx in (TEAM_A, TEAM_B):
         probs, bench = _team_share_vector(ctx, team_idx, "goals", shares, settings)
         sub_share = float(probs[bench].sum()) if bench.any() else float(fallback_share)
+        sub_share *= 1.0 - float(own_goal_share)
         sub_share = float(np.clip(sub_share, 0.01, 0.65))
         goals = np.asarray(outcome.goals_team(team_idx, include_et=False), dtype=int)
         no_sub_goal *= (1.0 - sub_share) ** goals

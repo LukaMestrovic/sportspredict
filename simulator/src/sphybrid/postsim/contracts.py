@@ -45,7 +45,7 @@ def contract_key(market: str, params: dict | None, *, stage: str | None = None) 
             f"{params.get('comparator')}:{_number(params.get('threshold'))}:reg"
         )
     if market in {"substitute_score", "substitution_before_halftime", "red_card",
-                  "both_teams_card", "win_margin"}:
+                  "both_teams_card", "win_margin", "team_score_no_own"}:
         if market == "substitution_before_halftime":
             regulation = "reg"
         suffix = f":{_number(params.get('threshold'))}" if market == "win_margin" else ""

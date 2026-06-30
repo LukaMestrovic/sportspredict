@@ -58,7 +58,6 @@ _COMPARE = {
     "offsides_compare": 165, # Offsides 1x2
     "fouls_compare": 175,    # Fouls. 1x2
     "shots_on_target_compare": 176,  # ShotOnTarget 1x2
-    "cards_compare": 158,    # Yellow Cards 1x2
 }
 
 # Player markets — sourced from the Odds API (API-Football rarely quotes them).
@@ -79,6 +78,7 @@ MARKET_KEYS = (
     + list(_MATCH_YESNO)
     + list(_TEAM_SELECT)
     + list(_COMPARE)
+    + ["cards_compare"]  # simulator-only: provider bet 158 is yellow cards, not all cards
     + _PLAYER_MARKETS
     + ["none"]
 )
@@ -125,7 +125,6 @@ _HALF_SELECT = {                                    # 1x2 select markets
     "match_winner": {"1H": 13, "2H": 3},            # First/Second Half Winner
     "match_draw": {"1H": 13, "2H": 3},              # Draw in the named half
     "corners_compare": {"1H": 130, "2H": 131},      # Corners 1x2 (1st/2nd Half)
-    "cards_compare": {"1H": 161, "2H": 162},        # Yellow Cards 1x2 by half
 }
 _HALF_MATCH_OU = {                                  # match-level over/under
     "total_goals": {"1H": 6, "2H": 26},             # Goals O/U First/Second Half
@@ -169,6 +168,8 @@ def match_intent(
     if not market or market == "none":
         return None
     market = _normalize(market, subject, comp, period)
+    if market == "team_score" and intent.get("excludes_own_goals"):
+        return None
 
     # Standard pre-match bookmaker contracts settle at 90 minutes. In a
     # knockout match they are not exact evidence for an unqualified full-match
