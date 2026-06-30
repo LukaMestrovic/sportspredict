@@ -96,6 +96,7 @@ def run_match(
         af_books=af.odds(fixture["fixture"]["id"]),
         oa=oa,
         oa_event=oa.find_event(sp_match["opening_time"], home, away) if oa else None,
+        stage=_fixture_stage(fixture),
     )
     res.af_books = ctx.af_books
 
@@ -307,3 +308,12 @@ def predict_open_matches(
     if submit:
         submit_with_ledger(sp, event["id"], lobby["id"], results)
     return results
+
+
+def _fixture_stage(fixture: dict) -> str | None:
+    round_name = str((fixture.get("league") or {}).get("round") or "").lower()
+    if "group" in round_name:
+        return "group"
+    if round_name:
+        return "knockout"
+    return None

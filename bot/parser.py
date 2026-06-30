@@ -18,7 +18,7 @@ from .matcher import MARKET_KEYS
 from .teams import normalize_team
 
 # Bump to invalidate cached intents after a prompt/model semantics change.
-PROMPT_VERSION = "p4-knockout-wording"
+PROMPT_VERSION = "p5-explicit-time-scope"
 
 SYSTEM = """You convert soccer betting questions into structured JSON intents.
 Each question is a YES/NO question about a single match. Output ONLY the
@@ -40,6 +40,8 @@ Field rules:
     "second_half_more" second half has more goals than first half
 - threshold: the integer N from the question for gte/lte (else null).
 - period: "match" | "1H" | "2H".
+- time_scope: "regulation" | "full_match". "full_match" includes extra time
+  when it is played; explicit regulation/90-minute wording is "regulation".
 
 If the subject is a named PERSON (not one of the two teams), it is ALWAYS a
 player market with subject="player" — never a team_* market.
@@ -62,6 +64,7 @@ Important direct mappings:
   A single team's shots-on-target total is market=team_shots_on_target.
 - a team to score the first goal of the game -> market=first_team_to_score,
   subject=home/away, comparator=yes, period=match.
+- an own goal to be scored -> market=own_goal, subject=match, comparator=yes.
 
 Knockout markets (emit when the wording fits):
 - a team to qualify/advance to the next round -> to_advance.
@@ -74,14 +77,17 @@ Knockout markets (emit when the wording fits):
 - both teams to receive a card -> both_teams_card; a penalty awarded ->
   penalty_awarded; a red card shown -> red_card.
 A name written "Player (Country)" is ALWAYS that player, never the country's team.
-"in regulation (90 minutes + stoppage time)" means the full match (period=match).
+"in regulation (90 minutes + stoppage time)" means period=match and
+time_scope=regulation. A match-scoped question without that qualifier has
+time_scope=full_match and includes potential extra time.
 
 Use market="none" for compound questions (two events joined by AND/OR). Set
 period to "1H"/"2H" for first/second-half or "at halftime" questions, else
 "match".
 
 Return a JSON object: {{"intents": [{{"id": <int>, "market": ..., "subject": ...,
-"player": ..., "comparator": ..., "threshold": ..., "period": ...}}, ...]}}
+"player": ..., "comparator": ..., "threshold": ..., "period": ...,
+"time_scope": ...}}, ...]}}
 One intent per question, preserving the given id."""
 
 
@@ -133,7 +139,9 @@ def parse_questions(
         cleaned = _normalize_question(question["question"], home, away)
         intent = _parse_template(cleaned, home, away)
         if intent:
-            out[question["id"]] = _repair_intent(cleaned, intent, home, away)
+            out[question["id"]] = _repair_intent(
+                cleaned, intent, home, away, raw_question=question["question"],
+            )
         else:
             unfamiliar.append((question, cleaned))
 
@@ -159,7 +167,9 @@ def parse_questions(
         idx = intent.get("id")
         if isinstance(idx, int) and 0 <= idx < len(unfamiliar):
             question, cleaned = unfamiliar[idx]
-            out[question["id"]] = _repair_intent(cleaned, intent, home, away)
+            out[question["id"]] = _repair_intent(
+                cleaned, intent, home, away, raw_question=question["question"],
+            )
     return out
 
 
@@ -188,6 +198,7 @@ def _intent(
     threshold: int | None = None,
     period: str = "match",
     player: str | None = None,
+    time_scope: str | None = None,
 ) -> dict:
     return {
         "market": market,
@@ -196,6 +207,7 @@ def _intent(
         "comparator": comparator,
         "threshold": threshold,
         "period": period,
+        "time_scope": time_scope,
     }
 
 
@@ -260,6 +272,16 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
                                  "will a player"))):
         return _intent("none")
 
+    # Goal-method templates. Own goal has an exact API-Football Yes/No contract;
+    # header/outside-the-box do not (the available provider ladders are player
+    # props or first-goal method, both different contracts), so leave those to
+    # simulator/web evidence without an unfamiliar parser call.
+    if "own goal be scored" in lower:
+        return _intent("own_goal", period=period)
+    if ("header goal be scored" in lower
+            or "goal be scored from outside the penalty area" in lower):
+        return _intent("none", period=period)
+
     # Discipline events: emit dedicated intents so the matcher takes the exact
     # line (penalty bet 163 / red card 335/86) when a book quotes it, and degrades
     # to the simulator fallback otherwise.
@@ -317,7 +339,10 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
         if ("score the first goal of the game" in lower
                 or "score the first goal of the match" in lower):
             return _intent("first_team_to_score", side)
-        if re.search(r"\bscore(?: at least 1 goal| in the (?:first|second) half)\?", lower):
+        if re.search(
+            r"\bscore(?: a goal| at least 1 goal| in the (?:first|second) half)\?",
+            lower,
+        ):
             market = {"1H": "team_score_1h", "2H": "team_score_2h"}.get(
                 period, "team_score"
             )
@@ -417,7 +442,14 @@ _TEAM_COUNT_MARKETS = {
 }
 
 
-def _repair_intent(question: str, intent: dict, home: str, away: str) -> dict:
+def _repair_intent(
+    question: str,
+    intent: dict,
+    home: str,
+    away: str,
+    *,
+    raw_question: str | None = None,
+) -> dict:
     """Deterministically repair common parser ambiguities supported by the text."""
     intent = dict(intent)
     subject = intent.get("subject")
@@ -428,6 +460,7 @@ def _repair_intent(question: str, intent: dict, home: str, away: str) -> dict:
             intent["subject"] = "away"
 
     lower = question.lower()
+    raw_lower = (raw_question or question).lower()
 
     # --- deterministic period detection ---
     # Push the period decision out of the LLM for the unambiguous phrasings so
@@ -444,6 +477,22 @@ def _repair_intent(question: str, intent: dict, home: str, away: str) -> dict:
         intent["period"] = "2H"
     elif has_1h or has_ht:
         intent["period"] = "1H"
+
+    # Settlement scope is part of the contract, not removable boilerplate.
+    # Half/window questions cannot reach extra time; otherwise omission of an
+    # explicit regulation qualifier means the full match, including ET if played.
+    explicit_regulation = any(token in raw_lower for token in (
+        "in regulation", "during regulation", "90 minutes", "excluding extra time",
+    ))
+    fixed_regulation_window = bool(
+        intent.get("period") in ("1H", "2H")
+        or re.search(r"before (?:the first hydration break|halftime)", raw_lower)
+        or "stoppage time" in raw_lower
+        or "stoppage (added) time" in raw_lower
+    )
+    intent["time_scope"] = (
+        "regulation" if explicit_regulation or fixed_regulation_window else "full_match"
+    )
 
     # "At halftime, will the match be tied/level/a draw" -> 1st-half draw.
     if has_ht and re.search(r"\btied?\b|\bdraw\b|\blevel\b|\ball square\b", lower):

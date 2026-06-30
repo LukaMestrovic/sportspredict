@@ -232,6 +232,48 @@ class KnockoutWordingTests(unittest.TestCase):
             "Will the second half produce more goals than the first half?",
         )
 
+    def test_regulation_and_full_match_scopes_remain_distinct(self):
+        regulation = self._parse(
+            "Will a goal be scored after the second hydration break in regulation "
+            "(90 minutes + stoppage time)?",
+            "Ivory Coast", "Norway",
+        )
+        full_match = self._parse(
+            "Will a goal be scored after the second hydration break?",
+            "Ivory Coast", "Norway",
+        )
+        self.assertEqual(regulation["time_scope"], "regulation")
+        self.assertEqual(full_match["time_scope"], "full_match")
+
+    def test_unqualified_first_goal_and_red_card_include_extra_time(self):
+        first = self._parse(
+            "Will France score the first goal of the match?", "France", "Sweden",
+        )
+        red = self._parse(
+            "Will a red card be shown in the match?", "France", "Sweden",
+        )
+        self.assertEqual(first["time_scope"], "full_match")
+        self.assertEqual(red["time_scope"], "full_match")
+
+    def test_goal_method_and_team_score_templates_are_deterministic(self):
+        own = self._parse(
+            "Will an own goal be scored in regulation (90 minutes + stoppage time)?",
+            "Mexico", "Ecuador",
+        )
+        outside = self._parse(
+            "Will a goal be scored from outside the penalty area in regulation "
+            "(90 minutes + stoppage time)?",
+            "Mexico", "Ecuador",
+        )
+        team = self._parse(
+            "Will DR Congo score a goal (excluding own goals) in regulation "
+            "(90 minutes + stoppage time)?",
+            "England", "Congo DR",
+        )
+        self.assertEqual(own["market"], "own_goal")
+        self.assertEqual(outside["market"], "none")
+        self.assertEqual((team["market"], team["subject"]), ("team_score", "away"))
+
     def test_country_parenthetical_is_removed(self):
         self.assertEqual(
             _normalize_question(

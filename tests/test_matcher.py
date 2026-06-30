@@ -75,6 +75,25 @@ class DirectContractTests(unittest.TestCase):
         )
         self.assertEqual((spec["bet_id"], spec["value"]), (14, "Home"))
 
+    def test_full_match_knockout_question_rejects_regulation_odds(self):
+        intent = _I("first_team_to_score", "home")
+        intent["time_scope"] = "full_match"
+        self.assertIsNone(match_intent(
+            intent, "Home", "Away", stage="knockout",
+        ))
+        self.assertIsNotNone(match_intent(
+            intent, "Home", "Away", stage="group",
+        ))
+
+    def test_own_goal_uses_exact_yes_no_contract(self):
+        spec = self.match(
+            market="own_goal", subject="match", comparator="yes", period="match"
+        )
+        self.assertEqual(
+            (spec["type"], spec["bet_id"], spec["value"]),
+            ("select", 59, "Yes"),
+        )
+
 
 class KnockoutMarketMappingTests(unittest.TestCase):
     def test_new_exact_markets_map_to_expected_bets(self):

@@ -25,6 +25,7 @@ class PriceCtx:
     af_books: list
     oa: OddsAPI | None
     oa_event: dict | None
+    stage: str | None = None
 
 
 def _book_probs(out: dict | None) -> list[float]:
@@ -50,8 +51,11 @@ def _merge(af_out: dict | None, oa_out: dict | None) -> dict | None:
 
 def price_intent(intent: dict, ctx: PriceCtx):
     """Price one intent from both sources combined. Returns (out, source, spec)."""
-    af_spec = match_intent(intent, ctx.home, ctx.away)
-    oa_spec = match_intent_oddsapi(intent, ctx.home, ctx.away) if ctx.oa else None
+    af_spec = match_intent(intent, ctx.home, ctx.away, stage=ctx.stage)
+    oa_spec = (
+        match_intent_oddsapi(intent, ctx.home, ctx.away, stage=ctx.stage)
+        if ctx.oa else None
+    )
 
     def oa_books(spec):
         return ctx.oa.event_odds(ctx.oa_event["id"], [spec["market"]])

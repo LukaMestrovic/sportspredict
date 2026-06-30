@@ -72,7 +72,7 @@ _PLAYER_MARKETS = [
 # The vocabulary the LLM parser is allowed to emit.
 MARKET_KEYS = (
     ["match_winner", "match_draw", "btts", "highest_scoring_half_2h",
-     "double_chance", "first_team_to_score", "win_margin", "red_card"]
+     "double_chance", "first_team_to_score", "win_margin", "red_card", "own_goal"]
     + list(_MATCH_OU)
     + list(_TEAM_OU)
     + list(_TEAM_YESNO)
@@ -157,7 +157,9 @@ def _normalize(market: str, subject: str, comp: str, period: str) -> str:
     return market
 
 
-def match_intent(intent: dict, home: str, away: str) -> dict | None:
+def match_intent(
+    intent: dict, home: str, away: str, *, stage: str | None = None,
+) -> dict | None:
     market = intent.get("market")
     subject = intent.get("subject")
     comp = intent.get("comparator")
@@ -167,6 +169,18 @@ def match_intent(intent: dict, home: str, away: str) -> dict | None:
     if not market or market == "none":
         return None
     market = _normalize(market, subject, comp, period)
+
+    # Standard pre-match bookmaker contracts settle at 90 minutes. In a
+    # knockout match they are not exact evidence for an unqualified full-match
+    # question, which includes extra time. Qualification is the exception: that
+    # contract deliberately includes ET/penalties. Half markets never reach ET.
+    if (
+        str(stage or "").lower() == "knockout"
+        and intent.get("time_scope") == "full_match"
+        and period == "match"
+        and market != "to_advance"
+    ):
+        return None
     if market == "highest_scoring_half_2h":
         period = "match"
 
@@ -249,6 +263,10 @@ def match_intent(intent: dict, home: str, away: str) -> dict | None:
         return {"type": "ou", "bet_id": 335, "side": "Over", "line": 0.5,
                 "label": "red card shown"}
 
+    if market == "own_goal":
+        return {"type": "select", "bet_id": 59, "value": "Yes",
+                "label": "own goal scored"}
+
     if market == "win_margin":
         if subject not in ("home", "away") or threshold is None:
             return None
@@ -320,7 +338,9 @@ def match_intent(intent: dict, home: str, away: str) -> dict | None:
     return None
 
 
-def match_intent_oddsapi(intent: dict, home: str, away: str) -> dict | None:
+def match_intent_oddsapi(
+    intent: dict, home: str, away: str, *, stage: str | None = None,
+) -> dict | None:
     """Map an intent to an Odds API market spec (fallback source).
 
     Returns a spec for `oddsapi.predict`, including the `market` key to fetch.
@@ -334,6 +354,13 @@ def match_intent_oddsapi(intent: dict, home: str, away: str) -> dict | None:
     if not market or market == "none":
         return None
     market = _normalize(market, subject, comp, period)
+    if (
+        str(stage or "").lower() == "knockout"
+        and intent.get("time_scope") == "full_match"
+        and period == "match"
+        and market != "to_advance"
+    ):
+        return None
     if period in ("1H", "2H"):
         return None  # Odds API half markets not wired in v0
 

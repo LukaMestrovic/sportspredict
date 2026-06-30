@@ -231,8 +231,11 @@ def summarize_lineups(lineups: list[dict] | None) -> dict | None:
 def _direct_odds(intent: dict | None, ctx: PriceCtx) -> tuple[list[dict], dict | None]:
     if not intent:
         return [], None
-    af_spec = match_intent(intent, ctx.home, ctx.away)
-    oa_spec = match_intent_oddsapi(intent, ctx.home, ctx.away) if ctx.oa else None
+    af_spec = match_intent(intent, ctx.home, ctx.away, stage=ctx.stage)
+    oa_spec = (
+        match_intent_oddsapi(intent, ctx.home, ctx.away, stage=ctx.stage)
+        if ctx.oa else None
+    )
     obs = []
     if af_spec:
         obs.extend(afpred.observations(ctx.af_books, af_spec))
