@@ -27,7 +27,7 @@ ARTIFACT_PATH = (
     config.ROOT / "simulator" / "data" / "processed" / "simulation_evidence.json"
 )
 SCHEMA_VERSION = 3
-REPLAY_VERSION = 1
+REPLAY_VERSION = 2
 
 
 def _now() -> str:
@@ -122,6 +122,8 @@ def _replay_fixture(
     markets = []
     metadata = {}
     for key, baseline in contracts.items():
+        if not _contract_relevant_for_stage(key, covered["stage"]):
+            continue
         labels = wc2026_evidence.labels_for_contract(key, covered["facts"])
         questions = questions_for_contract(key, home, away)
         if labels is None or len(labels) != len(questions):
@@ -184,6 +186,15 @@ def _replay_fixture(
         "rows": rows,
         "mismatches": mismatches,
     }
+
+
+def _contract_relevant_for_stage(key: str, stage: str) -> bool:
+    """Avoid asking match/advance contracts where group-stage scope aliases to regulation."""
+    if stage == "knockout":
+        return True
+    if key == "match_result:team:advance":
+        return False
+    return ":match" not in key
 
 
 def _clustered_ci(rows: list[dict]) -> list[float] | None:
