@@ -271,6 +271,12 @@ class TargetSelectionTests(unittest.TestCase):
         self.assertEqual(payload["home"], "Brazil")
         self.assertEqual(payload["away"], "Japan")
 
+    def test_runtime_preserves_virtualenv_launcher(self):
+        with patch.object(simulator.sys, "executable", "/tmp/example-venv/bin/python"), \
+                patch.object(Path, "is_file", return_value=True):
+            runtime = simulator._runtime(Path("/tmp/simulator"))
+        self.assertEqual(runtime[1], Path("/tmp/example-venv/bin/python"))
+
     def test_lineups_key_absent_when_no_lineups(self):
         markets = [{"id": "m1", "question": "Will a goal be scored before the first hydration break?"}]
         payload = self._capture_payload(markets, {"m1": []})

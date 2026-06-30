@@ -363,7 +363,13 @@ def build_simulation_report(
                     "Same-book de-vigged regulation draw probability; for match-scope knockout "
                     "contracts, higher values increase expected extra-time exposure."
                 ),
-            } if market_odds and market_odds.get("regulation_draw_probability") is not None else {},
+            } if (
+                market_odds
+                and market_odds.get("regulation_draw_probability") is not None
+                and (bool((pred.params or {}).get("include_et"))
+                     or (str(pred.market) == RED_CARD
+                         and not bool((pred.params or {}).get("regulation"))))
+            ) else {},
             "adjustment_guidance": _adjustment_guidance(
                 str(pred.market), pred.params or {}, item["question"],
             ),

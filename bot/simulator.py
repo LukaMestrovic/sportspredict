@@ -259,7 +259,9 @@ def _penalty_market_kind(question: str) -> str | None:
 def _runtime(root: Path | None = None) -> tuple[Path, Path] | None:
     """Return the tracked simulator root and this process's Python executable."""
     resolved = (root or SIMULATOR_ROOT).expanduser().resolve()
-    python = Path(sys.executable).resolve()
+    # Preserve a virtualenv launcher path. Resolving its symlink jumps to the
+    # base interpreter and silently drops the venv's simulator dependencies.
+    python = Path(sys.executable)
     if (resolved / "src" / "sphybrid" / "bridge.py").is_file() and python.is_file():
         return resolved, python
     return None
