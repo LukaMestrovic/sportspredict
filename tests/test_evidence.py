@@ -71,14 +71,14 @@ class EvidenceTests(unittest.TestCase):
         self.assertTrue(q["related_odds"])
         self.assertTrue(all(obs["why_relevant"] for obs in q["related_odds"]))
 
-    def test_penalty_question_receives_hybrid_simulator_context(self):
+    def test_penalty_question_receives_simulator_context(self):
         result = _result({
             "pen": {"market": "none", "subject": "match",
                     "comparator": "yes", "threshold": None, "period": "match"},
         }, question="Will a penalty kick be awarded in the match?")
         ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
         sim = {
-            "source": "sportspredict-hybrid",
+            "source": "sportspredict-simulator",
             "model": "LearnedRateModel",
             "probability": 0.241,
             "probability_pct": 24.1,
@@ -96,14 +96,14 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(q["simulator_model_estimates"], [sim])
         self.assertIn("simulator/model context", q["audit_requirement"])
 
-    def test_sot_question_receives_hybrid_simulator_context(self):
+    def test_sot_question_receives_simulator_context(self):
         result = _result({
             "sot": {"market": "shots_on_target_compare", "subject": "home",
                     "comparator": "more", "threshold": None, "period": "2H"},
         }, question="Will Home have more shots on target than Away in the second half?")
         ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
         sim = {
-            "source": "sportspredict-hybrid",
+            "source": "sportspredict-simulator",
             "model": "LearnedRateModel",
             "kind": "team_more_shots_on_target_2h",
             "probability": 0.531,
@@ -209,7 +209,7 @@ class ContextEvidenceTests(unittest.TestCase):
         self.assertEqual(evidence["injuries"], {})
 
 
-class HybridModelTests(unittest.TestCase):
+class SimulatorModelTests(unittest.TestCase):
     def test_penalty_market_kind_is_limited_to_requested_wordings(self):
         self.assertEqual(
             model_estimate_kind("Will a penalty kick be awarded in the match?"),

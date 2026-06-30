@@ -15,7 +15,7 @@ from typing import Any
 from sportspredict.config import Settings, default_settings
 from sportspredict.features.context import MatchContext, PlayerInfo
 
-from .engine import HybridEngine, build_engine
+from .engine import SimulatorEngine, build_engine
 from .postsim import (
     ANY_PLAYER_THRESHOLD,
     BOTH_TEAMS_CARD,
@@ -281,7 +281,7 @@ def build_simulation_report(
     ctx: MatchContext,
     questions: Iterable[str | dict[str, Any]],
     *,
-    engine: HybridEngine | None = None,
+    engine: SimulatorEngine | None = None,
     settings: Settings | None = None,
     market_odds: dict | None = None,
     n_sims: int | None = None,
@@ -333,7 +333,7 @@ def build_simulation_report(
         key = contract_key(str(pred.market), pred.params or {}, stage=ctx.stage)
         reports.append({
             **item,
-            "source": "sportspredict-hybrid",
+            "source": "sportspredict-simulator",
             "family": str(pred.market),
             "contract_key": key,
             "probability": round(probability, 6),

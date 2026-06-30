@@ -4,8 +4,8 @@
 * ``markets`` — the conservative grammar for timing, player-aggregate and compound questions.
 * ``allocation`` — player count props as a validated share of the simulated team total.
 
-All of it sits *after* simulation and never touches the learned rates or the wheel; questions the
-wheel already handles are left untouched (see ``markets.parse_extended``).
+All of it sits *after* simulation and never touches the learned rates or the baseline; questions the
+baseline already handles are left untouched (see ``markets.parse_extended``).
 """
 
 from __future__ import annotations

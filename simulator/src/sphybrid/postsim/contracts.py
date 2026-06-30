@@ -96,12 +96,12 @@ def question_contract_key(question: str, ctx) -> str:
     extended = parse_extended(question, ctx)
     if extended is not None:
         if extended.market == REGULATION_STANDARD:
-            wheel = extended.params["wheel_spec"]
+            baseline = extended.params["baseline_spec"]
             params = {
-                **wheel.params,
+                **baseline.params,
                 "regulation_scope": bool(extended.params.get("regulation", False)),
             }
-            return contract_key(wheel.market.value, params, stage=ctx.stage)
+            return contract_key(baseline.market.value, params, stage=ctx.stage)
         return contract_key(extended.market, extended.params, stage=ctx.stage)
-    wheel = parse_question(question, ctx)
-    return contract_key(wheel.market.value, wheel.params, stage=ctx.stage)
+    baseline = parse_question(question, ctx)
+    return contract_key(baseline.market.value, baseline.params, stage=ctx.stage)

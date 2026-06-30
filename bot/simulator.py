@@ -47,7 +47,7 @@ def simulator_estimates(
     lineups: list[dict] | None = None,
     simulator_root: Path | None = None,
 ) -> dict[str, dict]:
-    """Return hybrid learned-rate simulator estimates keyed by market id.
+    """Return learned-rate simulator estimates keyed by market id.
 
     A market is sent to the simulator when it has **no exact direct price**, plus
     the model-sensitive penalty/shot-on-target families we keep even when a
@@ -181,7 +181,7 @@ def _reports_by_market(raw: dict) -> dict[str, dict]:
         if not mid or prob is None:
             continue
         out[mid] = {
-            "source": rep.get("source") or "sportspredict-hybrid",
+            "source": rep.get("source") or "sportspredict-simulator",
             "family": rep.get("family"),
             "contract_key": rep.get("contract_key"),
             "probability": round(prob, 6),
@@ -205,7 +205,7 @@ def model_estimate_kind(question: str, intent: dict | None = None) -> str | None
     to the simulator even when an exact direct price exists.
 
     This is intentionally a small, curated set — not an exhaustive allowlist of
-    everything the simulator supports. The sibling report preflights feasibility
+    everything the simulator supports. The bundled report preflights feasibility
     for all other (no-direct) questions, so new feasible templates are accepted
     without being enumerated here.
     """

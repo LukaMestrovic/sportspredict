@@ -1,6 +1,6 @@
 """Post-simulation player count-prop allocation.
 
-The wheel prices a player count prop (e.g. "<player> 2+ shots on target") with a standalone
+The baseline prices a player count prop (e.g. "<player> 2+ shots on target") with a standalone
 position-Poisson that is *independent* of the match simulation, so the player market and the team
 market for the same statistic can drift apart. The fix scoped in ``docs/player_props_feasibility.md``
 is an allocation layer: the player's count is a **share of the same simulated team total** (which the
@@ -8,7 +8,7 @@ odds anchor has already corrected), keeping player and team markets coherent.
 
 Given the team's simulated total ``T`` for a statistic (an array over worlds) and a per-unit
 ownership probability ``p = share * exposure``, the player's count is ``Binomial(T, p)`` conditional
-on ``T`` — the natural generalisation of the wheel's score-or-assist estimator (which uses the
+on ``T`` — the natural generalisation of the baseline's score-or-assist estimator (which uses the
 ``k`` goals, i.e. the ``>=1`` case ``1-(1-p)^T``). Then::
 
     P(player meets the line) = mean_w  P(Binomial(T_w, p) <comparator> threshold).
@@ -218,7 +218,7 @@ def allocate_player_prob(
 
 
 def _player_position_exposure(params: dict, ctx, settings: Settings) -> tuple[str, float]:
-    """Position + expected exposure for the named player (mirrors the wheel's player-stat lookup)."""
+    """Position + expected exposure for the named player (mirrors the baseline's player-stat lookup)."""
     from sportspredict.markets.parser import player_name_match  # noqa: PLC0415
 
     name = params["player"]
@@ -263,7 +263,7 @@ def resolve_player_stat_alloc(
     params: dict, outcome: MatchOutcome, ctx, shares: "PlayerShares | None",
     settings: Settings | None = None, *, include_et: bool = True,
 ) -> float | None:
-    """Resolve a wheel PLAYER_STAT spec via the allocation layer, or ``None`` to defer to the wheel."""
+    """Resolve a baseline PLAYER_STAT spec via the allocation layer, or ``None`` to defer to the baseline."""
     settings = settings or default_settings()
     stat = params["stat"]
     team_idx = _player_team_index(params, ctx, shares)
@@ -273,7 +273,7 @@ def resolve_player_stat_alloc(
     if share is None:
         share = position_prior_share(position, stat, settings)
     if share is None:
-        return None  # no prior for this stat -> let the wheel handle it
+        return None  # no prior for this stat -> let the baseline handle it
     return allocate_player_prob(
         outcome, team_idx, stat, share, exposure,
         params["comparator"], params["threshold"], params.get("half", "full"),

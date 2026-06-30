@@ -103,9 +103,9 @@ def _rare_timeline(
     outcome: MatchOutcome, totals: np.ndarray, event_type: str,
     timing: TimingModel, rng: np.random.Generator, *, et_scale: float,
 ) -> EventTimeline:
-    """Recover regulation/ET Poisson components after the wheel stored only their sum.
+    """Recover regulation/ET Poisson components after the baseline stored only their sum.
 
-    The wheel samples independent ``Pois(mu)`` regulation and ``Pois(mu*et_scale)`` ET counts.
+    The baseline samples independent ``Pois(mu)`` regulation and ``Pois(mu*et_scale)`` ET counts.
     Conditional on their stored sum, the ET component is exactly binomial with probability
     ``et_scale / (1 + et_scale)`` in worlds that reached extra time.
     """

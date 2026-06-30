@@ -18,7 +18,7 @@ def _bridge_response(reports, *, unsupported=None, model=None):
         "schema_version": "2.0",
         "match": {"team_a": "Brazil", "team_b": "Japan", "stage": "group"},
         "model": model or {
-            "engine": "HybridEngine", "rate_model": "LearnedRateModel",
+            "engine": "SimulatorEngine", "rate_model": "LearnedRateModel",
             "n_sims": 8000, "odds_anchor_applied": True,
         },
         "evidence_instruction": "Model context only: weigh against odds…",
@@ -62,7 +62,7 @@ def _report(market_id, question, family, probability, *, contract_key=None,
     return {
         "market_id": market_id,
         "question": question,
-        "source": "sportspredict-hybrid",
+        "source": "sportspredict-simulator",
         "family": family,
         "contract_key": key,
         "probability": probability,
@@ -95,7 +95,7 @@ class ReportParsingTests(unittest.TestCase):
 
         self.assertIn("m1", out)
         item = out["m1"]
-        self.assertEqual(item["source"], "sportspredict-hybrid")
+        self.assertEqual(item["source"], "sportspredict-simulator")
         self.assertEqual(item["family"], "goal_window")
         self.assertEqual(item["probability"], 0.402)
         self.assertEqual(item["probability_pct"], 40.2)
@@ -148,7 +148,7 @@ class ReportParsingTests(unittest.TestCase):
         markets = [{"id": "m1", "question": "Will a goal be scored?"}]
         bare = {
             "market_id": "m1", "question": markets[0]["question"],
-            "source": "sportspredict-hybrid", "family": "goal_window",
+            "source": "sportspredict-simulator", "family": "goal_window",
             "probability": 0.4, "probability_pct": 40.0,
             "explanation": "x", "evidence_role": "model_context",
         }

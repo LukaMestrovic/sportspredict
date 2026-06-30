@@ -1,379 +1,248 @@
 # sportspredict-llm
 
-A minimal **v0** LLM-based bot that predicts event probabilities for the
-**SportPredict × Jump Trading Probability Cup** (FIFA World Cup 2026).
-
-It reads the binary questions SportPredict asks for each upcoming match, builds a
-per-match odds/context evidence file, and asks one web-grounded LLM call for
-audited probabilities that are submitted directly.
+A self-contained bot for the SportPredict × Jump Trading Probability Cup
+(FIFA World Cup 2026). It converts bookmaker odds and match context into one
+auditable evidence bundle, makes one web-grounded LLM pricing call per match,
+and submits integer YES probabilities from 1–99.
 
 ## Architecture
 
-The **Parser** turns each question into a structured intent. The bot then
-collects direct and related bookmaker odds into an auditable evidence JSON; the
-LLM receives that file in its prompt, searches for additional online odds and
-match context, and returns the YES probabilities that are submitted.
-
+```text
+SportPredict questions
+        │
+        ▼
+deterministic parser ──▶ provider market mapping
+        │                        │
+        └──────────────┬─────────┘
+                       ▼
+                 evidence JSON
+          ┌────────────┼────────────┐
+          │            │            │
+   bookmaker odds  match context  bundled simulator
+          └────────────┼────────────┘
+                       ▼
+          one cached web-grounded LLM call
+                       ▼
+            audited 1–99 submissions + ledger
 ```
-   question ─▶ parser ─▶ evidence JSON ─▶ web-grounded LLM pricing ─▶ 1–99
-                         ▲
-                         └─ API-Football, The Odds API, related markets,
-                            deterministic estimates, lineups, venue, referee
-```
 
-1. **Parser** ([bot/parser.py](bot/parser.py)) — recurring competition templates
-   are parsed deterministically. Only unfamiliar wording is sent to `gpt-5.4-mini`,
-   in at most **one batched call per match**. That fallback is cached on
-   `(model, prompt version, questions)`, so a question maps to the same intent
-   on every re-run. Known
-   compound forms are also split locally; novel compounds use the same cached
-   LLM path.
-2. **Matcher** ([bot/matcher.py](bot/matcher.py)) — maps an intent to a specific
-   provider market (API-Football bet ID or Odds API key) from
-   [soccer_live_odds_market_catalog.pdf](soccer_live_odds_market_catalog.pdf),
-   including full-match and 1st/2nd-half contracts.
-3. **Evidence builder** ([bot/evidence.py](bot/evidence.py)) — writes one JSON
-   file per match under `logs/llm_pricing_runs/`. Direct mapped markets include
-   every per-book de-vigged probability, source, bookmaker, raw odds and de-vig
-   method. Questions without direct odds receive relevant related odds and
-   labeled deterministic estimates, not hidden anchors.
-4. **LLM pricing** ([bot/llm_pricing.py](bot/llm_pricing.py)) — one cached
-   web-grounded call per match. The model must price every SportPredict market
-   from the evidence JSON plus online research, including Kalshi, Polymarket,
-   Pinnacle, Betfair and betting platforms where available. Every returned
-   market must include its probability, provided odds used, online odds found,
-   non-odds factors, downweighted evidence, sources and a concise public
-   reasoning summary. Markets missing that audit are skipped. The returned
-   probabilities are submitted directly.
+The main boundaries are:
 
-Provider fixtures/events are linked by **kickoff datetime and both teams**;
-kickoff alone is not unique when group-stage matches start simultaneously. The
-API-Football fixture supplies canonical home/away names.
+1. `bot/parser.py` parses recurring templates deterministically. Unfamiliar
+   wording is handled in at most one cached fallback call per match.
+2. `bot/matcher.py`, `bot/predictor.py`, and `bot/oddsapi.py` map provider
+   contracts and de-vig coherent outcomes from the same bookmaker.
+3. `bot/evidence.py` combines direct odds, related odds, lineups, structured
+   context, and labeled deterministic estimates into one JSON file.
+4. `simulator/` contains the learned-rate simulator source, configuration, and
+   fitted artifacts. `bot/simulator.py` invokes it through a JSON child-process
+   boundary so numerical dependencies never leak into the lightweight bot.
+5. `bot/llm_pricing.py` makes one cached web-grounded call and requires a
+   complete per-market audit. Incomplete markets are skipped.
+6. `bot/pipeline.py` records every submission through the SQLite ledger before
+   upserting it to SportPredict.
+
+Provider events are matched by kickoff and both teams; kickoff alone is not
+unique when multiple group matches start together.
+
+## Repository boundary
+
+This repository contains the complete production bot. Runtime and deployment
+do not read `../sportspredict`, `../sportspredict-hybrid`, a generated source
+snapshot, or a prebuilt project wheel. The bundled simulator is intentionally
+runtime-only: training pipelines, large historical corpora, notebooks, and
+standalone competition clients are not copied into the production component.
+
+The Docker build uses only files tracked here. `cache/`, `logs/`, `.env`, and
+the local virtual environment are excluded from the image.
 
 ## Setup
 
+Python 3.11+ is supported; deployment currently uses Python 3.14.
+
 ```bash
-pip install -r requirements.txt
-cp .env.example .env     # then fill in your keys
+uv venv --python 3.14
+uv pip install --python .venv/bin/python \
+  -r requirements.txt -r simulator/requirements.txt
+cp .env.example .env
 ```
 
-`.env` (git-ignored) holds four keys:
+The bot itself uses only the standard library plus `requests`. Numerical
+packages are listed separately in `simulator/requirements.txt`.
+
+Required `.env` keys:
 
 | Key | Purpose |
-|-----|---------|
-| `SPORTSPREDICT_KEY` | SportPredict Probability Cup API (`sp_live_…`) |
-| `APIFOOTBALL_KEY`   | API-Football v3 (api-sports.io direct host) |
-| `ODDS_API_KEY`      | The Odds API (the-odds-api.com) — **paid/metered**, cached |
-| `OPENAI_API_KEY`    | parser fallback + compound splitter + LLM pricing |
+|---|---|
+| `SPORTSPREDICT_KEY` | SportPredict bot API |
+| `APIFOOTBALL_KEY` | API-Football fixtures, lineups, statistics, and odds |
+| `ODDS_API_KEY` | The Odds API; paid/metered and always cached |
+| `OPENAI_API_KEY` | parser fallback and audited LLM pricing |
 
-Optional LLM pricing env: `LLM_PRICING_MODEL` picks the model (default
-`gpt-5.4-mini`); `LLM_PRICING_ENABLED=0` disables LLM pricing for local
-deterministic/backtest-style runs.
+Useful optional settings:
+
+| Key | Default | Purpose |
+|---|---:|---|
+| `PARSER_MODEL` | `gpt-5.4-mini` | unfamiliar question parsing |
+| `LLM_PRICING_MODEL` | `gpt-5.4-mini` | final per-match pricing |
+| `LLM_PRICING_ENABLED` | `1` | set `0` for deterministic local checks |
+| `ODDS_REGIONS` | `eu,uk,us` | Odds API breadth and credit use |
+| `SPORTSPREDICT_SIMULATOR_N_SIMS` | `8000` | simulator draws; capped at 10000 |
 
 ## Usage
 
 ```bash
-# Predict every open match and print results (no submission)
-python run.py predict
+# Predict open matches without submitting
+.venv/bin/python run.py predict
 
-# Only the first open match (cheap end-to-end check)
-python run.py predict --limit 1
+# Cheap end-to-end smoke check
+.venv/bin/python run.py predict --limit 1
 
-# Deterministic backtest-style preview (no LLM pricing)
-python run.py predict --limit 1 --no-llm
+# Deterministic preview without web-grounded pricing
+.venv/bin/python run.py predict --limit 1 --no-llm
 
-# Predict and submit to SportPredict
-python run.py predict --submit
+# Manual submission; always recorded in the ledger
+.venv/bin/python run.py predict --submit
 
-# Settle newly completed matches and print Brier performance
-python -m scripts.settle_ledger
+# Settle new ledger rows from explicit SportPredict outcomes
+.venv/bin/python -m scripts.settle_ledger
 ```
 
-### Deployment (autonomous, isolated from your working tree)
+## Deployment
+
+Prerequisites are Docker, a running Docker daemon, `crontab`, and a completed
+`.env` in this checkout.
 
 ```bash
-scripts/deploy.sh          # build the immutable image + install the cron
-tail -f logs/cron.log      # watch it tick
-scripts/run.sh --status    # what is the next match / ETA?
+scripts/deploy.sh
+scripts/run.sh --status
+crontab -l
+tail -f logs/cron.log
 ```
 
-`scripts/deploy.sh` builds a Docker image (`sportspredict-llm:v1`) with the
-**current** source baked in, then installs a per-minute cron that runs that image
-via `scripts/run.sh`. Each tick is a dispatcher: a fast no-op until a match is
-within 30 minutes, then it upserts predictions once at the **30-minute** mark
-before kickoff — where the lineups are out and the LLM pricing layer has ~30
-minutes of headroom to research online odds and context. Each scheduled fire
-refreshes provider odds, fetches the latest available lineups, forces a fresh LLM
-pricing/web-search call for that window, and writes an evidence JSON plus full
-Markdown/JSON audit under `logs/llm_pricing_runs/`. Manual development runs
-still use the cached LLM price for repeatability unless the prompt/model/cache
-key changes.
+`scripts/deploy.sh` performs the whole deployment:
 
-Because the code is baked into the image, the running bot is a **frozen
-snapshot** — editing the working tree (or running tests, dev predictions, etc.)
-never affects a live tick. To ship changes, re-run `scripts/deploy.sh` (idempotent:
-it rebuilds the image and rewrites only the `sportspredict-llm` cron block). The
-container mounts `cache/` (paid odds + parser cache, cron markers) and `logs/`
-(ledger, audit) so state persists across ticks; secrets are read from `.env` at
-run time and never baked into the image.
+1. builds `sportspredict-llm:v1` from `docker/Dockerfile`;
+2. smoke-tests the bundled learned model and its audit artifacts without keys;
+3. runs a read-only SportPredict status check with keys passed at runtime; and
+4. idempotently installs one per-minute cron block.
 
-### Validation
+The dispatcher is normally a fast no-op. At T−30 it refreshes provider odds
+once, fetches current lineups, forces a fresh cached pricing/web-search call for
+that submission window, submits through the ledger, and writes its audit. A
+file lock prevents overlapping ticks and a per-match marker prevents duplicate
+fires.
+
+The image is immutable between deploys. Re-run `scripts/deploy.sh` to ship new
+code. `scripts/run.sh` bind-mounts this checkout's `cache/` and `logs/`, so paid
+responses, parser/pricing caches, cron markers, evidence, audits, and the ledger
+survive image rebuilds. Never delete those directories during deployment.
+
+## Evidence and pricing contract
+
+For every match, the evidence file contains:
+
+- raw provider odds and per-book de-vigged probabilities for exact contracts;
+- related contracts for questions without a direct quote;
+- lineups, injuries, team/referee history, venue, weather, and match metadata;
+- deterministic estimates labeled as context, including optional
+  `sportspredict-simulator` reports with stable contract keys and historical
+  performance; and
+- provenance and freshness timestamps.
+
+The pricing model must return `probability_int`, odds used, independent online
+odds, non-odds factors, downweighted evidence, sources, and a concise reasoning
+summary for every submitted market. The prompt is
+`prompts/llm_pricing_prompt.md`; its hash is part of the cache key. Pricing
+refuses to run after kickoff, and repeat manual runs reuse the frozen pre-match
+audit.
+
+## Ledger and settlement
+
+`logs/prediction_ledger.sqlite3` records real questions, provider snapshots,
+intent and market mapping, evidence/audit paths and hashes, submitted values,
+errors, and eventual outcomes. All user-facing and scheduled submissions use
+`pipeline.submit_with_ledger`.
+
+Settlement is idempotent and joins by SportPredict `market_id`. It accepts only
+the platform's explicit `current_value` of 0 or 100; it never infers results from
+scores, web search, or Brier values.
 
 ```bash
-python validate.py --days 7
+# One match, selected by id or name substring
+.venv/bin/python -m scripts.settle_ledger --match "Portugal"
+
+# All newly completed matches plus aggregate Brier reports
+.venv/bin/python -m scripts.settle_ledger
 ```
 
-Runs the deterministic API-Football/empirical validation path against every
-**settled** WC2026 fixture from the last 7 days: reconstructs SportPredict-style
-questions, settles them from the final score and match statistics, and reports
-the Brier score. Final LLM pricing is disabled here to prevent web-search result
-leakage, so validation measures the local evidence/model machinery rather than
-the live LLM pricing layer. Latest historical run before the redesign:
+## Caching and quota
 
-```
-Fixtures:           27
-Predictions priced: 216
-Bot mean Brier:     0.2088   (lower is better)
-Coin-flip Brier:    0.2500   (always 50%)
-Directional acc.:   63%
-```
+- Every provider fetch goes through `bot/cache.py`.
+- The Odds API cache key includes event, market, and regions because billing is
+  `markets × regions`.
+- API-Football fixtures and odds have TTLs; settled statistics are permanent.
+- The T−30 job deliberately refreshes odds once, with identical requests
+  deduplicated inside the run.
+- Parser and compound fallback calls are cached by prompt version, model, and
+  messages. The first pricing call is web-grounded and non-deterministic, but
+  its result is cached permanently for repeatability.
 
-> API-Football purges pre-match odds a few days after kickoff, so fresh
-> backtests on older fixtures may price fewer markets. Cached pre-match odds
-> remain usable.
+Pre-match odds may disappear from providers a few days after kickoff. Retained
+local cache entries are therefore part of the audit record, not disposable
+build output.
 
-### Prediction ledger
-
-Every submission is recorded in `logs/prediction_ledger.sqlite3` before it is
-sent. The local SQLite ledger keeps one row per real question per submission
-window, including:
-
-- event, lobby, match, fixture, kickoff, observation and submission times;
-- parser/model version, structured intent and attempted provider market spec;
-- raw API-Football and Odds API snapshots observed for the run;
-- evidence JSON path/hash and the full LLM audit/report paths;
-- each bookmaker's de-vigged probability observed by the run;
-- submitted probability, source, and per-question LLM audit and reasoning;
-- skipped questions and their reasons; and
-- eventual binary outcome and Brier score.
-
-Scheduled runs are tagged `30`; manual submissions use `-1`. A failed API
-submission remains in the ledger with status `failed` and does not create a cron
-marker.
-
-Review one match after kickoff — every prediction, outcome, Brier score, audit
-paths and LLM reasoning summary:
+## Validation
 
 ```bash
-python -m scripts.settle_ledger --match "Portugal"   # by id or name substring
+# Offline/unit coverage, including the real bundled simulator process
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+  .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+
+# Settled-fixture deterministic validation; LLM pricing is disabled
+.venv/bin/python validate.py --days 7
+
+# Cheap live smoke using cached provider data where available
+.venv/bin/python run.py predict --limit 1
 ```
 
-Settle completed real questions and print overall, per-window and per-source
-performance:
-
-```bash
-python -m scripts.settle_ledger
-```
-
-Settlement is idempotent. It joins by SportPredict `market_id`, reads the
-explicit `current_value` outcome from the settled web API, and stores the
-authenticated result metadata. This avoids trying to infer an outcome from a
-Brier score, which is ambiguous for a 50% prediction. The ledger is git-ignored
-runtime data and should be retained across deployments.
-
-## Caching & quota
-
-The Odds API is **paid and metered**; API-Football is flat-rate but rate-limited
-(450/min). Every odds response is cached to disk under `cache/` (git-ignored):
-
-- **Odds API** — one cache entry per `(event, market, regions)`; a market is
-  fetched at most once per TTL (12 h). The Odds API bills `markets × regions`, so
-  the bot requests only the markets a match actually needs and reuses the cache
-  across questions and re-runs. Clear with `python -c "from bot.cache import clear; clear()"`.
-- **API-Football** — fixtures (1 h) and per-fixture odds (6 h) cached, with
-  rate-limit backoff; final statistics used by backtests are cached permanently.
-
-The autonomous submitter deliberately bypasses the odds TTL once at the
-30-minute window. Each refresh replaces the disk entry and is deduplicated in
-memory within that run, so the submission sees the latest market movement and
-newly opened props without repeated identical provider calls.
-
-`ODDS_REGIONS` (default `eu,uk,us`) controls breadth vs cost;
-`LLM_PRICING_ENABLED=0` disables the web-grounded pricing layer for local
-deterministic checks.
+`validate.py` uses final API-Football statistics and does not run web research,
+which prevents settled-result leakage. Older fixtures may have fewer priceable
+markets after providers purge their pre-match odds.
 
 ## Cost
 
-SportPredict is free; API-Football is a flat-rate subscription. Metered costs:
+SportPredict is free and API-Football is a flat-rate subscription. The metered
+parts are:
 
-| Source | Unit cost | Per match (first run) | Whole tournament* |
-|---|---|---|---|
-| Parser `gpt-5.4-mini` (cached fallback) | $0.25/$2.00 per 1M tok | $0 known; ≤$0.001 unfamiliar | ≤$0.12 |
-| Compound splitter `gpt-5.4-mini` (cached fallback) | same | $0 known; ≤$0.001 unfamiliar | ≤$0.03 |
-| Odds API | billed `markets×regions` (even empty markets) | ~3–4 markets × 3 regions ≈ **9–12 credits** (single 30-min window) | within plan |
-| LLM pricing `gpt-5.4-mini` (1 cached call/match, multi-source web research) | varies with evidence size + web calls | mini rate ≈ $0.25/$2.00 per 1M tok + web calls | roughly **$5–20** |
+| Source | Per-match behavior |
+|---|---|
+| Parser fallback | known templates cost $0; unfamiliar wording is one cached batch |
+| Compound fallback | local for known forms; otherwise one cached batch |
+| Odds API | requested markets × configured regions; one deliberate T−30 refresh |
+| LLM pricing | one cached multi-market call with web research |
 
-*104 matches. **Every LLM call is cached**, and ordinary odds re-runs reuse the
-disk cache; only the single scheduled submission window deliberately refreshes
-odds. Caching the parser on `(model, prompt, questions)` also makes unfamiliar
-question→intent mapping deterministic across runs. LLM pricing is one
-cached web-grounded call per match; re-runs reuse the frozen pre-match audit.
-Parser + splitter spend is well under **$1**; LLM pricing cost depends mostly
-on evidence size, output audit detail and web-search calls. The first live smoke
-with `gpt-5.5` logged about `$1.15`; evidence compaction keeps future calls
-smaller, but auditability is intentionally prioritized over minimum token spend.
-The pricing and parser layers now default to `gpt-5.4-mini`, an order of
-magnitude cheaper per token than `gpt-5.5`.
+Changing parser behavior can change per-match spend and must be reflected here.
 
-## Supported markets
+## Repository layout
 
-Full match **and** 1st/2nd half: match result, total goals, BTTS, team total
-goals, total & team corners, corners 1x2, total & team cards, team-to-score;
-plus half draws, card comparisons, and (full match) offsides totals,
-offsides/fouls/shots-on-target 1x2, total shots on target, highest-scoring-half;
-player anytime-scorer, score-or-assist, shots-on-target, cards (both providers);
-compounds, penalties/red cards and unusual questions through related evidence.
-
-Knockout-stage (best-of-32) additions: questions are normalized so the "in
-regulation (90 minutes + stoppage time)" / ", excluding extra time" scope and a
-"Player (Country)" gloss never break a template, and these exact contracts are
-mapped — *to qualify/advance* (bet 61), *clean sheet* (27/28), *score in both
-halves* (111/112), *total/team shots on+off target* (211 / 221/220), *win by N
-goals* (Asian Handicap −(N−0.5) pair, bet 4), *both teams to receive a card*
-(252), *penalty awarded* (163), *red card* (335). Where a fixture does not quote
-one of these it degrades to related odds. Time-window questions with no contract
-(hydration-break 22'/67' windows, stoppage-time goal, "any player" brace) are
-priced from related odds — chiefly the full per-15-minute goal-interval ladder
-(bets 144–149) plus the ET/penalty deciders (224/225) — so the model reads a
-22'/67' boundary, not the 45' half. If the LLM does not return a complete audit
-for a market, that market is skipped rather than submitted without reviewability.
-
-## Evidence and Audit
-
-Every live match writes an evidence JSON before the LLM call. For directly
-mapped questions, it lists every provider/bookmaker probability for the exact
-contract. For questions without direct odds, it lists relevant related
-probabilities: component legs for compounds, team/match totals, compare markets,
-player props, half/full-match cousins and other match context odds. Existing
-derive/empirical models are retained as labeled context only, never as hidden
-final anchors.
-
-The LLM response is also persisted as JSON and Markdown. For each market it must
-state:
-
-- final `probability_int`;
-- provided odds used, with how and why;
-- online odds found independently, with probability conversion method and URL;
-- tactics, weather, lineup, referee, motivation and other non-odds factors used;
-- evidence ignored/downweighted; and
-- a concise reasoning summary.
-
-### Deterministic model context
-
-Some unsupported contracts still get deterministic estimates inside the evidence
-file. These estimates are auditable context for the LLM, not submitted prices.
-
-- **Shots on target:** invert a quoted match-total O/U probability into a
-  Poisson rate, apply the source-level 2.5% rate debias, then split it between
-  teams with
-  `home_share = clamp(0.5 + 0.35·(P(home more) − P(away more)), 0.2, 0.8)` from
-  shots-on-target 1x2. Allocate 45% to the first half and 55% to the second for
-  team markets. In live LLM evidence, the requested team/full-match threshold,
-  second-half team comparison, and both-teams first/second-half SoT markets also
-  receive optional `simulator_model_estimates` from `../sportspredict-hybrid`.
-  These learned-rate simulator prices are labeled context for the LLM to reason
-  with, not submitted prices and not absolute truth.
-- **Half shots-on-target comparison:** "more shots on target than the opponent
-  in the 1st/2nd half" has no bookmaker market (the full-match SoT 1x2 is priced
-  directly). Split each team's match SoT rate into the half (45%/55%) and price
-  the lead with competing Poisson counts.
-- **Shot-count calibration:** the inferred total SoT rate is debiased at the
-  source (`lambda *= 0.975`) so team, total and both-teams shot markets inherit
-  the same correction without per-branch tilt math.
-- **Player half shots:** infer a Poisson rate from the quoted full-match player
-  probability, then apply a minutes-aware half share that accounts for
-  substitutions.
-- **Half cards:** infer the half total-card rate and allocate it with the half
-  cards 1x2 market; fall back to full-match team-card rates scaled 42%/58%.
-- **First scorer in 2H:** convert both team-to-score 2H probabilities to rates
-  and use competing Poisson processes, including the chance of no second-half goal.
-- **Penalty/red card:** calibrate the closest single-sided penalty/red quotes;
-  their OR union subtracts an enlarged intersection for positive correlation.
-  In live LLM evidence, the two supported penalty markets ("penalty kick
-  awarded" and "penalty kick awarded OR red card shown") also receive optional
-  `simulator_model_estimates` from `../sportspredict-hybrid`.
-
-The simulator-evidence bridge runs that repo's own virtualenv, imports its
-`src/` tree ahead of any installed package so local hybrid edits are picked up
-immediately, and passes the learned-rate simulator output to the LLM as context
-only.
-
-## LLM pricing
-
-[bot/llm_pricing.py](bot/llm_pricing.py) makes one web-grounded call per match.
-Its instruction template lives at
-[prompts/llm_pricing_prompt.md](prompts/llm_pricing_prompt.md); editing the
-prompt changes the prompt hash and re-keys future calls. The cache key is
-`(version, model, match_id, prompt_hash)`, so a re-run uses the frozen pre-match
-audit rather than researching after the result is known. The layer refuses to run
-once kickoff has passed.
-
-The model returns an audited probability that is submitted directly. Review the
-full evidence, submitted price, and audit with:
-
-```bash
-python -m scripts.settle_ledger --match "Portugal"
-```
-
-## Notebook: bot vs. crowd
-
-[notebooks/bot_vs_crowd.ipynb](notebooks/bot_vs_crowd.ipynb) scores the bot
-against the **crowd mean** on settled markets. The crowd consensus is hidden by
-the bot REST API but exposed for settled markets by the SportPredict *web* API
-(`POST /probability/match-crowd-stats` → `prediction_average` + `current_value`;
-see [bot/web.py](bot/web.py)). Latest historical deterministic run
-(12 most-recent settled matches; LLM pricing off to avoid result leakage):
-
-```
-Head-to-head questions: 61
-Bot mean Brier:   0.2272     Crowd mean Brier: 0.2278     Coin-flip: 0.25
-Bot beats crowd on 32/61 (52%)
-```
-
-The bot is on par with the crowd on the markets it prices, using only de-vigged
-odds (and ahead of it on the higher-confidence, multi-book subset).
-Notebook deps (`pandas matplotlib jupyter`) are separate from the pure-stdlib
-bot — install with `uv pip install pandas matplotlib jupyter nbconvert`.
-
-## Layout
-
-```
-bot/
-  config.py        keys + constants
-  cache.py         persistent on-disk cache (quota efficiency)
-  ledger.py        SQLite prediction traces + real-result settlement
-  sportspredict.py SportPredict REST client (/api/v1)
-  web.py           SportPredict web API (/api) — crowd stats for settled markets
-  apifootball.py   API-Football client + cached fixtures/odds/statistics
-  oddsapi.py       The Odds API client + de-vig + per-book observations
-  parser.py        deterministic templates + cached LLM fallback → intent
-  matcher.py       intent → API-Football / Odds API market spec (catalog)
-  predictor.py     API-Football odds → de-vigged observations
-  evidence.py      one JSON evidence bundle per match
-  llm_pricing.py   web-grounded probabilities + per-market audit
-  pricing.py       deterministic intent pricing (validation/evidence helper)
-  derive.py        compounds + empirical correlated-signal context
-  external.py      legacy web estimate helper for deterministic disabled mode
-  pipeline.py      orchestration: parse → evidence → LLM pricing → submit
-run.py             CLI: predict / submit / --no-llm deterministic preview
-validate.py        settled-match backtest (vs realized outcomes)
+```text
+bot/                    lightweight live bot and provider clients
+simulator/
+  src/                  baseline + learned runtime source
+  config/               deterministic model/contract configuration
+  data/                 fitted artifacts, lookup tables, Elo, audit evidence
+  requirements.txt      numerical dependencies only
+prompts/                 audited pricing prompt
 scripts/
-  predict_log.py   local JSON/Markdown prediction snapshots
-  cron_submit.py   scheduled 30-minute submission + LLM audit
-  settle_ledger.py settle real questions and report live Brier scores
-  run.sh           cron-safe virtualenv wrapper
-prompts/
-  llm_pricing_prompt.md  instruction template for audited pricing
-notebooks/
-  bot_vs_crowd.ipynb   bot vs crowd-mean post-mortem on settled markets
+  cron_submit.py         T−30 dispatcher
+  deploy.sh              build, smoke-test, and install cron
+  run.sh                 cron-safe container runner
+  settle_ledger.py       explicit-outcome settlement and Brier reporting
+tests/                   unit and bundled-runtime integration tests
+analysis/, notebooks/    optional post-mortem tools; never deployed
+cache/                   retained runtime cache; git-ignored
+logs/                    retained evidence, audits, and ledger; git-ignored
+run.py                   manual predict/submit CLI
+validate.py              deterministic settled-fixture validation
 ```

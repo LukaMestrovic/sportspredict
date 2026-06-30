@@ -1,46 +1,34 @@
 # ---------------------------------------------------------------------------
 # Baseline model parameters + run settings.
 #
-# These encode reasonable men's-international priors so the simulator runs
-# end-to-end WITHOUT any live data download. Layer-1 fitting (rates/*) overwrites
-# the `baseline_rates` and coefficient blocks from ingested data when available.
-# Every number here is an assumption documented in README.md.
+# These men's-international priors let the simulator run without a live data
+# download. The tracked learned artifacts sharpen them when they load.
 # ---------------------------------------------------------------------------
 
 simulation:
   n_sims: 50000          # Monte-Carlo draws per match
   seed: 20260611
-  cache_dir: data/processed/sim_cache
 
 # ---------------------------------------------------------------------------
-# sportspredict-hybrid ONLY: which Layer-1 rate model to use.
+# Bundled simulator: which Layer-1 rate model to use.
 #   baseline -> the imported sportspredict RateModel (log-linear in Elo).
 #   learned  -> the gray-box LearnedRateModel (GBM per stat, blended toward
 #               baseline), used iff its artifact loads; otherwise it falls
-    #               back to baseline automatically.
-# Everything below this block is an unmodified copy of the baseline config.
+#               back to baseline automatically.
 # ---------------------------------------------------------------------------
 rates:
   model: learned
   learned:
     artifact: data/processed/rate_model.joblib
-    metadata: data/processed/rate_model.json
     team_ratings: data/processed/team_ratings.json
     blend_alpha: 0.5       # fallback global blend; per-stat alpha in metadata overrides
-    # Guardrails so no single learned stat can override the sane baseline (see rates/learned.py,
-    # rates/train.py). max_alpha caps every per-stat blend weight (the "always shrink toward
-    # baseline" rule); max_ratio clamps the learned/baseline per-match-mean ratio to [1/R, R] so a
-    # corrupt stat (e.g. the under-counted StatsBomb offsides) is treated as data error, not signal.
+    # Guardrails bound every learned statistic around the baseline.
     max_alpha: 0.75
     max_ratio: 3.0
-    # StatsBomb's explicit Offside rows under-count the event. Offsides is therefore learned only
-    # from the 4k+ API-Football fixtures whose match totals pass the plausibility guard.
     learned_stats: [goals, shots_on_target, corners, fouls, offsides, yellows]
-    stat_sources:
-      offsides: [apifootball]
 
 # ---------------------------------------------------------------------------
-# sportspredict-hybrid ONLY: live input-anchoring.
+# Bundled simulator: live input-anchoring.
 #   Anchors the simulator's per-stat λ to sharp bookmaker totals (corners/cards/goals) so the EXOTIC
 #   families the bot competes on become market-consistent in one shot. A strict no-op without live
 #   odds (e.g. inside the offline gate), so the gate is unaffected; the edge is live-only by design.
@@ -56,7 +44,7 @@ adjust:
     cards: 0.55
 
 # Additive post-simulation models for question families that need event timing or player ownership.
-# They never alter the learned team-rate path; unsupported inputs degrade to the frozen wheel.
+# They never alter the learned team-rate path; unsupported inputs degrade to the frozen baseline.
 postsim:
   enabled: true
   et_minutes: 30.0
@@ -197,66 +185,7 @@ markets:
     goes_to_shootout: 0.0
     total_goals_parity: 0.0
 
-# Referee discipline model. Multipliers on card/foul/penalty rates per referee, built from
-# an aggregated history table (`sportspredict referee-history` writes history_csv from the
-# API-Football competitions below) and shrunk toward 1.0 for small samples
-# (ingest/referee.py). compete loads history_csv automatically when it exists.
-referee:
-  shrink_matches: 10                     # EB prior strength, in match-equivalents
-  history_csv: data/processed/referee_history.csv
-  history_league_seasons:                # API-Football (league_id, season) pairs to scan
-    - [1, 2022]                          # FIFA World Cup 2022
-    - [4, 2024]                          # UEFA Euro 2024
-    - [9, 2024]                          # Copa America 2024
-
-# Cross-match tournament dynamics (see sportspredict.tournament). A few high-impact, simple
-# effects: live Elo updates, one-match suspensions, key-player availability, and fatigue.
+# Match-context defaults used by the report bridge.
 tournament:
   host_teams: ["United States", "Canada", "Mexico"]
   group_stage_end: "2026-06-28"          # fixtures at/after this date are knockout
-  suspend_yellow_threshold: 2            # yellows accumulated -> next-match ban
-  key_player_goal_rate: 0.45             # >= this np-goals/90 counts as a key player
-  key_player_elo_penalty: 35             # Elo hit when a key player is unavailable
-  extra_time_fatigue_elo: 20             # transient Elo hit after playing extra time
-  short_rest_days: 3                     # <= this many days between matches => fatigue
-  short_rest_elo: 15
-  elo_k: 30                              # Elo update sensitivity
-  elo_home_adv: 65
-
-# Data-source credentials are read from environment variables, not stored here:
-#   APIFOOTBALL_KEY, ODDS_API_KEY, SPORTSPREDICT_KEY
-data_sources:
-  statsbomb_competitions:        # (competition_id, season_id) men's modern tournaments
-    - [43, 106]                  # FIFA World Cup 2022
-    - [43, 3]                    # FIFA World Cup 2018
-    - [55, 282]                  # UEFA Euro 2024
-    - [55, 43]                   # UEFA Euro 2020
-    - [1267, 107]                # AFCON 2023
-    - [223, 282]                 # Copa America 2024
-  cache_dir: data/raw
-  # `sphybrid ingest` scales the learned-rate table with API-Football senior men's INTERNATIONAL
-  # matches (no model change — just more rows in the same schema). Seasons >= min_year are discovered
-  # per league; clubs/youth/women are dropped by the elo.csv national-team whitelist. League ids:
-  apifootball_min_year: 2018
-  apifootball_leagues:
-    - 1                          # World Cup
-    - 4                          # Euro Championship
-    - 5                          # UEFA Nations League
-    - 6                          # Africa Cup of Nations
-    - 7                          # Asian Cup
-    - 9                          # Copa America
-    - 10                         # Friendlies (international)
-    - 21                         # Confederations Cup
-    - 22                         # CONCACAF Gold Cup
-    - 29                         # World Cup Qualification — Africa
-    - 30                         # World Cup Qualification — Asia
-    - 31                         # World Cup Qualification — CONCACAF
-    - 32                         # World Cup Qualification — Europe
-    - 33                         # World Cup Qualification — Oceania
-    - 34                         # World Cup Qualification — South America
-    - 37                         # World Cup Qualification — Intercontinental Play-offs
-    - 35                         # Asian Cup Qualification
-    - 36                         # Africa Cup of Nations Qualification
-    - 536                        # CONCACAF Nations League
-    - 913                        # CONMEBOL-UEFA Finalissima
-    - 960                        # Euro Qualification

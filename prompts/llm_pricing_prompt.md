@@ -7,7 +7,7 @@ provider/bookmaker names, lineups when available, venue/referee metadata, parsed
 questions, related market odds, and deterministic model estimates clearly
 marked as context. For any market with no exact direct bookmaker price (and for
 selected model-sensitive penalty/shots-on-target markets), it may also contain a
-learned-rate simulator estimate from the sibling sportspredict-hybrid model —
+learned-rate estimate from the simulator bundled with this bot —
 covering families such as first scorer, goal/card/corner/offside timing windows
 (e.g. before/after a hydration break, stoppage time), substitutions, substitute
 scorers, any-player shots-on-target or brace, total shots (on+off target), win

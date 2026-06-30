@@ -14,15 +14,14 @@ from .postsim import REGULATION_STANDARD
 from .rates import make_rate_model
 
 @dataclass
-class HybridEngine(Engine):
-    """Baseline simulator engine plus the v0 edges.
+class SimulatorEngine(Engine):
+    """Baseline simulator plus learned rates and post-simulation contracts.
 
     1. **Odds anchor** (live): rescale the goals/corners/cards lambdas to sharp bookmaker-implied
        means (via ``ctx.extra['rate_mult']``) before simulation.
     2. **Post-simulation layer**: answer event timing/player-allocation families and exact-scope
-       contracts the frozen generic resolver cannot represent correctly. It adds timestamped events
-       and wraps only explicit regulation/card/player wording; unrelated wheel contracts still defer
-       to the frozen resolver.
+       contracts the baseline resolver cannot represent correctly. It adds timestamped events and
+       wraps only explicit regulation/card/player wording; unrelated contracts still use the baseline.
     """
 
     adjust_log: list = field(default_factory=list, repr=False)
@@ -31,7 +30,7 @@ class HybridEngine(Engine):
 
     def predict_many(self, ctx, questions, market_odds=None, n_sims=None) -> list[Prediction]:
         # One timeline belongs to one match simulation. Do not retain its event arrays across the
-        # forever-running compete loop (or risk both memory growth and a recycled ``id`` collision).
+        # reports (or risk both memory growth and a recycled ``id`` collision).
         self._timeline_cache.clear()
         self._event_cache.clear()
         adj = self._adjustments(ctx, market_odds)
@@ -41,7 +40,7 @@ class HybridEngine(Engine):
             adj.apply_to_context(ctx_eff)
         return self._predict_routed(ctx_eff, list(questions), market_odds, n_sims)
 
-    # -- routing: post-sim extended markets vs the wheel ---------------------------------------
+    # -- routing: post-sim extended markets vs the baseline ---------------------------------------
     def _predict_routed(self, ctx, questions, market_odds, n_sims) -> list[Prediction]:
         cfg = self.settings.raw.get("postsim", {})
         if not cfg.get("enabled", True):
@@ -63,7 +62,7 @@ class HybridEngine(Engine):
         return results  # type: ignore[return-value]
 
     def _try_extended(self, q, ctx, n_sims, cfg) -> Prediction | None:
-        """Resolve ``q`` via the post-sim layer, or ``None`` to defer to the wheel."""
+        """Resolve ``q`` via the post-sim layer, or ``None`` to defer to the baseline."""
         try:
             spec = parse_extended(q, ctx)
         except Exception:  # a parser hiccup must never break a prediction
@@ -82,14 +81,14 @@ class HybridEngine(Engine):
                 event_cache=self._event_cache, event_seed=seed,
             )
         except Exception:
-            return None  # fall back to the wheel rather than crash
+            return None  # fall back to the baseline rather than crash
         prediction_market = spec.market
         prediction_params = spec.params
         if spec.market == REGULATION_STANDARD:
-            wheel_spec = spec.params["wheel_spec"]
-            prediction_market = wheel_spec.market.value
+            baseline_spec = spec.params["baseline_spec"]
+            prediction_market = baseline_spec.market.value
             prediction_params = {
-                **wheel_spec.params,
+                **baseline_spec.params,
                 "regulation_scope": bool(spec.params.get("regulation", False)),
             }
         return Prediction(
@@ -130,7 +129,7 @@ class HybridEngine(Engine):
             else:
                 return None
         except Exception:
-            return None  # any miss -> the wheel's standalone player-stat prior handles it
+            return None  # any miss -> the baseline's standalone player-stat prior handles it
         return Prediction(
             question=q, market=spec.market.value, params=spec.params,
             p_model=p, p_market=None, p_final=p, n_sims=outcome.n_sims,
@@ -194,6 +193,6 @@ class HybridEngine(Engine):
                                     "sources": adj.sources})
         return adj
 
-def build_engine(settings: Settings | None = None) -> HybridEngine:
+def build_engine(settings: Settings | None = None) -> SimulatorEngine:
     settings = settings or default_settings()
-    return HybridEngine(settings=settings, rate_model=make_rate_model(settings))
+    return SimulatorEngine(settings=settings, rate_model=make_rate_model(settings))

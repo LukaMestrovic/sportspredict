@@ -2,7 +2,9 @@
 
 ## What this is
 A minimal LLM bot that prices SportPredict Probability Cup questions for FIFA
-WC2026 from bookmaker odds. See [README.md](README.md) for the architecture.
+WC2026 from bookmaker odds. The production bot, learned simulator, fitted model
+artifacts, and deployment scripts all live in this repository. See
+[README.md](README.md) for the architecture.
 
 ## Commit regularly
 **Commit after every working increment** — a new market mapping, a bug fix, a
@@ -12,7 +14,13 @@ git-ignored; keep it that way).
 
 ## Conventions
 - Pure standard library + `requests` for the bot. No heavy frameworks. (The
-  analysis notebook may use pandas/matplotlib — keep those deps out of `bot/`.)
+  bundled numerical runtime has its own `simulator/requirements.txt`; analysis
+  may use pandas/matplotlib. Keep both dependency sets out of `bot/`.)
+- `simulator/` is a production runtime component, not a generated deploy
+  snapshot. Keep its source, config, compact lookup data, and fitted artifacts
+  tracked here. Do not reintroduce sibling-checkout imports, copied deploy
+  trees, or a prebuilt project wheel. Training/ingestion tooling stays out of
+  the production runtime.
 - The parser LLM only extracts intent. The live pricing LLM prices raw markets
   from a deterministic evidence JSON plus web research. All provider market
   mapping and bookmaker probability conversion stays deterministic and auditable
@@ -20,19 +28,20 @@ git-ignored; keep it that way).
 - **Live pricing flow** (`bot/evidence.py`, `bot/llm_pricing.py`,
   `bot/pipeline.py`): collect direct and related API-Football / Odds API odds
   into one evidence JSON per match, include deterministic estimates only as
-  labeled context, then make one cached web-grounded LLM call that returns the
-  submitted probabilities and a complete per-market audit. There are no pre-LLM
-  anchors or hidden tilt math in the live path.
+  labeled context (including the bundled simulator), then make one cached
+  web-grounded LLM call that returns the submitted probabilities and a complete
+  per-market audit. There are no pre-LLM anchors or hidden tilt math in the live
+  path.
 - De-vig only coherent outcome sets from the **same bookmaker and contract**.
   Compounds are composed from **separately priced components**, not from
   marginal lines of one book.
 - Submit probabilities as integers **1–99**.
 - Every submission path must use `pipeline.submit_with_ledger`; do not call the
   raw batch submitter from a user-facing or scheduled workflow. The SQLite
-  ledger records real questions, raw odds, pricing traces and both submission
-  windows. Settle it only through explicit SportPredict `current_value` outcomes
+  ledger records real questions, raw odds, pricing traces and the submission
+  window. Settle it only through explicit SportPredict `current_value` outcomes
   (`python -m scripts.settle_ledger`), never by web search or score inference.
-- **Determinism is required.** Every LLM call (parser + compound splitter) goes
+- **Determinism is required.** Every parser and compound-splitter LLM call goes
   through `parser.chat_json`, which caches on `(PROMPT_VERSION, model, messages)`
   so the same question always maps to the same intent across
   runs. Never add an uncached LLM call. Bump `PROMPT_VERSION` when you change
@@ -65,12 +74,16 @@ git-ignored; keep it that way).
   pricing/web-search call for that submission window. Don't run it on settled
   matches — a web search can leak the result. `llm_pricing.price_match()` refuses
   to run once kickoff has passed, and ledger review reads frozen rows only.
+- Treat `cache/` and `logs/` as retained runtime state. Never remove them during
+  cleanup, tests, image builds, or deployment.
 
 ## Keys / env
 `config.py` loads `.env`. Required: `SPORTSPREDICT_KEY`, `APIFOOTBALL_KEY`,
 `ODDS_API_KEY`, `OPENAI_API_KEY`. Mask keys in any terminal output you share.
 
 ## Test before committing
+- `python -m unittest discover -s tests -p 'test_*.py'` — unit and bundled
+  simulator integration coverage.
 - `python run.py predict --limit 1` — cheap end-to-end smoke test (uses cache).
 - `python validate.py --days 7` — backtest against settled matches.
 - `python -m scripts.settle_ledger` — settle completed matches and report Brier.
@@ -78,6 +91,6 @@ git-ignored; keep it that way).
 ## Useful facts
 - WC2026 in API-Football: `league=1`, `season=2026`; Odds API sport
   `soccer_fifa_world_cup`.
-- All providers' fixtures/events are linked by exact kickoff datetime.
+- Provider fixtures/events are linked by kickoff datetime and both teams.
 - Pre-match odds are purged a few days after kickoff (both providers) — backtests
   on old fixtures price fewer markets.

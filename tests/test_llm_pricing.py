@@ -134,7 +134,7 @@ def _evidence(with_context=False, with_simulator=False):
     }
     if with_simulator:
         question["simulator_model_estimates"] = [{
-            "source": "sportspredict-hybrid",
+            "source": "sportspredict-simulator",
             "family": "any_player_threshold",
             "contract_key": "any_player_threshold:goals:>:1:reg",
             "probability": 0.2347,

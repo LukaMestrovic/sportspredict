@@ -1,4 +1,4 @@
-"""Conservative grammar and resolvers for event/player questions outside the frozen wheel."""
+"""Conservative grammar and resolvers for event/player questions outside the frozen baseline."""
 
 from __future__ import annotations
 
@@ -148,8 +148,8 @@ def _teams_in_text(clause: str, ctx: MatchContext) -> list[str]:
     return _find_teams(clause, ctx)
 
 
-def _qualified_wheel_spec(question: str, ctx: MatchContext):
-    """Parse a wheel market after removing a SportPredict ``Player (Team)`` qualifier."""
+def _qualified_baseline_spec(question: str, ctx: MatchContext):
+    """Parse a baseline market after removing a SportPredict ``Player (Team)`` qualifier."""
     from sportspredict.markets import parse_question
 
     qualifier = _PLAYER_QUALIFIER_RE.search(question)
@@ -169,7 +169,7 @@ def _qualified_wheel_spec(question: str, ctx: MatchContext):
 
 
 def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
-    """Claim only exact unsupported templates; every other question remains wheel-owned."""
+    """Claim only exact unsupported templates; every other question remains baseline-owned."""
     if not _PARSER_OK:
         return None
     core = _strip_lead(question)
@@ -191,7 +191,7 @@ def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
                 "stat": "goals", "comparator": count[0], "threshold": count[1],
             }, question)
 
-    # Exact best-of-32 templates that the frozen wheel does not own, or would parse too broadly.
+    # Exact best-of-32 templates that the frozen baseline does not own, or would parse too broadly.
     if "shots (on and off target)" in core:
         count = _threshold(core)
         if count:
@@ -214,7 +214,7 @@ def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
         return ExtSpec(CARD_WINDOW, {"window": "first_half", "include_et": False}, question)
 
     # The frozen parser drops the shorter team when one country name contains the other
-    # ("Equatorial Guinea" vs "Guinea"). Build this otherwise-standard wheel spec from our
+    # ("Equatorial Guinea" vs "Guinea"). Build this otherwise-standard baseline spec from our
     # longest-match team detector so the question cannot become unsupported.
     if re.search(r"\b(?:at halftime|half-?time)\b", core) and re.search(
         r"\b(?:winning|leading|ahead|in front)\b", core
@@ -222,7 +222,7 @@ def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
         teams = _teams_in_text(core, ctx)
         if teams:
             return ExtSpec(REGULATION_STANDARD, {
-                "wheel_spec": MarketSpec(
+                "baseline_spec": MarketSpec(
                     MarketType.HALF_CONDITIONAL,
                     {"subtype": "halftime_lead", "team": teams[0]},
                     question,
@@ -273,49 +273,49 @@ def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
                 "legs": [("first", _LABEL[first_teams[0]]), second_leg],
             }, question)
 
-    # Regulation is a contract, not a synonym for "full match": knockout full-match wheel
-    # resolvers can include extra time. Route the exact wheel spec through a regulation-only
+    # Regulation is a contract, not a synonym for "full match": knockout full-match baseline
+    # resolvers can include extra time. Route the exact baseline spec through a regulation-only
     # resolver. This also safely handles SportPredict's parenthesized player-team qualifier.
     if "regulation" in raw_lower or "excluding extra time" in raw_lower:
         try:
-            wheel_spec = _qualified_wheel_spec(question, ctx)
+            baseline_spec = _qualified_baseline_spec(question, ctx)
         except Exception:
-            wheel_spec = None
-        if wheel_spec is not None:
+            baseline_spec = None
+        if baseline_spec is not None:
             return ExtSpec(REGULATION_STANDARD, {
-                "wheel_spec": wheel_spec, "regulation": True,
+                "baseline_spec": baseline_spec, "regulation": True,
             }, question)
 
     # A parenthesized player team must never turn a player prop into a team count. Keep this
     # normalization even if a future question omits the explicit regulation wording.
     if _PLAYER_QUALIFIER_RE.search(question):
         try:
-            wheel_spec = _qualified_wheel_spec(question, ctx)
+            baseline_spec = _qualified_baseline_spec(question, ctx)
         except Exception:
-            wheel_spec = None
-        if wheel_spec is not None and wheel_spec.market in {
+            baseline_spec = None
+        if baseline_spec is not None and baseline_spec.market in {
             MarketType.PLAYER_SCORE, MarketType.PLAYER_SCORE_OR_ASSIST, MarketType.PLAYER_STAT,
         }:
             return ExtSpec(REGULATION_STANDARD, {
-                "wheel_spec": wheel_spec, "regulation": False,
+                "baseline_spec": baseline_spec, "regulation": False,
             }, question)
 
-    # The wheel's half-card resolver counts yellows only because its red total has no phase.
+    # The baseline's half-card resolver counts yellows only because its red total has no phase.
     # Our learned event clock can place red cards correctly, so claim every exact card count or
     # comparison and include both yellow and red cards.
     if "card" in core:
         try:
-            wheel_spec = _qualified_wheel_spec(question, ctx)
+            baseline_spec = _qualified_baseline_spec(question, ctx)
         except Exception:
-            wheel_spec = None
-        if wheel_spec is not None and (
-            wheel_spec.market == MarketType.COUNT_THRESHOLD
-            and wheel_spec.params.get("stat") == "cards"
-            or wheel_spec.market == MarketType.TEAM_VS_TEAM_MORE
-            and wheel_spec.params.get("stat") == "cards"
+            baseline_spec = None
+        if baseline_spec is not None and (
+            baseline_spec.market == MarketType.COUNT_THRESHOLD
+            and baseline_spec.params.get("stat") == "cards"
+            or baseline_spec.market == MarketType.TEAM_VS_TEAM_MORE
+            and baseline_spec.params.get("stat") == "cards"
         ):
             return ExtSpec(REGULATION_STANDARD, {
-                "wheel_spec": wheel_spec, "regulation": "regulation" in raw_lower,
+                "baseline_spec": baseline_spec, "regulation": "regulation" in raw_lower,
             }, question)
 
     if re.search(r"\band\b", core):
@@ -483,12 +483,12 @@ def resolve_extended(
         if ctx is None or settings is None:
             raise ValueError("standard regulation markets require context and settings")
         from sportspredict.config import Settings
-        from sportspredict.markets import resolve as resolve_wheel
+        from sportspredict.markets import resolve as resolve_baseline
         from .allocation import resolve_player_goal_alloc, resolve_player_stat_alloc
 
-        wheel = spec.params["wheel_spec"]
-        market = wheel.market
-        params = wheel.params
+        baseline = spec.params["baseline_spec"]
+        market = baseline.market
+        params = baseline.params
         if market in (MarketType.PLAYER_SCORE, MarketType.PLAYER_SCORE_OR_ASSIST):
             return resolve_player_goal_alloc(
                 params, outcome, ctx, player_shares, settings,
@@ -547,7 +547,7 @@ def resolve_extended(
         rules = dict(settings.market_rules)
         rules["include_extra_time_in_counts"] = not spec.params.get("regulation", False)
         reg_settings = Settings(raw=settings.raw, market_rules=rules, root=settings.root)
-        return resolve_wheel(wheel, outcome, ctx, reg_settings)
+        return resolve_baseline(baseline, outcome, ctx, reg_settings)
     elif spec.market == COMPOUND_AND:
         mask = _resolve_leg(spec.params["legs"][0], timeline, outcome)
         for leg in spec.params["legs"][1:]:

@@ -199,7 +199,7 @@ def _fixture_stage(result) -> str | None:
     """Map the API-Football round to the simulator's stage when unambiguous.
 
     Returns ``"group"``/``"knockout"`` from the league round (e.g. "Group Stage
-    - 1", "Round of 16"), else ``None`` so the sibling derives it from kickoff.
+    - 1", "Round of 16"), else ``None`` so the simulator derives it from kickoff.
     """
     league = (result.fixture or {}).get("league", {}) if result.fixture else {}
     rnd = str(league.get("round") or "").lower()

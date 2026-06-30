@@ -39,9 +39,6 @@ class BundledSimulatorTests(unittest.TestCase):
         env = os.environ.copy()
         env["PYTHONPATH"] = str(SIMULATOR / "src")
         env["SPORTSPREDICT_ROOT"] = str(SIMULATOR)
-        env.pop("SPORTSPREDICT_HYBRID_ROOT", None)
-        env.pop("SPORTSPREDICT_HYBRID_PYTHON", None)
-
         proc = subprocess.run(
             [sys.executable, "-m", "sphybrid.bridge"],
             cwd=SIMULATOR,
