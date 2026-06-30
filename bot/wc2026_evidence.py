@@ -17,12 +17,23 @@ from . import config
 
 
 SNAPSHOT_PATH = config.ROOT / "cache" / "wc2026_empirical.json"
+ARTIFACT_PATH = (
+    config.ROOT / "simulator" / "data" / "processed" / "simulation_evidence.json"
+)
 FINAL_STATUSES = {"FT", "AET", "PEN"}
 CORE_CONTRACTS = {
     "goal_window:after_second_hydration:et",
     "goal_window:after_second_hydration:reg",
     "red_card:match",
 }
+
+
+def known_contract_keys(path: Path = ARTIFACT_PATH) -> set[str]:
+    """Every shipped exact contract, for the recurring post-settlement refresh."""
+    try:
+        return set((json.loads(path.read_text()).get("contracts") or {}).keys())
+    except (OSError, json.JSONDecodeError):
+        return set(CORE_CONTRACTS)
 
 
 def refresh(
@@ -41,23 +52,48 @@ def refresh(
     ]
     eligible.sort(key=_fixture_time)
 
+    requested = set(contract_keys or ()) | CORE_CONTRACTS
+    needs_statistics = any(_needs_statistics(key) for key in requested)
+    needs_players = any(_needs_players(key) for key in requested)
     covered = []
     failures = []
     for fixture in eligible:
         fixture_id = int(fixture["fixture"]["id"])
+        events = None
+        statistics = None
+        players = None
         try:
             events = af.settled_events(fixture_id)
         except Exception as exc:
-            failures.append({"fixture_id": fixture_id, "error": str(exc)[:200]})
-            continue
+            failures.append({
+                "fixture_id": fixture_id, "source": "events",
+                "error": str(exc)[:200],
+            })
+        if needs_statistics:
+            try:
+                statistics = af.settled_statistics(fixture_id)
+            except Exception as exc:
+                failures.append({
+                    "fixture_id": fixture_id, "source": "statistics",
+                    "error": str(exc)[:200],
+                })
+        if needs_players:
+            try:
+                players = af.fixture_players(fixture_id)
+            except Exception as exc:
+                failures.append({
+                    "fixture_id": fixture_id, "source": "players",
+                    "error": str(exc)[:200],
+                })
         covered.append({
             "fixture_id": fixture_id,
             "kickoff": fixture["fixture"]["date"],
             "stage": _stage(fixture),
-            "facts": _event_facts(fixture, events or []),
+            "facts": _fixture_facts(
+                fixture, events=events, statistics=statistics, players=players,
+            ),
         })
 
-    requested = set(contract_keys or ()) | CORE_CONTRACTS
     contracts = {}
     for key in sorted(requested):
         if not _supports(key):
@@ -75,7 +111,7 @@ def refresh(
         "target_kickoff": cutoff.isoformat(),
         "eligible_matches": len(eligible),
         "covered_matches": len(covered),
-        "complete": len(covered) == len(eligible),
+        "complete": not failures,
         "data_through": covered[-1]["kickoff"] if covered else None,
         "failures": failures,
         "contracts": contracts,
@@ -107,28 +143,37 @@ def overlay(estimates: dict[str, dict], snapshot: dict) -> dict[str, dict]:
 def _scope_rate(key: str, eligible: list[dict], covered: list[dict], *, stage, cutoff) -> dict:
     eligible_scope = [f for f in eligible if stage is None or _stage(f) == stage]
     covered_scope = [row for row in covered if stage is None or row["stage"] == stage]
-    labels = [_label(key, row["facts"]) for row in covered_scope]
-    labels = [value for value in labels if value is not None]
+    labels = []
+    labeled_matches = 0
+    for row in covered_scope:
+        values = _labels(key, row["facts"])
+        if values is None:
+            continue
+        labels.extend(values)
+        labeled_matches += 1
     if not labels:
         return {
             "available": False,
             "reason": "No exact historical labels before the target kickoff.",
             "eligible_matches": len(eligible_scope),
-            "covered_matches": len(covered_scope),
-            "complete": len(eligible_scope) == len(covered_scope),
+            "covered_matches": labeled_matches,
+            "complete": len(eligible_scope) == labeled_matches,
             "target_kickoff": cutoff.isoformat(),
         }
     yes = sum(bool(value) for value in labels)
     return {
         "available": True,
-        "basis": "final API-Football event data strictly before the target kickoff",
+        "basis": (
+            "final API-Football event/stat/player data strictly before the target kickoff"
+        ),
+        "population": "all_labelable_matches",
         "yes_events": yes,
         "observations": len(labels),
-        "matches": len(labels),
+        "matches": labeled_matches,
         "rate": round(yes / len(labels), 6),
         "eligible_matches": len(eligible_scope),
-        "covered_matches": len(covered_scope),
-        "complete": len(eligible_scope) == len(covered_scope),
+        "covered_matches": labeled_matches,
+        "complete": len(eligible_scope) == labeled_matches,
         "data_through": covered_scope[-1]["kickoff"] if covered_scope else None,
         "target_kickoff": cutoff.isoformat(),
     }
@@ -143,10 +188,186 @@ def _supports(key: str) -> bool:
         or key.startswith("penalty_awarded:")
         or key.startswith("penalty_or_red:")
         or key.startswith("substitution_before_halftime:")
+        or key.startswith("count:")
+        or key.startswith("compare:")
+        or key.startswith("total_goals:")
+        or key.startswith("match_result:")
+        or key.startswith("first_goal:")
+        or key.startswith("compound:")
+        or key.startswith("half_conditional:")
+        or key.startswith("btts:")
+        or key.startswith("btts_and_total:")
+        or key.startswith("win_margin:")
+        or key.startswith("clean_sheet:")
+        or key.startswith("any_player_threshold:")
+        or key.startswith("total_shots_threshold:")
+        or key.startswith("substitute_score:")
     )
 
 
-def _label(key: str, facts: dict) -> bool | None:
+def _needs_statistics(key: str) -> bool:
+    return bool(
+        re.match(r"^(count|compare):(shots_on_target|shots_total|corners|fouls|offsides):", key)
+        or key.startswith("total_shots_threshold:")
+    )
+
+
+def _needs_players(key: str) -> bool:
+    return key.startswith(("any_player_threshold:", "substitute_score:"))
+
+
+def _compare_value(value: float, comparator: str, threshold: float) -> bool:
+    return {
+        ">=": value >= threshold,
+        ">": value > threshold,
+        "<=": value <= threshold,
+        "<": value < threshold,
+    }[comparator]
+
+
+def _stat_values(
+    facts: dict, stat: str, half: str, scope: str, time_scope: str = "reg",
+) -> list[float] | None:
+    if stat == "goals":
+        values = facts["team_goals"].get(half)
+    elif stat == "cards":
+        values = facts["team_cards"].get(half)
+    elif half == "full":
+        if time_scope == "reg" and facts.get("stats_include_extra_time"):
+            return None
+        values = facts["team_statistics"].get(stat)
+    else:
+        values = None
+    if values is None or len(values) != 2 or any(value is None for value in values):
+        return None
+    values = [float(value) for value in values]
+    if scope == "team":
+        return values
+    if scope == "each_team":
+        return [min(values)]
+    return [sum(values)]
+
+
+def _labels(key: str, facts: dict) -> list[bool] | None:
+    count = re.fullmatch(
+        r"count:([^:]+):(team|match|each_team):(1H|2H|full):"
+        r"(>=|>|<=|<):(\d+(?:\.\d+)?):(reg|match)",
+        key,
+    )
+    if count:
+        stat, scope, half, comparator, raw_threshold, time_scope = count.groups()
+        values = _stat_values(facts, stat, half, scope, time_scope)
+        if values is None:
+            return None
+        threshold = float(raw_threshold)
+        return [_compare_value(value, comparator, threshold) for value in values]
+
+    compare = re.fullmatch(r"compare:([^:]+):(1H|2H|full):(reg|match)", key)
+    if compare:
+        stat, half, time_scope = compare.groups()
+        values = _stat_values(facts, stat, half, "team", time_scope)
+        if values is None:
+            return None
+        return [values[0] > values[1], values[1] > values[0]]
+
+    total_goals = re.fullmatch(
+        r"total_goals:(1H|2H|full):(>=|>|<=|<):(\d+(?:\.\d+)?):(reg|match)",
+        key,
+    )
+    if total_goals:
+        half, comparator, raw_threshold, _scope = total_goals.groups()
+        values = facts["team_goals"].get(half)
+        if values is None:
+            return None
+        return [_compare_value(sum(values), comparator, float(raw_threshold))]
+
+    if key == "btts:full:reg":
+        goals = facts["team_goals"].get("full")
+        return [goals[0] > 0 and goals[1] > 0] if goals is not None else None
+    if key == "btts_and_total:reg":
+        goals = facts["team_goals"].get("full")
+        return [
+            goals[0] > 0 and goals[1] > 0 and sum(goals) >= 3
+        ] if goals is not None else None
+    if key == "half_conditional:halftime_lead":
+        goals = facts["team_goals"].get("1H")
+        return [goals[0] > goals[1], goals[1] > goals[0]] if goals is not None else None
+    if key == "half_conditional:halftime_tied":
+        goals = facts["team_goals"].get("1H")
+        return [goals[0] == goals[1]] if goals is not None else None
+    if key == "half_conditional:more_goals_2h":
+        first = facts["team_goals"].get("1H")
+        second = facts["team_goals"].get("2H")
+        return [sum(second) > sum(first)] if first is not None and second is not None else None
+    if key == "match_result:draw:reg":
+        goals = facts["team_goals"].get("full")
+        return [goals[0] == goals[1]] if goals is not None else None
+    if key == "match_result:team:reg":
+        goals = facts["team_goals"].get("full")
+        return [goals[0] > goals[1], goals[1] > goals[0]] if goals is not None else None
+    if key == "match_result:team:advance":
+        winner = facts.get("winner")
+        return [winner == 0, winner == 1] if winner in (0, 1) else None
+    if key.startswith("first_goal:"):
+        first = facts.get("first_goal_team")
+        if key.startswith("first_goal:2H"):
+            first = facts.get("first_goal_2h_team")
+        return [first == 0, first == 1] if first in (0, 1, None) else None
+    if key == "compound:first_goal_and_other_team_scores_2h":
+        first = facts.get("first_goal_team")
+        second = facts["team_goals"].get("2H")
+        if second is None:
+            return None
+        return [first == 0 and second[1] > 0, first == 1 and second[0] > 0]
+    if key == "win_margin:reg:2":
+        goals = facts["team_goals"].get("full")
+        return [
+            goals[0] - goals[1] >= 2, goals[1] - goals[0] >= 2,
+        ] if goals is not None else None
+    if key.startswith("clean_sheet:"):
+        goals = facts["team_goals"].get("full")
+        return [goals[1] == 0, goals[0] == 0] if goals is not None else None
+
+    player_threshold = re.fullmatch(
+        r"any_player_threshold:(goals|shots_on_target):(>=|>):(\d+(?:\.\d+)?):reg",
+        key,
+    )
+    if player_threshold:
+        stat, comparator, raw_threshold = player_threshold.groups()
+        players = facts.get("players")
+        if players is None or facts.get("stats_include_extra_time"):
+            return None
+        field = "goals" if stat == "goals" else "shots_on_target"
+        threshold = float(raw_threshold)
+        return [any(
+            _compare_value(float(player.get(field) or 0), comparator, threshold)
+            for player in players
+        )]
+    if key.startswith("substitute_score:"):
+        players = facts.get("players")
+        return [
+            any(player.get("substitute") and (player.get("goals") or 0) >= 1 for player in players)
+        ] if players is not None and not facts.get("stats_include_extra_time") else None
+    shots = re.fullmatch(
+        r"total_shots_threshold:shots_total:(>=|>|<=|<):(\d+(?:\.\d+)?):reg",
+        key,
+    )
+    if shots:
+        comparator, raw_threshold = shots.groups()
+        if facts.get("stats_include_extra_time"):
+            return None
+        values = facts["team_statistics"].get("shots_total")
+        if values is None or any(value is None for value in values):
+            return None
+        return [_compare_value(sum(values), comparator, float(raw_threshold))]
+
+    value = _event_label(key, facts)
+    return [value] if value is not None else None
+
+
+def _event_label(key: str, facts: dict) -> bool | None:
+    if not facts.get("events_available"):
+        return None
     goals = facts["goals"]
     cards = facts["cards"]
     reds = facts["reds"]
@@ -199,9 +420,20 @@ def _label(key: str, facts: dict) -> bool | None:
     return None
 
 
-def _event_facts(fixture: dict, events: list[dict]) -> dict:
+def _fixture_facts(
+    fixture: dict,
+    *,
+    events: list[dict] | None,
+    statistics: list[dict] | None,
+    players: list[dict] | None,
+) -> dict:
     facts = {name: [] for name in ("goals", "cards", "reds", "penalties", "substitutions")}
-    for event in events:
+    teams = fixture.get("teams") or {}
+    team_ids = [
+        (teams.get("home") or {}).get("id"),
+        (teams.get("away") or {}).get("id"),
+    ]
+    for event in events or []:
         event_type = str(event.get("type") or "").lower()
         detail = str(event.get("detail") or "").lower()
         comments = str(event.get("comments") or "").lower()
@@ -215,6 +447,11 @@ def _event_facts(fixture: dict, events: list[dict]) -> dict:
             "minute": minute,
             "extra": max(extra, 0),
             "team_id": (event.get("team") or {}).get("id"),
+            "team_index": (
+                team_ids.index((event.get("team") or {}).get("id"))
+                if (event.get("team") or {}).get("id") in team_ids else None
+            ),
+            "detail": detail,
         }
         if event_type == "goal":
             if "penalty" in detail:
@@ -227,7 +464,100 @@ def _event_facts(fixture: dict, events: list[dict]) -> dict:
                 facts["reds"].append(item)
         elif event_type in {"subst", "substitution"}:
             facts["substitutions"].append(item)
+    regulation_goals = [
+        event for event in facts["goals"] if event["minute"] <= 90
+    ]
+    first_half_goals = [
+        event for event in regulation_goals if event["minute"] <= 45
+    ]
+    second_half_goals = [
+        event for event in regulation_goals if event["minute"] > 45
+    ]
+    facts["team_goals"] = {
+        "1H": [
+            sum(event["team_index"] == index for event in first_half_goals)
+            for index in (0, 1)
+        ] if events is not None else None,
+        "2H": [
+            sum(event["team_index"] == index for event in second_half_goals)
+            for index in (0, 1)
+        ] if events is not None else None,
+        "full": [
+            sum(event["team_index"] == index for event in regulation_goals)
+            for index in (0, 1)
+        ] if events is not None else None,
+    }
+    regulation_cards = [event for event in facts["cards"] if event["minute"] <= 90]
+    facts["team_cards"] = {
+        "1H": [
+            sum(event["team_index"] == index for event in regulation_cards if event["minute"] <= 45)
+            for index in (0, 1)
+        ] if events is not None else None,
+        "2H": [
+            sum(event["team_index"] == index for event in regulation_cards if event["minute"] > 45)
+            for index in (0, 1)
+        ] if events is not None else None,
+        "full": [
+            sum(event["team_index"] == index for event in regulation_cards)
+            for index in (0, 1)
+        ] if events is not None else None,
+    }
+    ordered = sorted(regulation_goals, key=lambda event: (event["minute"], event["extra"]))
+    second_ordered = sorted(second_half_goals, key=lambda event: (event["minute"], event["extra"]))
+    facts["first_goal_team"] = ordered[0]["team_index"] if ordered else None
+    facts["first_goal_2h_team"] = second_ordered[0]["team_index"] if second_ordered else None
+    facts["events_available"] = events is not None
+    facts["team_statistics"] = _team_statistics(statistics, team_ids)
+    facts["players"] = _player_facts(players)
+    facts["stats_include_extra_time"] = _fixture_status(fixture) in {"AET", "PEN"}
+    winners = [
+        bool((teams.get(side) or {}).get("winner"))
+        for side in ("home", "away")
+    ]
+    facts["winner"] = winners.index(True) if True in winners else None
     return facts
+
+
+def _team_statistics(statistics: list[dict] | None, team_ids: list) -> dict:
+    names = {
+        "Shots on Goal": "shots_on_target",
+        "Total Shots": "shots_total",
+        "Corner Kicks": "corners",
+        "Fouls": "fouls",
+        "Offsides": "offsides",
+    }
+    result = {name: [None, None] for name in names.values()}
+    if statistics is None:
+        return result
+    for block in statistics:
+        team_id = (block.get("team") or {}).get("id")
+        if team_id not in team_ids:
+            continue
+        index = team_ids.index(team_id)
+        for item in block.get("statistics") or []:
+            name = names.get(item.get("type"))
+            if name:
+                value = item.get("value")
+                result[name][index] = float(value or 0)
+    return result
+
+
+def _player_facts(players: list[dict] | None) -> list[dict] | None:
+    if players is None:
+        return None
+    result = []
+    for team in players:
+        for row in team.get("players") or []:
+            stats = (row.get("statistics") or [{}])[0]
+            games = stats.get("games") or {}
+            goals = stats.get("goals") or {}
+            shots = stats.get("shots") or {}
+            result.append({
+                "substitute": bool(games.get("substitute")),
+                "goals": int(goals.get("total") or 0),
+                "shots_on_target": int(shots.get("on") or 0),
+            })
+    return result
 
 
 def _compare(value: float, comparator: str, threshold: float) -> bool:

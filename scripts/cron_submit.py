@@ -32,6 +32,7 @@ from bot.config import ROOT
 from bot.oddsapi import OddsAPI
 from bot.pipeline import run_match, submit_with_ledger
 from bot.sportspredict import SportPredict
+from bot.web import WebAPI
 
 # Submit at these many minutes-before-kickoff (largest first). A window fires on
 # the first tick at or under its threshold, then is marked done for that match.
@@ -68,7 +69,7 @@ def main() -> None:
     ap.add_argument("--status", action="store_true",
                     help="print the next match and minutes-to-kickoff, then exit")
     ap.add_argument("--settle", action="store_true",
-                    help="settle completed ledger rows and refresh live benchmarks")
+                    help="settle outcomes and refresh WC2026 simulator evidence")
     args = ap.parse_args()
 
     STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -89,7 +90,7 @@ def main() -> None:
                 f"SETTLE updated={stats['settled_predictions']} "
                 f"remaining={stats['remaining_predictions']} "
                 f"benchmark_questions={benchmark['comparable_simulator_questions']} "
-                f"benchmark_matches={benchmark['matches']}"
+                f"benchmark_matches={benchmark['replayed_matches']}"
             )
         else:
             _dispatch(args)
@@ -160,12 +161,14 @@ def _process_match(
         return
 
     _log(f"FIRING {window}-min window for {head} (kickoff in {mins:.1f} min)")
-    # Rebuild from any newly settled frozen predictions immediately before the
-    # evidence handoff. This is local/cheap and never infers a match outcome.
+    # Refresh the tournament-wide frozen-simulator replay immediately before the
+    # evidence handoff. Newly settled matches are replayed once and cached.
     try:
-        simulator_benchmark.refresh(ledger.LEDGER_PATH)
+        simulator_benchmark.refresh(
+            sp, WebAPI(), event["id"], lobby["id"],
+        )
     except Exception as exc:
-        _log(f"  live benchmark refresh warning: {exc}")
+        _log(f"  WC2026 simulator benchmark refresh warning: {exc}")
     # Each scheduled window must observe the market again. Provider instances
     # still deduplicate lookups within this run, but bypass older disk entries.
     af = APIFootball(refresh_odds=True)

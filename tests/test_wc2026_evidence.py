@@ -45,6 +45,21 @@ class _AF:
         self.calls.append(fixture_id)
         return self.events[fixture_id]
 
+    def settled_statistics(self, fixture_id):
+        return [
+            {"team": {"id": fixture_id * 2}, "statistics": [
+                {"type": "Shots on Goal", "value": 6},
+                {"type": "Total Shots", "value": 12},
+            ]},
+            {"team": {"id": fixture_id * 2 + 1}, "statistics": [
+                {"type": "Shots on Goal", "value": 2},
+                {"type": "Total Shots", "value": 9},
+            ]},
+        ]
+
+    def fixture_players(self, fixture_id):
+        return []
+
 
 class WC2026EvidenceTests(unittest.TestCase):
     def test_refresh_is_target_scoped_and_exposes_knockout_rates(self):
@@ -93,6 +108,25 @@ class WC2026EvidenceTests(unittest.TestCase):
         rates = estimates["m"]["historical_evidence"]["empirical_rate"]
         self.assertEqual(rates["all_history"]["rate"], 0.13)
         self.assertEqual(rates["wc2026"]["rate"], 0.12)
+
+    def test_team_stat_contract_uses_every_labelable_team_match(self):
+        af = _AF()
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot = wc2026_evidence.refresh(
+                af, "2026-06-30T01:00:00Z",
+                {"count:shots_on_target:team:full:>=:6:reg"},
+                path=Path(directory) / "wc.json",
+            )
+        rate = snapshot["contracts"][
+            "count:shots_on_target:team:full:>=:6:reg"
+        ]["wc2026"]
+        # Fixture 2 ended on penalties, so provider full-match stats include
+        # extra time and cannot label a regulation-only shots contract.
+        self.assertEqual(rate["matches"], 1)
+        self.assertEqual(rate["observations"], 2)
+        self.assertEqual(rate["yes_events"], 1)
+        self.assertFalse(rate["complete"])
+        self.assertEqual(rate["population"], "all_labelable_matches")
 
 
 if __name__ == "__main__":

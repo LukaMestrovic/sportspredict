@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime, timezone
 from pathlib import Path
-from bot import ledger, simulator_benchmark
+from bot import ledger, simulator_benchmark, wc2026_evidence
+from bot.apifootball import APIFootball
 from bot.sportspredict import SportPredict
 from bot.web import WebAPI
 
@@ -63,7 +65,7 @@ def _print_match_detail(detail: dict) -> None:
 
 
 def settle_open(path: Path = ledger.LEDGER_PATH) -> tuple[dict, dict]:
-    """Settle explicit platform outcomes and refresh the live simulator benchmark."""
+    """Settle explicit outcomes and refresh tournament empirical/simulator evidence."""
     sp = SportPredict()
     event = sp.event()
     lobby = sp.lobby(event["id"])
@@ -78,7 +80,21 @@ def settle_open(path: Path = ledger.LEDGER_PATH) -> tuple[dict, dict]:
             if value in (0, 100):
                 outcomes[market["id"]] = value // 100
     stats = ledger.settle_results(outcomes, results, path=path)
-    snapshot = simulator_benchmark.refresh(path)
+    snapshot = simulator_benchmark.refresh(
+        sp, web, event["id"], lobby["id"],
+    )
+    empirical = wc2026_evidence.refresh(
+        APIFootball(refresh_odds=True),
+        datetime.now(timezone.utc).isoformat(),
+        wc2026_evidence.known_contract_keys() | set(snapshot.get("contracts") or {}),
+    )
+    snapshot["empirical_refresh"] = {
+        key: empirical.get(key)
+        for key in (
+            "generated_at", "eligible_matches", "covered_matches",
+            "complete", "data_through",
+        )
+    }
     return stats, snapshot
 
 
@@ -108,8 +124,9 @@ def main() -> None:
         f"{stats['remaining_predictions']} still open."
     )
     print(
-        f"Live simulator benchmark: {benchmark['comparable_simulator_questions']} "
-        f"questions across {benchmark['matches']} matches."
+        f"WC2026 simulator benchmark: {benchmark['comparable_simulator_questions']} "
+        f"comparable questions across {benchmark['replayed_matches']} replayed matches "
+        f"({benchmark['settled_tournament_matches']} settled)."
     )
     for row in ledger.performance(path=args.ledger):
         if row["group"] == "overall":

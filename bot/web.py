@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import requests
 
-from . import config
+from . import cache, config
 
 WEB_BASE = "https://api.sportspredict.com/api"
 
@@ -33,3 +33,39 @@ class WebAPI:
         )
         r.raise_for_status()
         return r.json().get("markets", [])
+
+    def settled_matches(self, event_id: str, *, refresh: bool = False) -> list[dict]:
+        """All settled event matches, cached briefly because the list grows."""
+        def fetch() -> list[dict]:
+            matches = {}
+            skip = 0
+            while True:
+                r = self.s.get(
+                    f"{WEB_BASE}/matches/event/more-matches",
+                    params={
+                        "eventId": event_id, "tab": "settled",
+                        "skip": skip, "limit": 8,
+                    },
+                    timeout=30,
+                )
+                r.raise_for_status()
+                payload = r.json()
+                items = payload.get("items", []) if isinstance(payload, dict) else payload
+                if not items:
+                    break
+                for match in items:
+                    matches[match["id"]] = match
+                skip += len(items)
+            return list(matches.values())
+
+        return cache.get_or_fetch(
+            "sp_settled_matches", event_id, fetch, ttl=300, refresh=refresh,
+        )
+
+    def settled_crowd_stats(self, match_id: str, lobby_id: str) -> list[dict]:
+        """Immutable outcomes for one settled match, cached forever."""
+        return cache.get_or_fetch(
+            "sp_settled_market_outcomes", f"{lobby_id}|{match_id}",
+            lambda: self.crowd_stats(match_id, lobby_id),
+            ttl=0,
+        )

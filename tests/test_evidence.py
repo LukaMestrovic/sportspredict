@@ -99,7 +99,7 @@ class EvidenceTests(unittest.TestCase):
                                   "always_50": 0.25},
                         "coverage": {"fraction": 1.0}, "test_folds": [2021, 2022],
                     },
-                    "live_wc2026": {
+                    "wc2026": {
                         "available": True, "comparison_signal": "inconclusive_small_sample",
                         "matches": 2, "sample_size": {"level": "too_small"},
                         "brier": {"simulator": 0.1, "empirical_rate": 0.2,
@@ -116,8 +116,9 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(compact["family_comparison"]["all_history"]["brier"], {
             "simulator": 0.157, "empirical_rate": 0.156, "always_50": 0.25,
         })
-        self.assertEqual(compact["family_comparison"]["live_wc2026"], {
-            "signal": "inconclusive_small_sample", "matches": 2, "sample": "too_small",
+        self.assertEqual(compact["family_comparison"]["wc2026"], {
+            "signal": "inconclusive_small_sample", "matches": 2,
+            "sample": "too_small", "basis": "simulator_only_frozen_pre2026_replay",
         })
         for redundant in ("source", "model", "note", "historical_evidence", "probability"):
             self.assertNotIn(redundant, compact)
@@ -156,7 +157,7 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(estimates.call_args.kwargs["intents"], result.intents)
         q = evidence["question_evidence"][0]
-        self.assertEqual(evidence["schema_version"], 9)
+        self.assertEqual(evidence["schema_version"], 10)
         self.assertEqual(q["simulator_estimate"], {"probability_pct": 24.1})
         self.assertNotIn("simulator_model_estimates", q)
         self.assertNotIn("audit_requirement", q)
@@ -220,7 +221,7 @@ class EvidenceTests(unittest.TestCase):
             )
 
         question = bundle["question_evidence"][0]
-        self.assertEqual(bundle["schema_version"], 9)
+        self.assertEqual(bundle["schema_version"], 10)
         self.assertEqual(question["direct_market_spec"]["bet_id"], 14)
         self.assertEqual(len(question["direct_odds"]), 1)
         self.assertIn("regulation first-team-to-score proxy",
@@ -249,7 +250,7 @@ class ContextEvidenceTests(unittest.TestCase):
         with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
-        self.assertEqual(evidence["schema_version"], 9)
+        self.assertEqual(evidence["schema_version"], 10)
         self.assertEqual(evidence["team_form"]["home"]["gf_avg"], 1.7)
         self.assertEqual(evidence["player_form"]["home"][0]["name"], "Striker One")
         self.assertEqual(evidence["referee_profile"]["yellows_per_game"], 4.0)

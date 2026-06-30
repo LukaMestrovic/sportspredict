@@ -84,8 +84,8 @@ $begin
 # Runs the immutable $IMAGE:$TAG image, so working-tree edits never affect a live
 # tick; it is a fast no-op until a match is within 30 minutes of kickoff.
 * * * * * $ROOT/scripts/run.sh >> $ROOT/logs/cron.log 2>&1
-# Every five minutes: settle explicit SportPredict outcomes and rebuild the
-# leakage-safe live WC2026 simulator-family benchmark from frozen evidence.
+# Every five minutes: settle explicit SportPredict outcomes, extend the
+# tournament-wide frozen-simulator replay, and refresh WC2026 empirical rates.
 2-59/5 * * * * $ROOT/scripts/run.sh --settle >> $ROOT/logs/settle.log 2>&1
 $end
 EOF

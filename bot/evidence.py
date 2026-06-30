@@ -108,7 +108,7 @@ def build_match_evidence(
         question_evidence.append(item)
 
     evidence = {
-        "schema_version": 9,
+        "schema_version": 10,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "match": _match_meta(result, lineups, minutes_before),
         "team_form": context.get("team_form") or {},
@@ -242,6 +242,8 @@ def _compact_simulator_estimate(estimate: dict) -> dict:
             rate["matches"] = int(row["matches"])
         if row.get("data_through"):
             rate["through"] = row["data_through"]
+        if row.get("population"):
+            rate["population"] = row["population"]
         if row.get("complete") is False:
             rate["complete"] = False
         empirical_rates[scope] = rate
@@ -258,7 +260,12 @@ def _compact_simulator_estimate(estimate: dict) -> dict:
         comparison = {
             "signal": row.get("comparison_signal"),
             "matches": row.get("matches"),
+            "questions": row.get("questions"),
             "sample": sample,
+            "basis": (
+                "simulator_only_frozen_pre2026_replay"
+                if scope == "wc2026" else "rolling_origin_unseen_matches"
+            ),
         }
         # Do not expose unstable point estimates from explicitly tiny samples.
         if sample != "too_small":

@@ -133,18 +133,21 @@ tail -f logs/cron.log
 The dispatcher is normally a fast no-op. At T−30 it refreshes provider odds
 once, fetches current lineups, forces a fresh cached pricing/web-search call for
 that submission window, and refreshes exact WC2026 empirical rates from every
-final API-Football fixture strictly before the target kickoff. Final event
-responses and the compact tournament snapshot live in bind-mounted `cache/`, so
-this stays current across short-lived containers without rebuilding the frozen
-image after every match. It then submits through the ledger and writes its
-audit. A file lock prevents overlapping ticks and a per-match marker prevents
-duplicate fires.
+labelable final API-Football fixture strictly before the target kickoff. Team
+contracts contribute two observations per match where appropriate. Final
+event/stat/player responses and the compact tournament snapshot live in
+bind-mounted `cache/`, so this stays current across short-lived containers
+without rebuilding the frozen image after every match. It then submits through
+the ledger and writes its audit. A file lock prevents overlapping ticks and a
+per-match marker prevents duplicate fires.
 
 A second cron tick runs settlement every five minutes. It accepts only explicit
-SportPredict `current_value` outcomes, then rebuilds a live WC2026 simulator
-benchmark from the simulator probabilities and empirical rates frozen in each
-pre-match evidence file. The T−30 tick refreshes this local snapshot again before
-pricing, so each new LLM evidence bundle sees every result settled so far.
+SportPredict `current_value` outcomes, refreshes the exact-contract tournament
+rates, and extends a simulator-only WC2026 benchmark. The benchmark starts from
+a tracked 73-match replay and prices each newly settled match once with the
+unchanged pre-2026 simulator artifacts; no LLM probabilities or reasoning enter
+it. The T−30 tick refreshes this retained snapshot again before pricing, so each
+new LLM evidence bundle sees every result settled so far.
 
 The image is immutable between deploys. Re-run `scripts/deploy.sh` to ship new
 code. `scripts/run.sh` bind-mounts this checkout's `cache/` and `logs/`, so paid
@@ -194,12 +197,14 @@ Settlement is idempotent and joins by SportPredict `market_id`. It accepts only
 the platform's explicit `current_value` of 0 or 100; it never infers results from
 scores, web search, or Brier values.
 
-Each settlement also refreshes `cache/simulator_family_benchmark.json`. Static
-`all_history` and WC2026 comparisons in the shipped artifact use rolling-origin
-predictions whose model and exact-contract empirical-rate baseline were fitted
-before the test fold. The live scope uses only actual pre-match simulator
-estimates frozen in ledger evidence. Every scope reports unique-match sample
-size, match-clustered uncertainty, and an explicit small-sample warning.
+Each settlement also refreshes `cache/simulator_family_benchmark.json`.
+`all_history` uses rolling-origin predictions whose model and exact-contract
+empirical-rate baseline were fitted before each test fold. `wc2026` is one
+tournament-wide, simulator-only replay: model artifacts and empirical baselines
+were frozen before 2026, while newly settled tournament questions are appended
+automatically. It is never scoped to the current team or player. Every scope
+reports unique-match sample size, match-clustered uncertainty, and an explicit
+small-sample warning.
 
 ```bash
 # One match, selected by id or name substring
@@ -215,9 +220,10 @@ size, match-clustered uncertainty, and an explicit small-sample warning.
 - The Odds API cache key includes event, market, and regions because billing is
   `markets × regions`.
 - API-Football fixtures and odds have TTLs; settled statistics are permanent.
-- Final API-Football event timelines are fetched once and retained permanently;
-  each T−30 fire rebuilds `cache/wc2026_empirical.json` with a strict target-time
-  cutoff and separate all-stage/knockout coverage counts.
+- Final API-Football event, team-stat and player-stat responses are fetched once
+  and retained permanently; settlement and T−30 fires rebuild
+  `cache/wc2026_empirical.json` with a strict target-time cutoff and separate
+  all-stage/knockout coverage counts.
 - Settled frozen predictions rebuild `cache/simulator_family_benchmark.json`
   every five minutes and immediately before each T−30 evidence handoff.
 - The T−30 job deliberately refreshes odds once, with identical requests

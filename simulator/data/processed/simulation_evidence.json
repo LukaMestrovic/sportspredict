@@ -3186,47 +3186,44 @@
         "available": true,
         "brier": {
           "always_50": 0.25,
-          "empirical_rate": 0.229629,
-          "simulator": 0.228621
+          "empirical_rate": 0.055085,
+          "simulator": 0.019157
         },
-        "comparison_signal": "inconclusive",
-        "contracts": 2,
+        "comparison_signal": "inconclusive_small_sample",
+        "contracts": 1,
         "coverage": {
-          "comparable_questions": 68,
-          "family_questions": 68,
+          "comparable_questions": 1,
+          "family_questions": 1,
           "fraction": 1.0
         },
-        "data_through": "2026-06-20",
+        "data_through": null,
         "delta_brier": {
           "negative_favors_simulator": true,
-          "simulator_minus_always_50": -0.021379,
-          "simulator_minus_empirical_rate": -0.001009
+          "simulator_minus_always_50": -0.230843,
+          "simulator_minus_empirical_rate": -0.035927
         },
         "empirical_baseline": {
           "rate_range": [
-            0.214286,
-            0.75
+            0.234701,
+            0.234701
           ],
           "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
           "training_observations_range": [
-            140,
-            140
+            2974,
+            2974
           ]
         },
-        "evaluation": "Predictions are scored only on later, unseen matches. The empirical-rate baseline uses the exact contract's YES rate estimated before each test fold.",
+        "evaluation": "Frozen pre-2026 simulator predictions are scored on settled WC2026 questions. The empirical baseline uses the exact contract's YES rate estimated before the tournament.",
         "family": "any_player_threshold",
-        "matches": 34,
-        "questions": 68,
+        "matches": 1,
+        "questions": 1,
         "sample_size": {
           "basis": "unique unseen matches, with uncertainty clustered by match",
-          "guidance": "Use only as a weak directional check; the tournament sample is still small.",
-          "level": "limited"
+          "guidance": "Treat the family comparison as inconclusive; do not choose a signal from it.",
+          "level": "too_small"
         },
-        "scope": "wc2026_unseen_through_artifact_date",
-        "simulator_minus_empirical_rate_95pct_ci": [
-          -0.012512,
-          0.010495
-        ],
+        "scope": "wc2026_frozen_pre2026_simulator_replay",
+        "simulator_minus_empirical_rate_95pct_ci": null,
         "test_folds": [
           2026
         ]
@@ -3289,53 +3286,8 @@
       },
       "family": "both_teams_card",
       "wc2026": {
-        "available": true,
-        "brier": {
-          "always_50": 0.25,
-          "empirical_rate": 0.257434,
-          "simulator": 0.251504
-        },
-        "comparison_signal": "inconclusive",
-        "contracts": 1,
-        "coverage": {
-          "comparable_questions": 34,
-          "family_questions": 34,
-          "fraction": 1.0
-        },
-        "data_through": "2026-06-20",
-        "delta_brier": {
-          "negative_favors_simulator": true,
-          "simulator_minus_always_50": 0.001504,
-          "simulator_minus_empirical_rate": -0.00593
-        },
-        "empirical_baseline": {
-          "rate_range": [
-            0.620513,
-            0.620513
-          ],
-          "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
-          "training_observations_range": [
-            195,
-            195
-          ]
-        },
-        "evaluation": "Predictions are scored only on later, unseen matches. The empirical-rate baseline uses the exact contract's YES rate estimated before each test fold.",
-        "family": "both_teams_card",
-        "matches": 34,
-        "questions": 34,
-        "sample_size": {
-          "basis": "unique unseen matches, with uncertainty clustered by match",
-          "guidance": "Use only as a weak directional check; the tournament sample is still small.",
-          "level": "limited"
-        },
-        "scope": "wc2026_unseen_through_artifact_date",
-        "simulator_minus_empirical_rate_95pct_ci": [
-          -0.021511,
-          0.009651
-        ],
-        "test_folds": [
-          2026
-        ]
+        "available": false,
+        "reason": "No comparable unseen WC2026 rows for this family."
       }
     },
     "btts_and_total": {
@@ -3398,46 +3350,46 @@
         "available": true,
         "brier": {
           "always_50": 0.25,
-          "empirical_rate": 0.243455,
-          "simulator": 0.248343
+          "empirical_rate": 0.251207,
+          "simulator": 0.243172
         },
-        "comparison_signal": "inconclusive",
+        "comparison_signal": "inconclusive_small_sample",
         "contracts": 1,
         "coverage": {
-          "comparable_questions": 34,
-          "family_questions": 34,
+          "comparable_questions": 29,
+          "family_questions": 29,
           "fraction": 1.0
         },
-        "data_through": "2026-06-20",
+        "data_through": null,
         "delta_brier": {
           "negative_favors_simulator": true,
-          "simulator_minus_always_50": -0.001657,
-          "simulator_minus_empirical_rate": 0.004888
+          "simulator_minus_always_50": -0.006828,
+          "simulator_minus_empirical_rate": -0.008036
         },
         "empirical_baseline": {
           "rate_range": [
-            0.376543,
-            0.376543
+            0.320848,
+            0.320848
           ],
           "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
           "training_observations_range": [
-            162,
-            162
+            4058,
+            4058
           ]
         },
-        "evaluation": "Predictions are scored only on later, unseen matches. The empirical-rate baseline uses the exact contract's YES rate estimated before each test fold.",
+        "evaluation": "Frozen pre-2026 simulator predictions are scored on settled WC2026 questions. The empirical baseline uses the exact contract's YES rate estimated before the tournament.",
         "family": "btts_and_total",
-        "matches": 34,
-        "questions": 34,
+        "matches": 29,
+        "questions": 29,
         "sample_size": {
           "basis": "unique unseen matches, with uncertainty clustered by match",
-          "guidance": "Use only as a weak directional check; the tournament sample is still small.",
-          "level": "limited"
+          "guidance": "Treat the family comparison as inconclusive; do not choose a signal from it.",
+          "level": "too_small"
         },
-        "scope": "wc2026_unseen_through_artifact_date",
+        "scope": "wc2026_frozen_pre2026_simulator_replay",
         "simulator_minus_empirical_rate_95pct_ci": [
-          -0.017395,
-          0.027171
+          -0.028049,
+          0.011978
         ],
         "test_folds": [
           2026
@@ -3504,47 +3456,44 @@
         "available": true,
         "brier": {
           "always_50": 0.25,
-          "empirical_rate": 0.241332,
-          "simulator": 0.250931
+          "empirical_rate": 0.534899,
+          "simulator": 0.627264
         },
-        "comparison_signal": "inconclusive",
-        "contracts": 2,
+        "comparison_signal": "inconclusive_small_sample",
+        "contracts": 1,
         "coverage": {
-          "comparable_questions": 68,
-          "family_questions": 68,
+          "comparable_questions": 1,
+          "family_questions": 1,
           "fraction": 1.0
         },
-        "data_through": "2026-06-20",
+        "data_through": null,
         "delta_brier": {
           "negative_favors_simulator": true,
-          "simulator_minus_always_50": 0.000931,
-          "simulator_minus_empirical_rate": 0.009599
+          "simulator_minus_always_50": 0.377264,
+          "simulator_minus_empirical_rate": 0.092365
         },
         "empirical_baseline": {
           "rate_range": [
-            0.641026,
-            0.65641
+            0.731368,
+            0.731368
           ],
           "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
           "training_observations_range": [
-            195,
-            195
+            4173,
+            4173
           ]
         },
-        "evaluation": "Predictions are scored only on later, unseen matches. The empirical-rate baseline uses the exact contract's YES rate estimated before each test fold.",
+        "evaluation": "Frozen pre-2026 simulator predictions are scored on settled WC2026 questions. The empirical baseline uses the exact contract's YES rate estimated before the tournament.",
         "family": "card_window",
-        "matches": 34,
-        "questions": 68,
+        "matches": 1,
+        "questions": 1,
         "sample_size": {
           "basis": "unique unseen matches, with uncertainty clustered by match",
-          "guidance": "Use only as a weak directional check; the tournament sample is still small.",
-          "level": "limited"
+          "guidance": "Treat the family comparison as inconclusive; do not choose a signal from it.",
+          "level": "too_small"
         },
-        "scope": "wc2026_unseen_through_artifact_date",
-        "simulator_minus_empirical_rate_95pct_ci": [
-          -0.005539,
-          0.024738
-        ],
+        "scope": "wc2026_frozen_pre2026_simulator_replay",
+        "simulator_minus_empirical_rate_95pct_ci": null,
         "test_folds": [
           2026
         ]
@@ -3610,46 +3559,46 @@
         "available": true,
         "brier": {
           "always_50": 0.25,
-          "empirical_rate": 0.172254,
-          "simulator": 0.173645
+          "empirical_rate": 0.175144,
+          "simulator": 0.163952
         },
-        "comparison_signal": "inconclusive",
+        "comparison_signal": "inconclusive_small_sample",
         "contracts": 1,
         "coverage": {
-          "comparable_questions": 68,
-          "family_questions": 68,
+          "comparable_questions": 9,
+          "family_questions": 9,
           "fraction": 1.0
         },
-        "data_through": "2026-06-20",
+        "data_through": null,
         "delta_brier": {
           "negative_favors_simulator": true,
-          "simulator_minus_always_50": -0.076355,
-          "simulator_minus_empirical_rate": 0.001391
+          "simulator_minus_always_50": -0.086048,
+          "simulator_minus_empirical_rate": -0.011192
         },
         "empirical_baseline": {
           "rate_range": [
-            0.202564,
-            0.202564
+            0.174215,
+            0.174215
           ],
           "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
           "training_observations_range": [
-            390,
-            390
+            8346,
+            8346
           ]
         },
-        "evaluation": "Predictions are scored only on later, unseen matches. The empirical-rate baseline uses the exact contract's YES rate estimated before each test fold.",
+        "evaluation": "Frozen pre-2026 simulator predictions are scored on settled WC2026 questions. The empirical baseline uses the exact contract's YES rate estimated before the tournament.",
         "family": "compound_and",
-        "matches": 34,
-        "questions": 68,
+        "matches": 9,
+        "questions": 9,
         "sample_size": {
           "basis": "unique unseen matches, with uncertainty clustered by match",
-          "guidance": "Use only as a weak directional check; the tournament sample is still small.",
-          "level": "limited"
+          "guidance": "Treat the family comparison as inconclusive; do not choose a signal from it.",
+          "level": "too_small"
         },
-        "scope": "wc2026_unseen_through_artifact_date",
+        "scope": "wc2026_frozen_pre2026_simulator_replay",
         "simulator_minus_empirical_rate_95pct_ci": [
-          -0.005596,
-          0.008379
+          -0.022002,
+          -0.000382
         ],
         "test_folds": [
           2026
@@ -3716,46 +3665,46 @@
         "available": true,
         "brier": {
           "always_50": 0.25,
-          "empirical_rate": 0.196938,
-          "simulator": 0.167921
+          "empirical_rate": 0.244548,
+          "simulator": 0.219755
         },
-        "comparison_signal": "simulator_better",
-        "contracts": 9,
+        "comparison_signal": "inconclusive",
+        "contracts": 11,
         "coverage": {
-          "comparable_questions": 578,
-          "family_questions": 578,
-          "fraction": 1.0
+          "comparable_questions": 68,
+          "family_questions": 194,
+          "fraction": 0.350515
         },
-        "data_through": "2026-06-20",
+        "data_through": null,
         "delta_brier": {
           "negative_favors_simulator": true,
-          "simulator_minus_always_50": -0.082079,
-          "simulator_minus_empirical_rate": -0.029017
+          "simulator_minus_always_50": -0.030245,
+          "simulator_minus_empirical_rate": -0.024793
         },
         "empirical_baseline": {
           "rate_range": [
-            0.111111,
-            0.777778
+            0.253696,
+            0.77415
           ],
           "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
           "training_observations_range": [
-            162,
-            390
+            314,
+            8346
           ]
         },
-        "evaluation": "Predictions are scored only on later, unseen matches. The empirical-rate baseline uses the exact contract's YES rate estimated before each test fold.",
+        "evaluation": "Frozen pre-2026 simulator predictions are scored on settled WC2026 questions. The empirical baseline uses the exact contract's YES rate estimated before the tournament.",
         "family": "count_threshold",
-        "matches": 34,
-        "questions": 578,
+        "matches": 45,
+        "questions": 68,
         "sample_size": {
           "basis": "unique unseen matches, with uncertainty clustered by match",
           "guidance": "Use only as a weak directional check; the tournament sample is still small.",
           "level": "limited"
         },
-        "scope": "wc2026_unseen_through_artifact_date",
+        "scope": "wc2026_frozen_pre2026_simulator_replay",
         "simulator_minus_empirical_rate_95pct_ci": [
-          -0.047218,
-          -0.010816
+          -0.049917,
+          0.000332
         ],
         "test_folds": [
           2026
@@ -3822,46 +3771,46 @@
         "available": true,
         "brier": {
           "always_50": 0.25,
-          "empirical_rate": 0.243628,
-          "simulator": 0.231085
+          "empirical_rate": 0.287324,
+          "simulator": 0.19659
         },
-        "comparison_signal": "inconclusive",
-        "contracts": 2,
+        "comparison_signal": "inconclusive_small_sample",
+        "contracts": 1,
         "coverage": {
-          "comparable_questions": 136,
-          "family_questions": 136,
+          "comparable_questions": 5,
+          "family_questions": 5,
           "fraction": 1.0
         },
-        "data_through": "2026-06-20",
+        "data_through": null,
         "delta_brier": {
           "negative_favors_simulator": true,
-          "simulator_minus_always_50": -0.018915,
-          "simulator_minus_empirical_rate": -0.012543
+          "simulator_minus_always_50": -0.05341,
+          "simulator_minus_empirical_rate": -0.090734
         },
         "empirical_baseline": {
           "rate_range": [
-            0.394872,
-            0.451282
+            0.382459,
+            0.382459
           ],
           "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
           "training_observations_range": [
-            390,
-            390
+            8346,
+            8346
           ]
         },
-        "evaluation": "Predictions are scored only on later, unseen matches. The empirical-rate baseline uses the exact contract's YES rate estimated before each test fold.",
+        "evaluation": "Frozen pre-2026 simulator predictions are scored on settled WC2026 questions. The empirical baseline uses the exact contract's YES rate estimated before the tournament.",
         "family": "first_goal",
-        "matches": 34,
-        "questions": 136,
+        "matches": 5,
+        "questions": 5,
         "sample_size": {
           "basis": "unique unseen matches, with uncertainty clustered by match",
-          "guidance": "Use only as a weak directional check; the tournament sample is still small.",
-          "level": "limited"
+          "guidance": "Treat the family comparison as inconclusive; do not choose a signal from it.",
+          "level": "too_small"
         },
-        "scope": "wc2026_unseen_through_artifact_date",
+        "scope": "wc2026_frozen_pre2026_simulator_replay",
         "simulator_minus_empirical_rate_95pct_ci": [
-          -0.044442,
-          0.019356
+          -0.161853,
+          -0.019615
         ],
         "test_folds": [
           2026
@@ -3928,47 +3877,44 @@
         "available": true,
         "brier": {
           "always_50": 0.25,
-          "empirical_rate": 0.13008,
-          "simulator": 0.13989
+          "empirical_rate": 0.175062,
+          "simulator": 0.107584
         },
-        "comparison_signal": "empirical_rate_better",
-        "contracts": 4,
+        "comparison_signal": "inconclusive_small_sample",
+        "contracts": 1,
         "coverage": {
-          "comparable_questions": 136,
-          "family_questions": 136,
+          "comparable_questions": 1,
+          "family_questions": 1,
           "fraction": 1.0
         },
-        "data_through": "2026-06-20",
+        "data_through": null,
         "delta_brier": {
           "negative_favors_simulator": true,
-          "simulator_minus_always_50": -0.11011,
-          "simulator_minus_empirical_rate": 0.00981
+          "simulator_minus_always_50": -0.142416,
+          "simulator_minus_empirical_rate": -0.067478
         },
         "empirical_baseline": {
           "rate_range": [
-            0.0,
-            0.630769
+            0.418404,
+            0.418404
           ],
           "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
           "training_observations_range": [
-            195,
-            195
+            4173,
+            4173
           ]
         },
-        "evaluation": "Predictions are scored only on later, unseen matches. The empirical-rate baseline uses the exact contract's YES rate estimated before each test fold.",
+        "evaluation": "Frozen pre-2026 simulator predictions are scored on settled WC2026 questions. The empirical baseline uses the exact contract's YES rate estimated before the tournament.",
         "family": "goal_window",
-        "matches": 34,
-        "questions": 136,
+        "matches": 1,
+        "questions": 1,
         "sample_size": {
           "basis": "unique unseen matches, with uncertainty clustered by match",
-          "guidance": "Use only as a weak directional check; the tournament sample is still small.",
-          "level": "limited"
+          "guidance": "Treat the family comparison as inconclusive; do not choose a signal from it.",
+          "level": "too_small"
         },
-        "scope": "wc2026_unseen_through_artifact_date",
-        "simulator_minus_empirical_rate_95pct_ci": [
-          0.00255,
-          0.01707
-        ],
+        "scope": "wc2026_frozen_pre2026_simulator_replay",
+        "simulator_minus_empirical_rate_95pct_ci": null,
         "test_folds": [
           2026
         ]
@@ -4034,46 +3980,46 @@
         "available": true,
         "brier": {
           "always_50": 0.25,
-          "empirical_rate": 0.224091,
-          "simulator": 0.214621
+          "empirical_rate": 0.223689,
+          "simulator": 0.218782
         },
-        "comparison_signal": "inconclusive",
+        "comparison_signal": "inconclusive_small_sample",
         "contracts": 2,
         "coverage": {
-          "comparable_questions": 102,
-          "family_questions": 102,
-          "fraction": 1.0
+          "comparable_questions": 18,
+          "family_questions": 68,
+          "fraction": 0.264706
         },
-        "data_through": "2026-06-20",
+        "data_through": null,
         "delta_brier": {
           "negative_favors_simulator": true,
-          "simulator_minus_always_50": -0.035379,
-          "simulator_minus_empirical_rate": -0.009469
+          "simulator_minus_always_50": -0.031218,
+          "simulator_minus_empirical_rate": -0.004907
         },
         "empirical_baseline": {
           "rate_range": [
-            0.289744,
-            0.415385
+            0.299978,
+            0.431692
           ],
           "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
           "training_observations_range": [
-            195,
-            390
+            4487,
+            8974
           ]
         },
-        "evaluation": "Predictions are scored only on later, unseen matches. The empirical-rate baseline uses the exact contract's YES rate estimated before each test fold.",
+        "evaluation": "Frozen pre-2026 simulator predictions are scored on settled WC2026 questions. The empirical baseline uses the exact contract's YES rate estimated before the tournament.",
         "family": "half_conditional",
-        "matches": 34,
-        "questions": 102,
+        "matches": 17,
+        "questions": 18,
         "sample_size": {
           "basis": "unique unseen matches, with uncertainty clustered by match",
-          "guidance": "Use only as a weak directional check; the tournament sample is still small.",
-          "level": "limited"
+          "guidance": "Treat the family comparison as inconclusive; do not choose a signal from it.",
+          "level": "too_small"
         },
-        "scope": "wc2026_unseen_through_artifact_date",
+        "scope": "wc2026_frozen_pre2026_simulator_replay",
         "simulator_minus_empirical_rate_95pct_ci": [
-          -0.029608,
-          0.010669
+          -0.037821,
+          0.028007
         ],
         "test_folds": [
           2026
@@ -4140,46 +4086,46 @@
         "available": true,
         "brier": {
           "always_50": 0.25,
-          "empirical_rate": 0.145772,
-          "simulator": 0.144871
+          "empirical_rate": 0.12885,
+          "simulator": 0.134318
         },
-        "comparison_signal": "inconclusive",
+        "comparison_signal": "inconclusive_small_sample",
         "contracts": 1,
         "coverage": {
-          "comparable_questions": 34,
-          "family_questions": 34,
+          "comparable_questions": 7,
+          "family_questions": 7,
           "fraction": 1.0
         },
-        "data_through": "2026-06-20",
+        "data_through": null,
         "delta_brier": {
           "negative_favors_simulator": true,
-          "simulator_minus_always_50": -0.105129,
-          "simulator_minus_empirical_rate": -0.000901
+          "simulator_minus_always_50": -0.115682,
+          "simulator_minus_empirical_rate": 0.005469
         },
         "empirical_baseline": {
           "rate_range": [
-            0.197531,
-            0.197531
+            0.222861,
+            0.222861
           ],
           "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
           "training_observations_range": [
-            162,
-            162
+            4173,
+            4173
           ]
         },
-        "evaluation": "Predictions are scored only on later, unseen matches. The empirical-rate baseline uses the exact contract's YES rate estimated before each test fold.",
+        "evaluation": "Frozen pre-2026 simulator predictions are scored on settled WC2026 questions. The empirical baseline uses the exact contract's YES rate estimated before the tournament.",
         "family": "penalty_awarded",
-        "matches": 34,
-        "questions": 34,
+        "matches": 7,
+        "questions": 7,
         "sample_size": {
           "basis": "unique unseen matches, with uncertainty clustered by match",
-          "guidance": "Use only as a weak directional check; the tournament sample is still small.",
-          "level": "limited"
+          "guidance": "Treat the family comparison as inconclusive; do not choose a signal from it.",
+          "level": "too_small"
         },
-        "scope": "wc2026_unseen_through_artifact_date",
+        "scope": "wc2026_frozen_pre2026_simulator_replay",
         "simulator_minus_empirical_rate_95pct_ci": [
-          -0.014569,
-          0.012766
+          -0.006948,
+          0.017885
         ],
         "test_folds": [
           2026
@@ -4246,46 +4192,46 @@
         "available": true,
         "brier": {
           "always_50": 0.25,
-          "empirical_rate": 0.195007,
-          "simulator": 0.192167
+          "empirical_rate": 0.182582,
+          "simulator": 0.18634
         },
         "comparison_signal": "inconclusive",
         "contracts": 1,
         "coverage": {
-          "comparable_questions": 34,
-          "family_questions": 34,
-          "fraction": 1.0
+          "comparable_questions": 31,
+          "family_questions": 32,
+          "fraction": 0.96875
         },
-        "data_through": "2026-06-20",
+        "data_through": null,
         "delta_brier": {
           "negative_favors_simulator": true,
-          "simulator_minus_always_50": -0.057833,
-          "simulator_minus_empirical_rate": -0.00284
+          "simulator_minus_always_50": -0.06366,
+          "simulator_minus_empirical_rate": 0.003757
         },
         "empirical_baseline": {
           "rate_range": [
-            0.283951,
-            0.283951
+            0.313923,
+            0.313923
           ],
           "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
           "training_observations_range": [
-            162,
-            162
+            4173,
+            4173
           ]
         },
-        "evaluation": "Predictions are scored only on later, unseen matches. The empirical-rate baseline uses the exact contract's YES rate estimated before each test fold.",
+        "evaluation": "Frozen pre-2026 simulator predictions are scored on settled WC2026 questions. The empirical baseline uses the exact contract's YES rate estimated before the tournament.",
         "family": "penalty_or_red",
-        "matches": 34,
-        "questions": 34,
+        "matches": 31,
+        "questions": 31,
         "sample_size": {
           "basis": "unique unseen matches, with uncertainty clustered by match",
           "guidance": "Use only as a weak directional check; the tournament sample is still small.",
           "level": "limited"
         },
-        "scope": "wc2026_unseen_through_artifact_date",
+        "scope": "wc2026_frozen_pre2026_simulator_replay",
         "simulator_minus_empirical_rate_95pct_ci": [
-          -0.019008,
-          0.013327
+          -0.003392,
+          0.010907
         ],
         "test_folds": [
           2026
@@ -4407,8 +4353,50 @@
       },
       "family": "stat_window",
       "wc2026": {
-        "available": false,
-        "reason": "No comparable unseen WC2026 rows for this family."
+        "available": true,
+        "brier": {
+          "always_50": 0.25,
+          "empirical_rate": 0.243672,
+          "simulator": 0.238144
+        },
+        "comparison_signal": "inconclusive_small_sample",
+        "contracts": 1,
+        "coverage": {
+          "comparable_questions": 1,
+          "family_questions": 1,
+          "fraction": 1.0
+        },
+        "data_through": null,
+        "delta_brier": {
+          "negative_favors_simulator": true,
+          "simulator_minus_always_50": -0.011856,
+          "simulator_minus_empirical_rate": -0.005528
+        },
+        "empirical_baseline": {
+          "rate_range": [
+            0.493631,
+            0.493631
+          ],
+          "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
+          "training_observations_range": [
+            314,
+            314
+          ]
+        },
+        "evaluation": "Frozen pre-2026 simulator predictions are scored on settled WC2026 questions. The empirical baseline uses the exact contract's YES rate estimated before the tournament.",
+        "family": "stat_window",
+        "matches": 1,
+        "questions": 1,
+        "sample_size": {
+          "basis": "unique unseen matches, with uncertainty clustered by match",
+          "guidance": "Treat the family comparison as inconclusive; do not choose a signal from it.",
+          "level": "too_small"
+        },
+        "scope": "wc2026_frozen_pre2026_simulator_replay",
+        "simulator_minus_empirical_rate_95pct_ci": null,
+        "test_folds": [
+          2026
+        ]
       }
     },
     "substitute_score": {
@@ -4471,47 +4459,44 @@
         "available": true,
         "brier": {
           "always_50": 0.25,
-          "empirical_rate": 0.247455,
-          "simulator": 0.262183
+          "empirical_rate": 0.113742,
+          "simulator": 0.072025
         },
-        "comparison_signal": "inconclusive",
+        "comparison_signal": "inconclusive_small_sample",
         "contracts": 1,
         "coverage": {
-          "comparable_questions": 34,
-          "family_questions": 34,
+          "comparable_questions": 1,
+          "family_questions": 1,
           "fraction": 1.0
         },
-        "data_through": "2026-06-20",
+        "data_through": null,
         "delta_brier": {
           "negative_favors_simulator": true,
-          "simulator_minus_always_50": 0.012183,
-          "simulator_minus_empirical_rate": 0.014728
+          "simulator_minus_always_50": -0.177975,
+          "simulator_minus_empirical_rate": -0.041717
         },
         "empirical_baseline": {
           "rate_range": [
-            0.471429,
-            0.471429
+            0.337256,
+            0.337256
           ],
           "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
           "training_observations_range": [
-            140,
-            140
+            2974,
+            2974
           ]
         },
-        "evaluation": "Predictions are scored only on later, unseen matches. The empirical-rate baseline uses the exact contract's YES rate estimated before each test fold.",
+        "evaluation": "Frozen pre-2026 simulator predictions are scored on settled WC2026 questions. The empirical baseline uses the exact contract's YES rate estimated before the tournament.",
         "family": "substitute_score",
-        "matches": 34,
-        "questions": 34,
+        "matches": 1,
+        "questions": 1,
         "sample_size": {
           "basis": "unique unseen matches, with uncertainty clustered by match",
-          "guidance": "Use only as a weak directional check; the tournament sample is still small.",
-          "level": "limited"
+          "guidance": "Treat the family comparison as inconclusive; do not choose a signal from it.",
+          "level": "too_small"
         },
-        "scope": "wc2026_unseen_through_artifact_date",
-        "simulator_minus_empirical_rate_95pct_ci": [
-          -0.036015,
-          0.065472
-        ],
+        "scope": "wc2026_frozen_pre2026_simulator_replay",
+        "simulator_minus_empirical_rate_95pct_ci": null,
         "test_folds": [
           2026
         ]
@@ -4574,53 +4559,8 @@
       },
       "family": "substitution_before_halftime",
       "wc2026": {
-        "available": true,
-        "brier": {
-          "always_50": 0.25,
-          "empirical_rate": 0.130719,
-          "simulator": 0.075064
-        },
-        "comparison_signal": "simulator_better",
-        "contracts": 1,
-        "coverage": {
-          "comparable_questions": 34,
-          "family_questions": 34,
-          "fraction": 1.0
-        },
-        "data_through": "2026-06-20",
-        "delta_brier": {
-          "negative_favors_simulator": true,
-          "simulator_minus_always_50": -0.174936,
-          "simulator_minus_empirical_rate": -0.055655
-        },
-        "empirical_baseline": {
-          "rate_range": [
-            0.333333,
-            0.333333
-          ],
-          "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
-          "training_observations_range": [
-            33,
-            33
-          ]
-        },
-        "evaluation": "Predictions are scored only on later, unseen matches. The empirical-rate baseline uses the exact contract's YES rate estimated before each test fold.",
-        "family": "substitution_before_halftime",
-        "matches": 34,
-        "questions": 34,
-        "sample_size": {
-          "basis": "unique unseen matches, with uncertainty clustered by match",
-          "guidance": "Use only as a weak directional check; the tournament sample is still small.",
-          "level": "limited"
-        },
-        "scope": "wc2026_unseen_through_artifact_date",
-        "simulator_minus_empirical_rate_95pct_ci": [
-          -0.077194,
-          -0.034116
-        ],
-        "test_folds": [
-          2026
-        ]
+        "available": false,
+        "reason": "No comparable unseen WC2026 rows for this family."
       }
     },
     "team_vs_team_more": {
@@ -4677,8 +4617,53 @@
       },
       "family": "team_vs_team_more",
       "wc2026": {
-        "available": false,
-        "reason": "No comparable unseen WC2026 rows for this family."
+        "available": true,
+        "brier": {
+          "always_50": 0.25,
+          "empirical_rate": 0.235693,
+          "simulator": 0.208633
+        },
+        "comparison_signal": "inconclusive",
+        "contracts": 1,
+        "coverage": {
+          "comparable_questions": 53,
+          "family_questions": 167,
+          "fraction": 0.317365
+        },
+        "data_through": null,
+        "delta_brier": {
+          "negative_favors_simulator": true,
+          "simulator_minus_always_50": -0.041367,
+          "simulator_minus_empirical_rate": -0.02706
+        },
+        "empirical_baseline": {
+          "rate_range": [
+            0.404459,
+            0.404459
+          ],
+          "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
+          "training_observations_range": [
+            628,
+            628
+          ]
+        },
+        "evaluation": "Frozen pre-2026 simulator predictions are scored on settled WC2026 questions. The empirical baseline uses the exact contract's YES rate estimated before the tournament.",
+        "family": "team_vs_team_more",
+        "matches": 53,
+        "questions": 53,
+        "sample_size": {
+          "basis": "unique unseen matches, with uncertainty clustered by match",
+          "guidance": "Use only as a weak directional check; the tournament sample is still small.",
+          "level": "limited"
+        },
+        "scope": "wc2026_frozen_pre2026_simulator_replay",
+        "simulator_minus_empirical_rate_95pct_ci": [
+          -0.071827,
+          0.017706
+        ],
+        "test_folds": [
+          2026
+        ]
       }
     },
     "total_shots_threshold": {
@@ -4738,53 +4723,8 @@
       },
       "family": "total_shots_threshold",
       "wc2026": {
-        "available": true,
-        "brier": {
-          "always_50": 0.25,
-          "empirical_rate": 0.212108,
-          "simulator": 0.202073
-        },
-        "comparison_signal": "inconclusive",
-        "contracts": 2,
-        "coverage": {
-          "comparable_questions": 68,
-          "family_questions": 68,
-          "fraction": 1.0
-        },
-        "data_through": "2026-06-20",
-        "delta_brier": {
-          "negative_favors_simulator": true,
-          "simulator_minus_always_50": -0.047927,
-          "simulator_minus_empirical_rate": -0.010035
-        },
-        "empirical_baseline": {
-          "rate_range": [
-            0.171429,
-            0.278571
-          ],
-          "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
-          "training_observations_range": [
-            140,
-            140
-          ]
-        },
-        "evaluation": "Predictions are scored only on later, unseen matches. The empirical-rate baseline uses the exact contract's YES rate estimated before each test fold.",
-        "family": "total_shots_threshold",
-        "matches": 34,
-        "questions": 68,
-        "sample_size": {
-          "basis": "unique unseen matches, with uncertainty clustered by match",
-          "guidance": "Use only as a weak directional check; the tournament sample is still small.",
-          "level": "limited"
-        },
-        "scope": "wc2026_unseen_through_artifact_date",
-        "simulator_minus_empirical_rate_95pct_ci": [
-          -0.056798,
-          0.036728
-        ],
-        "test_folds": [
-          2026
-        ]
+        "available": false,
+        "reason": "No comparable unseen WC2026 rows for this family."
       }
     },
     "win_margin": {
@@ -4844,60 +4784,15 @@
       },
       "family": "win_margin",
       "wc2026": {
-        "available": true,
-        "brier": {
-          "always_50": 0.25,
-          "empirical_rate": 0.182246,
-          "simulator": 0.151112
-        },
-        "comparison_signal": "simulator_better",
-        "contracts": 1,
-        "coverage": {
-          "comparable_questions": 68,
-          "family_questions": 68,
-          "fraction": 1.0
-        },
-        "data_through": "2026-06-20",
-        "delta_brier": {
-          "negative_favors_simulator": true,
-          "simulator_minus_always_50": -0.098888,
-          "simulator_minus_empirical_rate": -0.031134
-        },
-        "empirical_baseline": {
-          "rate_range": [
-            0.187179,
-            0.187179
-          ],
-          "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
-          "training_observations_range": [
-            390,
-            390
-          ]
-        },
-        "evaluation": "Predictions are scored only on later, unseen matches. The empirical-rate baseline uses the exact contract's YES rate estimated before each test fold.",
-        "family": "win_margin",
-        "matches": 34,
-        "questions": 68,
-        "sample_size": {
-          "basis": "unique unseen matches, with uncertainty clustered by match",
-          "guidance": "Use only as a weak directional check; the tournament sample is still small.",
-          "level": "limited"
-        },
-        "scope": "wc2026_unseen_through_artifact_date",
-        "simulator_minus_empirical_rate_95pct_ci": [
-          -0.055092,
-          -0.007176
-        ],
-        "test_folds": [
-          2026
-        ]
+        "available": false,
+        "reason": "No comparable unseen WC2026 rows for this family."
       }
     }
   },
   "methodology": {
     "all_history_performance": "Rolling-origin calendar folds; every test match is later than all model-fitting data.",
     "empirical_rates": "Observed YES count divided by exact labelable instances; WC2026 prefers every labelable match in the shipped tournament data and otherwise uses settled questions.",
-    "family_comparison": "Family-level Brier comparison on identical unseen rows. The simulator and 50/50 are compared with an exact-contract empirical-rate rule fitted only on data before each test fold; uncertainty is clustered by match. WC2026 is a separate pre-2026-fit evaluation.",
+    "family_comparison": "Family-level Brier comparison on identical unseen rows. The simulator and 50/50 are compared with an exact-contract empirical-rate rule fitted only on data before each test fold; uncertainty is clustered by match. WC2026 replays settled tournament questions with simulator artifacts and empirical rates frozen before 2026.",
     "wc2026_performance": "Settled SportPredict questions priced by artifacts fitted only through 2025."
   },
   "schema_version": 2

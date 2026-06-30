@@ -1,8 +1,8 @@
 import json
-import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from analysis.build_simulator_family_benchmarks import (
     family_from_contract,
@@ -48,48 +48,35 @@ class StaticFamilyBenchmarkTests(unittest.TestCase):
         benchmark = artifact["families"]["goal_window"]
         self.assertEqual(artifact["schema_version"], 2)
         self.assertEqual(benchmark["all_history"]["sample_size"]["level"], "large")
-        self.assertEqual(benchmark["wc2026"]["matches"], 34)
-        self.assertEqual(benchmark["wc2026"]["sample_size"]["level"], "limited")
+        self.assertEqual(benchmark["wc2026"]["matches"], 1)
+        self.assertEqual(benchmark["wc2026"]["sample_size"]["level"], "too_small")
+        seed = json.loads(Path(
+            "simulator/data/processed/wc2026_simulator_replay_seed.json"
+        ).read_text())
+        self.assertEqual(seed["matches"], 73)
 
 
-class LiveFamilyBenchmarkTests(unittest.TestCase):
+class TournamentFamilyBenchmarkTests(unittest.TestCase):
     def test_refresh_uses_frozen_simulator_and_empirical_predictions(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            evidence = root / "evidence.json"
-            evidence.write_text(json.dumps({
-                "question_evidence": [{
-                    "market_id": "q1",
-                    "simulator_estimate": {
-                        "family": "goal_window",
-                        "contract_key": "goal_window:test",
-                        "probability_pct": 80.0,
-                        "empirical_rates": {
-                            "all_history": {"rate_pct": 60.0, "n": 100},
-                        },
-                    },
-                }],
-            }))
-            ledger = root / "ledger.sqlite3"
-            db = sqlite3.connect(ledger)
-            db.executescript("""
-                CREATE TABLE runs (
-                    id TEXT, match_id TEXT, recorded_at TEXT,
-                    evidence_path TEXT, status TEXT
-                );
-                CREATE TABLE questions (
-                    run_id TEXT, market_id TEXT, outcome INTEGER
-                );
-            """)
-            db.execute(
-                "INSERT INTO runs VALUES (?, ?, ?, ?, ?)",
-                ("r1", "m1", "2026-06-30T12:00:00Z", str(evidence), "submitted"),
-            )
-            db.execute("INSERT INTO questions VALUES (?, ?, ?)", ("r1", "q1", 1))
-            db.commit()
-            db.close()
+            seed = root / "seed.json"
+            seed.write_text(json.dumps({"rows": [{
+                "match_id": "m1", "kickoff": "2026-06-30T12:00:00Z",
+                "family": "goal_window", "contract_key": "goal_window:test",
+                "p_model": 0.8, "p_empirical": 0.6, "outcome": 1,
+            }]}))
 
-            snapshot = simulator_benchmark.refresh(ledger, path=root / "snapshot.json")
+            class _Web:
+                def settled_matches(self, event_id, refresh=False):
+                    return [{"id": "m1"}]
+
+            with patch.object(simulator_benchmark, "SEED_PATH", seed), patch.object(
+                simulator_benchmark, "REPLAY_DIR", root / "replays"
+            ):
+                snapshot = simulator_benchmark.refresh(
+                    None, _Web(), "event", "lobby", path=root / "snapshot.json",
+                )
 
         family = snapshot["families"]["goal_window"]
         self.assertEqual(family["questions"], 1)
@@ -97,11 +84,33 @@ class LiveFamilyBenchmarkTests(unittest.TestCase):
         self.assertAlmostEqual(family["brier"]["empirical_rate"], 0.16)
         self.assertEqual(family["comparison_signal"], "inconclusive_small_sample")
         self.assertEqual(family["sample_size"]["level"], "too_small")
+        self.assertEqual(snapshot["replayed_matches"], 1)
 
-        estimates = {"q1": {"family": "goal_window", "historical_evidence": {}}}
+        estimates = {"q1": {
+            "family": "goal_window", "contract_key": "goal_window:test",
+            "historical_evidence": {"family_performance": {
+                "live_wc2026": {"available": True},
+            }},
+        }}
         simulator_benchmark.overlay(estimates, snapshot)
-        live = estimates["q1"]["historical_evidence"]["family_performance"]["live_wc2026"]
-        self.assertEqual(live["questions"], 1)
+        performance = estimates["q1"]["historical_evidence"]["family_performance"]
+        self.assertNotIn("live_wc2026", performance)
+        self.assertEqual(performance["wc2026"]["questions"], 1)
+        rate = estimates["q1"]["historical_evidence"]["empirical_rate"]["wc2026"]
+        self.assertEqual(rate["population"], "settled_question_instances")
+
+    def test_family_without_empirical_baseline_still_reports_simulator_vs_50(self):
+        summary = simulator_benchmark._summaries([{
+            "match_id": "m1", "family": "player_stat",
+            "contract_key": "player_stat:test", "p_model": 0.8,
+            "p_empirical": None, "outcome": 1,
+        }])["player_stat"]
+        self.assertEqual(
+            summary["comparison_signal"], "empirical_baseline_unavailable",
+        )
+        self.assertAlmostEqual(summary["brier"]["simulator"], 0.04)
+        self.assertEqual(summary["brier"]["always_50"], 0.25)
+        self.assertNotIn("empirical_rate", summary["brier"])
 
 
 if __name__ == "__main__":

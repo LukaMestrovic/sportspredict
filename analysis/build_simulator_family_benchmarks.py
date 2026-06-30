@@ -167,8 +167,16 @@ def family_performance(rows: list[dict], *, scope: str) -> dict[str, dict]:
             "scope": scope,
             "family": family,
             "evaluation": (
-                "Predictions are scored only on later, unseen matches. The empirical-rate baseline "
-                "uses the exact contract's YES rate estimated before each test fold."
+                (
+                    "Frozen pre-2026 simulator predictions are scored on settled WC2026 "
+                    "questions. The empirical baseline uses the exact contract's YES rate "
+                    "estimated before the tournament."
+                )
+                if scope.startswith("wc2026_")
+                else (
+                    "Predictions are scored only on later, unseen matches. The empirical-rate "
+                    "baseline uses the exact contract's YES rate estimated before each test fold."
+                )
             ),
             "questions": len(comparable),
             "matches": matches,
@@ -208,9 +216,35 @@ def family_performance(rows: list[dict], *, scope: str) -> dict[str, dict]:
 def build_family_benchmarks(source_root: Path, artifact: dict) -> dict[str, dict]:
     rows = load_comparison_rows(source_root, set(artifact.get("contracts", {})))
     all_history = family_performance(rows, scope="rolling_origin_all_history")
+    prior_rates = {
+        key: ((record.get("empirical_rate") or {}).get("all_history") or {})
+        for key, record in (artifact.get("contracts") or {}).items()
+    }
+    wc2026_rows = []
+    replay_path = source_root / "notebooks" / "wc2026_simulator_oos_rows.csv"
+    if replay_path.is_file():
+        for row in _read_csv(replay_path):
+            key = _canonical_key(row["contract_key"])
+            prior = prior_rates.get(key) or {}
+            wc2026_rows.append({
+                "family": family_from_contract(key),
+                "contract_key": key,
+                "match_id": row["match_id"],
+                "fold_year": 2026,
+                "tournament": "WORLDCUP2026",
+                "match_date": None,
+                "outcome": float(row["outcome"]),
+                "p_model": float(row["p_model"]),
+                "p_empirical": (
+                    float(prior["rate"])
+                    if prior.get("available") and prior.get("rate") is not None
+                    else None
+                ),
+                "empirical_training_observations": prior.get("observations"),
+            })
     wc2026 = family_performance(
-        [row for row in rows if row["tournament"] == "WORLDCUP2026"],
-        scope="wc2026_unseen_through_artifact_date",
+        wc2026_rows,
+        scope="wc2026_frozen_pre2026_simulator_replay",
     )
     return {
         family: {
@@ -239,7 +273,8 @@ def _main() -> int:
     artifact.setdefault("methodology", {})["family_comparison"] = (
         "Family-level Brier comparison on identical unseen rows. The simulator and 50/50 are "
         "compared with an exact-contract empirical-rate rule fitted only on data before each test "
-        "fold; uncertainty is clustered by match. WC2026 is a separate pre-2026-fit evaluation."
+        "fold; uncertainty is clustered by match. WC2026 replays settled tournament questions "
+        "with simulator artifacts and empirical rates frozen before 2026."
     )
     artifact["families"] = build_family_benchmarks(args.source_root, artifact)
     args.artifact.write_text(json.dumps(artifact, ensure_ascii=False, indent=2, sort_keys=True) + "\n")

@@ -1,106 +1,123 @@
-"""Live WC2026 family benchmark from frozen pre-match evidence and ledger outcomes."""
+"""Tournament-wide WC2026 simulator benchmark on settled questions.
+
+The learned artifacts were fitted before WC2026.  A tracked replay seed covers
+the settled tournament at build time; after deployment, each newly settled
+match is replayed once with the same frozen simulator and retained in cache.
+This measures the simulator itself, without using LLM prices or reasoning.
+"""
 
 from __future__ import annotations
 
 import copy
 import json
 import math
-import sqlite3
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config
+from . import config, simulator
+from .pricing import PriceCtx
 
 
 SNAPSHOT_PATH = config.ROOT / "cache" / "simulator_family_benchmark.json"
+REPLAY_DIR = config.ROOT / "cache" / "wc2026_simulator_replay"
+SEED_PATH = (
+    config.ROOT / "simulator" / "data" / "processed"
+    / "wc2026_simulator_replay_seed.json"
+)
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _evidence_path(raw: str) -> Path | None:
-    path = Path(raw)
-    candidates = [path, config.ROOT / path]
-    if "logs" in path.parts:
-        candidates.append(config.ROOT / Path(*path.parts[path.parts.index("logs"):]))
-    return next((candidate for candidate in candidates if candidate.is_file()), None)
-
-
-def _settled_rows(ledger_path: Path) -> list[dict]:
-    if not ledger_path.is_file():
-        return []
-    db = sqlite3.connect(ledger_path)
-    db.row_factory = sqlite3.Row
+def _seed() -> dict:
     try:
-        rows = db.execute(
-            """SELECT r.match_id, r.recorded_at, r.evidence_path,
-                      q.market_id, q.outcome
-                 FROM questions q JOIN runs r ON r.id = q.run_id
-                WHERE r.status = 'submitted' AND q.outcome IS NOT NULL
-                  AND r.evidence_path IS NOT NULL
-                ORDER BY r.recorded_at"""
-        ).fetchall()
-    except sqlite3.DatabaseError:
-        return []
-    finally:
-        db.close()
-    # The last submitted pre-match run is the final frozen model view of a market.
-    latest = {(row["match_id"], row["market_id"]): dict(row) for row in rows}
-    return list(latest.values())
+        return json.loads(SEED_PATH.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {"rows": []}
 
 
-def _benchmark_rows(ledger_path: Path) -> tuple[list[dict], int]:
-    settled = _settled_rows(ledger_path)
-    evidence_cache: dict[Path, dict] = {}
-    benchmark = []
-    for row in settled:
-        path = _evidence_path(row["evidence_path"])
-        if path is None:
+def _cached_rows() -> tuple[list[dict], set[str]]:
+    rows = []
+    match_ids = set()
+    if not REPLAY_DIR.is_dir():
+        return rows, match_ids
+    for path in sorted(REPLAY_DIR.glob("*.json")):
+        try:
+            replay = json.loads(path.read_text())
+            match_id = str(replay.get("match_id") or path.stem)
+            match_ids.add(match_id)
+            rows.extend(replay.get("rows") or [])
+        except (OSError, json.JSONDecodeError):
             continue
-        if path not in evidence_cache:
-            try:
-                evidence_cache[path] = json.loads(path.read_text())
-            except (OSError, json.JSONDecodeError):
-                evidence_cache[path] = {}
-        questions = {
-            str(item.get("market_id")): item
-            for item in evidence_cache[path].get("question_evidence", [])
-        }
-        item = questions.get(str(row["market_id"])) or {}
-        estimate = item.get("simulator_estimate")
-        if estimate is None:
-            estimates = item.get("simulator_model_estimates") or []
-            estimate = estimates[0] if estimates else None
+    return rows, match_ids
+
+
+def _team_name(match: dict, side: str) -> str | None:
+    competitors = match.get(f"{side}_competitors") or []
+    return competitors[0].get("name") if competitors else None
+
+
+def _stage(match: dict) -> str:
+    label = str(match.get("season_type") or "").lower()
+    return "group" if "group" in label else "knockout"
+
+
+def _replay_match(match: dict, markets: list[dict]) -> dict:
+    home = _team_name(match, "home")
+    away = _team_name(match, "away")
+    if not home or not away:
+        return {"match_id": match.get("id"), "rows": [], "error": "missing team names"}
+    settled = [
+        market for market in markets
+        if market.get("current_value") in (0, 100)
+        and market.get("question")
+    ]
+    targets = [
+        {"id": str(market["id"]), "question": str(market["question"])}
+        for market in settled
+    ]
+    estimates = simulator.simulator_estimates(
+        targets,
+        PriceCtx(home, away, [], None, None),
+        direct_by_market={market["id"]: [] for market in targets},
+        kickoff=match.get("opening_time"),
+        stage=_stage(match),
+    )
+    rows = []
+    for market in settled:
+        estimate = estimates.get(str(market["id"]))
         if not estimate:
             continue
         history = estimate.get("historical_evidence") or {}
         empirical = (history.get("empirical_rate") or {}).get("all_history") or {}
-        try:
-            p_model = (
-                float(estimate["probability"])
-                if estimate.get("probability") is not None
-                else float(estimate["probability_pct"]) / 100.0
-            )
-            if empirical.get("rate") is not None:
-                p_empirical = float(empirical["rate"])
-            else:
-                p_empirical = float(estimate["empirical_rates"]["all_history"]["rate_pct"]) / 100.0
-            outcome = int(row["outcome"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        if not (0 <= p_model <= 1 and 0 <= p_empirical <= 1 and outcome in (0, 1)):
-            continue
-        benchmark.append({
+        p_empirical = empirical.get("rate") if empirical.get("available") else None
+        rows.append({
+            "match_id": str(match["id"]),
+            "kickoff": match.get("opening_time"),
             "family": str(estimate.get("family") or "unknown"),
             "contract_key": estimate.get("contract_key"),
-            "match_id": row["match_id"],
-            "p_model": p_model,
-            "p_empirical": p_empirical,
-            "outcome": outcome,
+            "p_model": float(estimate["probability"]),
+            "p_empirical": float(p_empirical) if p_empirical is not None else None,
+            "outcome": int(market["current_value"]) // 100,
         })
-    return benchmark, len(settled)
+    return {
+        "schema_version": 1,
+        "generated_at": _now(),
+        "match_id": str(match["id"]),
+        "match_name": match.get("name"),
+        "kickoff": match.get("opening_time"),
+        "rows": rows,
+    }
+
+
+def _write_replay(match_id: str, replay: dict) -> None:
+    REPLAY_DIR.mkdir(parents=True, exist_ok=True)
+    path = REPLAY_DIR / f"{match_id}.json"
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(replay, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    temporary.replace(path)
 
 
 def _clustered_ci(rows: list[dict]) -> list[float] | None:
@@ -134,7 +151,7 @@ def _sample_size(matches: int) -> dict:
         guidance = "Treat as inconclusive; do not choose the simulator or empirical rate from it."
     elif matches < 75:
         level = "limited"
-        guidance = "Use only as a weak directional check; the live tournament sample is small."
+        guidance = "Use only as a weak directional check; the tournament sample is small."
     elif matches < 200:
         level = "moderate"
         guidance = "Use as supporting evidence with contract and match-specific checks."
@@ -143,17 +160,50 @@ def _sample_size(matches: int) -> dict:
         guidance = "Use as a meaningful family-level reliability signal."
     return {
         "level": level,
-        "basis": "unique matches settled from frozen pre-match evidence",
+        "basis": "unique settled WC2026 matches in the frozen-model replay",
         "guidance": guidance,
     }
 
 
 def _summaries(rows: list[dict]) -> dict[str, dict]:
-    grouped: dict[str, list[dict]] = defaultdict(list)
+    family_totals: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
-        grouped[row["family"]].append(row)
+        family_totals[row["family"]].append(row)
     summaries = {}
-    for family, family_rows in sorted(grouped.items()):
+    for family, all_family_rows in sorted(family_totals.items()):
+        family_rows = [
+            row for row in all_family_rows if row.get("p_empirical") is not None
+        ]
+        if not family_rows:
+            questions = len(all_family_rows)
+            matches = len({row["match_id"] for row in all_family_rows})
+            model_brier = sum(
+                (row["p_model"] - row["outcome"]) ** 2 for row in all_family_rows
+            ) / questions
+            summaries[family] = {
+                "available": True,
+                "scope": "wc2026_frozen_pre2026_simulator_replay",
+                "family": family,
+                "evaluation": (
+                    "Frozen pre-2026 learned simulator replayed on settled WC2026 "
+                    "questions. This is simulator-only performance. No pre-2026 "
+                    "exact-contract empirical baseline is available for this family."
+                ),
+                "questions": questions,
+                "matches": matches,
+                "contracts": len({row["contract_key"] for row in all_family_rows}),
+                "coverage": {
+                    "comparable_questions": 0,
+                    "simulator_questions": questions,
+                },
+                "brier": {
+                    "simulator": round(model_brier, 6),
+                    "always_50": 0.25,
+                },
+                "comparison_signal": "empirical_baseline_unavailable",
+                "sample_size": _sample_size(matches),
+            }
+            continue
         questions = len(family_rows)
         matches = len({row["match_id"] for row in family_rows})
         model_brier = sum(
@@ -174,16 +224,20 @@ def _summaries(rows: list[dict]) -> dict[str, dict]:
             signal = "inconclusive"
         summaries[family] = {
             "available": True,
-            "scope": "live_wc2026_frozen_predictions",
+            "scope": "wc2026_frozen_pre2026_simulator_replay",
             "family": family,
             "evaluation": (
-                "Actual simulator probabilities frozen before kickoff and later settled only from "
-                "explicit SportPredict outcomes; the baseline is the all-history exact-contract "
-                "empirical rate frozen in the same evidence file."
+                "Frozen pre-2026 learned simulator replayed on settled WC2026 questions. "
+                "This is simulator-only performance, not LLM-layer performance. The "
+                "baseline always predicts the pre-WC2026 exact-contract empirical rate."
             ),
             "questions": questions,
             "matches": matches,
             "contracts": len({row["contract_key"] for row in family_rows}),
+            "coverage": {
+                "comparable_questions": questions,
+                "simulator_questions": len(all_family_rows),
+            },
             "brier": {
                 "simulator": round(model_brier, 6),
                 "always_50": 0.25,
@@ -201,16 +255,67 @@ def _summaries(rows: list[dict]) -> dict[str, dict]:
     return summaries
 
 
-def refresh(ledger_path: Path, *, path: Path = SNAPSHOT_PATH) -> dict:
-    """Rebuild the live benchmark atomically from durable settled ledger rows."""
-    rows, settled_rows = _benchmark_rows(ledger_path)
+def _contract_rates(rows: list[dict]) -> dict[str, dict]:
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for row in rows:
+        if row.get("contract_key"):
+            grouped[str(row["contract_key"])].append(row)
+    result = {}
+    for key, contract_rows in sorted(grouped.items()):
+        result[key] = {
+            "available": True,
+            "basis": "settled SportPredict WC2026 question instances",
+            "population": "settled_question_instances",
+            "yes_events": sum(int(row["outcome"]) for row in contract_rows),
+            "observations": len(contract_rows),
+            "matches": len({row["match_id"] for row in contract_rows}),
+            "rate": round(
+                sum(int(row["outcome"]) for row in contract_rows) / len(contract_rows), 6,
+            ),
+            "data_through": max(
+                (str(row.get("kickoff") or "") for row in contract_rows), default=None,
+            ),
+            "complete": True,
+        }
+    return result
+
+
+def refresh(sp, web, event_id: str, lobby_id: str, *, path: Path = SNAPSHOT_PATH) -> dict:
+    """Replay newly settled matches and atomically rebuild the tournament benchmark."""
+    seed = _seed()
+    seed_rows = list(seed.get("rows") or [])
+    seed_matches = {str(row["match_id"]) for row in seed_rows}
+    cached_rows, cached_matches = _cached_rows()
+    cached_rows = [
+        row for row in cached_rows if str(row["match_id"]) not in seed_matches
+    ]
+    existing = seed_rows + cached_rows
+    known_matches = seed_matches | cached_matches
+    settled_matches = web.settled_matches(event_id, refresh=True)
+    replayed = 0
+    for match in settled_matches:
+        match_id = str(match["id"])
+        if match_id in known_matches:
+            continue
+        replay = _replay_match(match, web.settled_crowd_stats(match_id, lobby_id))
+        _write_replay(match_id, replay)
+        existing.extend(replay.get("rows") or [])
+        known_matches.add(match_id)
+        replayed += 1
+
     snapshot = {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at": _now(),
-        "settled_ledger_questions": settled_rows,
-        "comparable_simulator_questions": len(rows),
-        "matches": len({row["match_id"] for row in rows}),
-        "families": _summaries(rows),
+        "evaluation": "simulator_only_frozen_pre2026_wc2026_replay",
+        "settled_tournament_matches": len(settled_matches),
+        "replayed_matches": len({row["match_id"] for row in existing}),
+        "simulator_questions": len(existing),
+        "comparable_simulator_questions": sum(
+            row.get("p_empirical") is not None for row in existing
+        ),
+        "new_matches_replayed": replayed,
+        "families": _summaries(existing),
+        "contracts": _contract_rates(existing),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -221,31 +326,31 @@ def refresh(ledger_path: Path, *, path: Path = SNAPSHOT_PATH) -> dict:
 
 def load(path: Path = SNAPSHOT_PATH) -> dict:
     try:
-        return json.loads(path.read_text())
+        snapshot = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError):
         return {}
+    return snapshot if snapshot.get("schema_version") == 2 else {}
 
 
 def overlay(estimates: dict[str, dict], snapshot: dict) -> dict[str, dict]:
-    """Attach the applicable live family scope to simulator estimates."""
+    """Replace stale tournament scopes with the current simulator-only replay."""
     families = snapshot.get("families") or {}
+    contracts = snapshot.get("contracts") or {}
     for estimate in estimates.values():
         history = copy.deepcopy(estimate.get("historical_evidence") or {})
         family = str(estimate.get("family") or "unknown")
         performance = history.setdefault("family_performance", {"family": family})
-        performance["live_wc2026"] = copy.deepcopy(
-            families.get(family)
-            or {
-                "available": False,
-                "reason": "No settled frozen simulator predictions for this family yet.",
-            }
-        )
-        performance["live_refresh"] = {
-            key: snapshot.get(key)
-            for key in (
-                "generated_at", "settled_ledger_questions",
-                "comparable_simulator_questions", "matches",
-            )
-        }
+        performance.pop("live_wc2026", None)
+        if family in families:
+            performance["wc2026"] = copy.deepcopy(families[family])
+
+        key = estimate.get("contract_key")
+        question_rate = contracts.get(key)
+        empirical = history.setdefault("empirical_rate", {})
+        current = empirical.get("wc2026") or {}
+        # Prefer all-labelable API data when available. Otherwise replace the
+        # stale shipped tournament slice with current settled question instances.
+        if question_rate and current.get("population") != "all_labelable_matches":
+            empirical["wc2026"] = copy.deepcopy(question_rate)
         estimate["historical_evidence"] = history
     return estimates

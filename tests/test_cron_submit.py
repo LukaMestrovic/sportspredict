@@ -83,7 +83,7 @@ class DispatchTest(unittest.TestCase):
         sys.argv = ["cron_submit", "--settle"]
         result = (
             {"settled_predictions": 3, "remaining_predictions": 2},
-            {"comparable_simulator_questions": 4, "matches": 2},
+            {"comparable_simulator_questions": 4, "replayed_matches": 2},
         )
         with patch.object(settle_ledger, "settle_open", return_value=result) as settle:
             cron_submit.main()
@@ -97,7 +97,7 @@ class ProcessMatchTest(unittest.TestCase):
             cron_submit.APIFootball, cron_submit.OddsAPI, cron_submit.run_match,
             cron_submit.submit_with_ledger, cron_submit.simulator_benchmark.refresh,
         )
-        cron_submit.simulator_benchmark.refresh = lambda _path: {}
+        cron_submit.simulator_benchmark.refresh = lambda *_a, **_k: {}
 
     def tearDown(self):
         (

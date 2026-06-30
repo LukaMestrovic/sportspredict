@@ -85,19 +85,27 @@ HOW TO USE THE PROVIDED ODDS
 - Use `simulator_estimate.family_comparison` to decide whether to lean toward the
   simulator or the empirical rate for this FAMILY. Each available scope reports
   `signal`, unique `matches`, `sample`, and (unless the sample is `too_small`)
-  Brier scores for `simulator`, `empirical_rate`, and `always_50`; lower Brier is
-  better. `all_history` is the broad rolling-origin test, `wc2026` is the frozen
-  unseen tournament test, and `live_wc2026` contains actual pre-match estimates
-  settled later. The empirical rule was fitted per exact contract before family
+  Brier scores for `simulator`, `always_50`, and `empirical_rate` when a
+  pre-tournament exact-contract baseline exists; lower Brier is better.
+  `signal=empirical_baseline_unavailable` means only the simulator-vs-50 check
+  is valid for that family. `all_history` is the broad rolling-origin test. `wc2026` is a
+  simulator-only replay on all currently settled tournament questions that the
+  frozen pre-2026 simulator can price; it contains no LLM-layer predictions.
+  It is tournament-wide for the named FAMILY, never specific to the current team
+  or player. The empirical rule was fitted per exact contract before family
   aggregation. `too_small` is inconclusive; `limited` is only a weak check. Let
   broad history dominate small WC samples. Lean toward the named winner only
   when the sample supports it, and state the choice in the audit.
 - `simulator_estimate.empirical_rates` gives this exact contract's observed YES
-  `rate_pct` and sample `n` for available scopes. Treat it as a base rate, not a
-  match-specific prediction. Weight scope by size and relevance rather than
-  averaging: use knockout history for extra-time-sensitive knockout contracts,
-  but retain all-history as the broad prior. Never let a small tournament sample
-  override liquid direct odds or confirmed match-specific evidence.
+  `rate_pct` and sample `n` for available scopes. `population=all_labelable_matches`
+  means every settled WC2026 fixture that can label the contract; a team contract
+  can therefore have two observations per match. `population=settled_question_instances`
+  is used only when the provider data cannot generate the contract for every
+  fixture. Neither population is team- or player-specific to the upcoming match.
+  Treat it as a base rate, not a match-specific prediction. Weight scope by size
+  and relevance rather than averaging: use knockout history for extra-time-sensitive
+  knockout contracts, but retain all-history as the broad prior. Never let a small
+  tournament sample override liquid direct odds or confirmed match-specific evidence.
 - Do not average blindly. Consider market liquidity, bookmaker independence,
   line relevance, lineup certainty, tactical fit, weather, referee, and whether
   a price is stale or one-sided.
