@@ -1,0 +1,123 @@
+{
+  "trained": "2026-06-28",
+  "n_matches": 4487,
+  "feature_names": [
+    "z",
+    "own_elo_c",
+    "opp_elo_c",
+    "own_attack",
+    "own_defense",
+    "opp_attack",
+    "opp_defense",
+    "is_knockout",
+    "own_host",
+    "opp_host"
+  ],
+  "target": "ratio_to_baseline",
+  "stats": {
+    "goals": {
+      "alpha": 0.75,
+      "alpha_cv": 1.0,
+      "n_rows": 8974,
+      "sources": "all",
+      "learned_mean": 1.3398,
+      "prior_mean": 1.408,
+      "ratio": 0.9516,
+      "plausibility_ok": true,
+      "cv_poisson_deviance": {
+        "0.00": 1.2495704947780435,
+        "0.25": 1.1737641182646592,
+        "0.50": 1.1220103183508008,
+        "0.75": 1.0922232296050036,
+        "1.00": 1.0829851815053917
+      }
+    },
+    "shots_on_target": {
+      "alpha": 0.75,
+      "alpha_cv": 1.0,
+      "n_rows": 8974,
+      "sources": "all",
+      "learned_mean": 3.8765,
+      "prior_mean": 4.4572,
+      "ratio": 0.8697,
+      "plausibility_ok": true,
+      "cv_poisson_deviance": {
+        "0.00": 2.0492290390395627,
+        "0.25": 1.863673408991322,
+        "0.50": 1.7435362715714238,
+        "0.75": 1.6804319309741345,
+        "1.00": 1.6677448806603652
+      }
+    },
+    "corners": {
+      "alpha": 0.75,
+      "alpha_cv": 1.0,
+      "n_rows": 8974,
+      "sources": "all",
+      "learned_mean": 4.4133,
+      "prior_mean": 5.135,
+      "ratio": 0.8595,
+      "plausibility_ok": true,
+      "cv_poisson_deviance": {
+        "0.00": 2.1124188116814873,
+        "0.25": 1.9510818487706076,
+        "0.50": 1.8460538029946818,
+        "0.75": 1.7896999293354556,
+        "1.00": 1.7759175556509712
+      }
+    },
+    "fouls": {
+      "alpha": 0.75,
+      "alpha_cv": 0.75,
+      "n_rows": 8974,
+      "sources": "all",
+      "learned_mean": 11.9426,
+      "prior_mean": 13.072,
+      "ratio": 0.9136,
+      "plausibility_ok": true,
+      "cv_poisson_deviance": {
+        "0.00": 3.062348184888577,
+        "0.25": 2.902758404326421,
+        "0.50": 2.8021700382430765,
+        "0.75": 2.754461720321659,
+        "1.00": 2.754486320196656
+      }
+    },
+    "offsides": {
+      "alpha": 0.75,
+      "alpha_cv": 1.0,
+      "n_rows": 8346,
+      "sources": [
+        "apifootball"
+      ],
+      "learned_mean": 1.6101,
+      "prior_mean": 1.506,
+      "ratio": 1.0691,
+      "plausibility_ok": true,
+      "cv_poisson_deviance": {
+        "0.00": 1.5473127817697025,
+        "0.25": 1.5254598168383011,
+        "0.50": 1.5102768149841987,
+        "0.75": 1.5018910956731402,
+        "1.00": 1.5004971068538029
+      }
+    },
+    "yellows": {
+      "alpha": 0.75,
+      "alpha_cv": 1.0,
+      "n_rows": 8974,
+      "sources": "all",
+      "learned_mean": 1.7774,
+      "prior_mean": 2.0104,
+      "ratio": 0.8841,
+      "plausibility_ok": true,
+      "cv_poisson_deviance": {
+        "0.00": 1.2414318536454223,
+        "0.25": 1.1902432475067204,
+        "0.50": 1.1582428735803088,
+        "0.75": 1.1430356420405876,
+        "1.00": 1.1426656223458094
+      }
+    }
+  }
+}

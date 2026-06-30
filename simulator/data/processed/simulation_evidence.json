@@ -1,0 +1,3079 @@
+{
+  "contracts": {
+    "any_player_threshold:goals:>:1:reg": {
+      "contract_key": "any_player_threshold:goals:>:1:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 2974,
+          "observations": 2974,
+          "rate": 0.234701,
+          "yes_events": 698
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 34,
+          "rate": 0.382353,
+          "yes_events": 13
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.168899,
+          "delta_vs_always_50": -0.081101,
+          "matches": 2277,
+          "questions": 2277,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.019157,
+          "delta_vs_always_50": -0.230843,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "any_player_threshold:shots_on_target:>=:2:reg": {
+      "contract_key": "any_player_threshold:shots_on_target:>=:2:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 2954,
+          "observations": 2954,
+          "rate": 0.792485,
+          "yes_events": 2341
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 34,
+          "rate": 0.735294,
+          "yes_events": 25
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.165898,
+          "delta_vs_always_50": -0.084102,
+          "matches": 2267,
+          "questions": 2267,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        }
+      }
+    },
+    "both_teams_card:reg": {
+      "contract_key": "both_teams_card:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4173,
+          "observations": 4173,
+          "rate": 0.705248,
+          "yes_events": 2943
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 34,
+          "rate": 0.529412,
+          "yes_events": 18
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.209353,
+          "delta_vs_always_50": -0.040647,
+          "matches": 2936,
+          "questions": 2936,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        }
+      }
+    },
+    "btts:full:reg": {
+      "contract_key": "btts:full:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 1,
+          "observations": 1,
+          "rate": 0.0,
+          "yes_events": 0
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.142884,
+          "delta_vs_always_50": -0.107116,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "btts_and_total:reg": {
+      "contract_key": "btts_and_total:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4058,
+          "observations": 4058,
+          "rate": 0.320848,
+          "yes_events": 1302
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 34,
+          "rate": 0.411765,
+          "yes_events": 14
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.217923,
+          "delta_vs_always_50": -0.032077,
+          "matches": 2832,
+          "questions": 2832,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.243172,
+          "delta_vs_always_50": -0.006828,
+          "matches": 29,
+          "questions": 29
+        }
+      }
+    },
+    "card_window:cards:after_second_hydration:et:>=:1": {
+      "contract_key": "card_window:cards:after_second_hydration:et:>=:1",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4173,
+          "observations": 4173,
+          "rate": 0.731368,
+          "yes_events": 3052
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 34,
+          "rate": 0.617647,
+          "yes_events": 21
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.197008,
+          "delta_vs_always_50": -0.052992,
+          "matches": 2936,
+          "questions": 2936,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.627264,
+          "delta_vs_always_50": 0.377264,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "card_window:cards:first_half:reg:>=:1": {
+      "contract_key": "card_window:cards:first_half:reg:>=:1",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4173,
+          "observations": 4173,
+          "rate": 0.700695,
+          "yes_events": 2924
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 34,
+          "rate": 0.588235,
+          "yes_events": 20
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.212684,
+          "delta_vs_always_50": -0.037316,
+          "matches": 2936,
+          "questions": 2936,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        }
+      }
+    },
+    "compare:cards:full:match": {
+      "contract_key": "compare:cards:full:match",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 1,
+          "observations": 1,
+          "rate": 1.0,
+          "yes_events": 1
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.380689,
+          "delta_vs_always_50": 0.130689,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "compare:cards:full:reg": {
+      "contract_key": "compare:cards:full:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 19,
+          "observations": 19,
+          "rate": 0.631579,
+          "yes_events": 12
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.275009,
+          "delta_vs_always_50": 0.025009,
+          "matches": 19,
+          "questions": 19
+        }
+      }
+    },
+    "compare:corners:1H:reg": {
+      "contract_key": "compare:corners:1H:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 7,
+          "observations": 7,
+          "rate": 0.0,
+          "yes_events": 0
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.091192,
+          "delta_vs_always_50": -0.158808,
+          "matches": 7,
+          "questions": 7
+        }
+      }
+    },
+    "compare:corners:2H:reg": {
+      "contract_key": "compare:corners:2H:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 9,
+          "observations": 9,
+          "rate": 0.888889,
+          "yes_events": 8
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.308338,
+          "delta_vs_always_50": 0.058338,
+          "matches": 9,
+          "questions": 9
+        }
+      }
+    },
+    "compare:corners:full:reg": {
+      "contract_key": "compare:corners:full:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 11,
+          "observations": 11,
+          "rate": 0.272727,
+          "yes_events": 3
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.319707,
+          "delta_vs_always_50": 0.069707,
+          "matches": 11,
+          "questions": 11
+        }
+      }
+    },
+    "compare:fouls:full:match": {
+      "contract_key": "compare:fouls:full:match",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 2,
+          "observations": 2,
+          "rate": 0.5,
+          "yes_events": 1
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.210561,
+          "delta_vs_always_50": -0.039439,
+          "matches": 2,
+          "questions": 2
+        }
+      }
+    },
+    "compare:fouls:full:reg": {
+      "contract_key": "compare:fouls:full:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 55,
+          "observations": 55,
+          "rate": 0.527273,
+          "yes_events": 29
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.258683,
+          "delta_vs_always_50": 0.008683,
+          "matches": 55,
+          "questions": 55
+        }
+      }
+    },
+    "compare:goals:2H:reg": {
+      "contract_key": "compare:goals:2H:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 10,
+          "observations": 10,
+          "rate": 0.4,
+          "yes_events": 4
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.231096,
+          "delta_vs_always_50": -0.018904,
+          "matches": 10,
+          "questions": 10
+        }
+      }
+    },
+    "compare:shots_on_target:2H:reg": {
+      "contract_key": "compare:shots_on_target:2H:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 314,
+          "observations": 628,
+          "rate": 0.404459,
+          "yes_events": 254
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 53,
+          "observations": 53,
+          "rate": 0.377358,
+          "yes_events": 20
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.212974,
+          "delta_vs_always_50": -0.037026,
+          "matches": 250,
+          "questions": 500,
+          "test_folds": [
+            2021,
+            2022,
+            2024
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.208633,
+          "delta_vs_always_50": -0.041367,
+          "matches": 53,
+          "questions": 53
+        }
+      }
+    },
+    "compound:first_goal_and_other_team_scores_2h": {
+      "contract_key": "compound:first_goal_and_other_team_scores_2h",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4173,
+          "observations": 8346,
+          "rate": 0.174215,
+          "yes_events": 1454
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 68,
+          "rate": 0.220588,
+          "yes_events": 15
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.142834,
+          "delta_vs_always_50": -0.107166,
+          "matches": 2936,
+          "questions": 5872,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.163952,
+          "delta_vs_always_50": -0.086048,
+          "matches": 9,
+          "questions": 9
+        }
+      }
+    },
+    "count:cards:match:2H:>=:2:reg": {
+      "contract_key": "count:cards:match:2H:>=:2:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 5,
+          "observations": 5,
+          "rate": 0.2,
+          "yes_events": 1
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.28172,
+          "delta_vs_always_50": 0.03172,
+          "matches": 5,
+          "questions": 5
+        }
+      }
+    },
+    "count:cards:match:full:>=:4:reg": {
+      "contract_key": "count:cards:match:full:>=:4:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 16,
+          "observations": 16,
+          "rate": 0.375,
+          "yes_events": 6
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.230487,
+          "delta_vs_always_50": -0.019513,
+          "matches": 16,
+          "questions": 16
+        }
+      }
+    },
+    "count:cards:team:2H:>=:1:reg": {
+      "contract_key": "count:cards:team:2H:>=:1:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4173,
+          "observations": 8346,
+          "rate": 0.670381,
+          "yes_events": 5595
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 68,
+          "rate": 0.455882,
+          "yes_events": 31
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.221155,
+          "delta_vs_always_50": -0.028845,
+          "matches": 2936,
+          "questions": 5872,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.335155,
+          "delta_vs_always_50": 0.085155,
+          "matches": 6,
+          "questions": 6
+        }
+      }
+    },
+    "count:corners:match:2H:>=:5:reg": {
+      "contract_key": "count:corners:match:2H:>=:5:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 4,
+          "observations": 4,
+          "rate": 0.75,
+          "yes_events": 3
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.258382,
+          "delta_vs_always_50": 0.008382,
+          "matches": 4,
+          "questions": 4
+        }
+      }
+    },
+    "count:corners:match:full:>=:9:match": {
+      "contract_key": "count:corners:match:full:>=:9:match",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 1,
+          "observations": 1,
+          "rate": 0.0,
+          "yes_events": 0
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.337561,
+          "delta_vs_always_50": 0.087561,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "count:corners:match:full:>=:9:reg": {
+      "contract_key": "count:corners:match:full:>=:9:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 6,
+          "observations": 6,
+          "rate": 0.333333,
+          "yes_events": 2
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.260714,
+          "delta_vs_always_50": 0.010714,
+          "matches": 6,
+          "questions": 6
+        }
+      }
+    },
+    "count:corners:team:1H:>=:1:reg": {
+      "contract_key": "count:corners:team:1H:>=:1:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 1,
+          "observations": 1,
+          "rate": 1.0,
+          "yes_events": 1
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.013689,
+          "delta_vs_always_50": -0.236311,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "count:corners:team:full:>=:3:reg": {
+      "contract_key": "count:corners:team:full:>=:3:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 1,
+          "observations": 1,
+          "rate": 1.0,
+          "yes_events": 1
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.185761,
+          "delta_vs_always_50": -0.064239,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "count:corners:team:full:>=:5:reg": {
+      "contract_key": "count:corners:team:full:>=:5:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 11,
+          "observations": 11,
+          "rate": 0.363636,
+          "yes_events": 4
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.156173,
+          "delta_vs_always_50": -0.093827,
+          "matches": 11,
+          "questions": 11
+        }
+      }
+    },
+    "count:goals:team:full:>=:1:match": {
+      "contract_key": "count:goals:team:full:>=:1:match",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 1,
+          "observations": 1,
+          "rate": 1.0,
+          "yes_events": 1
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.2601,
+          "delta_vs_always_50": 0.0101,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "count:goals:team:full:>=:1:reg": {
+      "contract_key": "count:goals:team:full:>=:1:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 14,
+          "observations": 14,
+          "rate": 0.571429,
+          "yes_events": 8
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.272073,
+          "delta_vs_always_50": 0.022073,
+          "matches": 14,
+          "questions": 14
+        }
+      }
+    },
+    "count:goals:team:full:>=:3:reg": {
+      "contract_key": "count:goals:team:full:>=:3:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 1,
+          "observations": 1,
+          "rate": 1.0,
+          "yes_events": 1
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.369664,
+          "delta_vs_always_50": 0.119664,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "count:offsides:team:full:>=:2:match": {
+      "contract_key": "count:offsides:team:full:>=:2:match",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 1,
+          "observations": 1,
+          "rate": 0.0,
+          "yes_events": 0
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.131769,
+          "delta_vs_always_50": -0.118231,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "count:offsides:team:full:>=:2:reg": {
+      "contract_key": "count:offsides:team:full:>=:2:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 53,
+          "observations": 60,
+          "rate": 0.433333,
+          "yes_events": 26
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.241874,
+          "delta_vs_always_50": -0.008126,
+          "matches": 53,
+          "questions": 60
+        }
+      }
+    },
+    "count:shots_on_target:each_team:1H:>=:1:reg": {
+      "contract_key": "count:shots_on_target:each_team:1H:>=:1:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 314,
+          "observations": 314,
+          "rate": 0.592357,
+          "yes_events": 186
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 8,
+          "observations": 8,
+          "rate": 0.625,
+          "yes_events": 5
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.254287,
+          "delta_vs_always_50": 0.004287,
+          "matches": 250,
+          "questions": 250,
+          "test_folds": [
+            2021,
+            2022,
+            2024
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.192487,
+          "delta_vs_always_50": -0.057513,
+          "matches": 8,
+          "questions": 8
+        }
+      }
+    },
+    "count:shots_on_target:each_team:2H:>=:1:reg": {
+      "contract_key": "count:shots_on_target:each_team:2H:>=:1:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 314,
+          "observations": 314,
+          "rate": 0.707006,
+          "yes_events": 222
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 9,
+          "observations": 9,
+          "rate": 0.666667,
+          "yes_events": 6
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.209779,
+          "delta_vs_always_50": -0.040221,
+          "matches": 250,
+          "questions": 250,
+          "test_folds": [
+            2021,
+            2022,
+            2024
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.205808,
+          "delta_vs_always_50": -0.044192,
+          "matches": 9,
+          "questions": 9
+        }
+      }
+    },
+    "count:shots_on_target:match:2H:>=:4:reg": {
+      "contract_key": "count:shots_on_target:match:2H:>=:4:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 314,
+          "observations": 314,
+          "rate": 0.630573,
+          "yes_events": 198
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 12,
+          "observations": 12,
+          "rate": 0.75,
+          "yes_events": 9
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.245473,
+          "delta_vs_always_50": -0.004527,
+          "matches": 250,
+          "questions": 250,
+          "test_folds": [
+            2021,
+            2022,
+            2024
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.225497,
+          "delta_vs_always_50": -0.024503,
+          "matches": 12,
+          "questions": 12
+        }
+      }
+    },
+    "count:shots_on_target:match:full:>=:8:reg": {
+      "contract_key": "count:shots_on_target:match:full:>=:8:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4058,
+          "observations": 4058,
+          "rate": 0.530064,
+          "yes_events": 2151
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 34,
+          "rate": 0.529412,
+          "yes_events": 18
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.240451,
+          "delta_vs_always_50": -0.009549,
+          "matches": 2832,
+          "questions": 2832,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.175507,
+          "delta_vs_always_50": -0.074493,
+          "matches": 6,
+          "questions": 6
+        }
+      }
+    },
+    "count:shots_on_target:team:2H:>=:1:reg": {
+      "contract_key": "count:shots_on_target:team:2H:>=:1:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 1,
+          "observations": 1,
+          "rate": 1.0,
+          "yes_events": 1
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.1024,
+          "delta_vs_always_50": -0.1476,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "count:shots_on_target:team:2H:>=:2:reg": {
+      "contract_key": "count:shots_on_target:team:2H:>=:2:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 314,
+          "observations": 628,
+          "rate": 0.593949,
+          "yes_events": 373
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 6,
+          "observations": 6,
+          "rate": 0.666667,
+          "yes_events": 4
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.232343,
+          "delta_vs_always_50": -0.017657,
+          "matches": 250,
+          "questions": 500,
+          "test_folds": [
+            2021,
+            2022,
+            2024
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.30109,
+          "delta_vs_always_50": 0.05109,
+          "matches": 6,
+          "questions": 6
+        }
+      }
+    },
+    "count:shots_on_target:team:full:>=:2:reg": {
+      "contract_key": "count:shots_on_target:team:full:>=:2:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4058,
+          "observations": 8116,
+          "rate": 0.77415,
+          "yes_events": 6283
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 68,
+          "rate": 0.882353,
+          "yes_events": 60
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.170753,
+          "delta_vs_always_50": -0.079247,
+          "matches": 2832,
+          "questions": 5664,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.051529,
+          "delta_vs_always_50": -0.198471,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "count:shots_on_target:team:full:>=:3:match": {
+      "contract_key": "count:shots_on_target:team:full:>=:3:match",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 1,
+          "observations": 1,
+          "rate": 1.0,
+          "yes_events": 1
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.125316,
+          "delta_vs_always_50": -0.124684,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "count:shots_on_target:team:full:>=:3:reg": {
+      "contract_key": "count:shots_on_target:team:full:>=:3:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4058,
+          "observations": 8116,
+          "rate": 0.635288,
+          "yes_events": 5156
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 68,
+          "rate": 0.661765,
+          "yes_events": 45
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.20172,
+          "delta_vs_always_50": -0.04828,
+          "matches": 2832,
+          "questions": 5664,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.243383,
+          "delta_vs_always_50": -0.006617,
+          "matches": 7,
+          "questions": 7
+        }
+      }
+    },
+    "count:shots_on_target:team:full:>=:4:reg": {
+      "contract_key": "count:shots_on_target:team:full:>=:4:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4058,
+          "observations": 8116,
+          "rate": 0.481395,
+          "yes_events": 3907
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 68,
+          "rate": 0.514706,
+          "yes_events": 35
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.205097,
+          "delta_vs_always_50": -0.044903,
+          "matches": 2832,
+          "questions": 5664,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.142334,
+          "delta_vs_always_50": -0.107666,
+          "matches": 6,
+          "questions": 7
+        }
+      }
+    },
+    "count:shots_on_target:team:full:>=:5:match": {
+      "contract_key": "count:shots_on_target:team:full:>=:5:match",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 1,
+          "observations": 1,
+          "rate": 0.0,
+          "yes_events": 0
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.265225,
+          "delta_vs_always_50": 0.015225,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "count:shots_on_target:team:full:>=:5:reg": {
+      "contract_key": "count:shots_on_target:team:full:>=:5:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4058,
+          "observations": 8116,
+          "rate": 0.353376,
+          "yes_events": 2868
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 68,
+          "rate": 0.338235,
+          "yes_events": 23
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.184016,
+          "delta_vs_always_50": -0.065984,
+          "matches": 2832,
+          "questions": 5664,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.231361,
+          "delta_vs_always_50": -0.018639,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "count:shots_on_target:team:full:>=:6:match": {
+      "contract_key": "count:shots_on_target:team:full:>=:6:match",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 1,
+          "observations": 1,
+          "rate": 0.0,
+          "yes_events": 0
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.2025,
+          "delta_vs_always_50": -0.0475,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "count:shots_on_target:team:full:>=:6:reg": {
+      "contract_key": "count:shots_on_target:team:full:>=:6:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4058,
+          "observations": 8116,
+          "rate": 0.253696,
+          "yes_events": 2059
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 68,
+          "rate": 0.264706,
+          "yes_events": 18
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.151587,
+          "delta_vs_always_50": -0.098413,
+          "matches": 2832,
+          "questions": 5664,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.198359,
+          "delta_vs_always_50": -0.051641,
+          "matches": 5,
+          "questions": 5
+        }
+      }
+    },
+    "count:shots_on_target:team:full:>=:7:reg": {
+      "contract_key": "count:shots_on_target:team:full:>=:7:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4058,
+          "observations": 8116,
+          "rate": 0.174347,
+          "yes_events": 1415
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 68,
+          "rate": 0.205882,
+          "yes_events": 14
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.117151,
+          "delta_vs_always_50": -0.132849,
+          "matches": 2832,
+          "questions": 5664,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        }
+      }
+    },
+    "count:shots_on_target:team:full:>=:8:reg": {
+      "contract_key": "count:shots_on_target:team:full:>=:8:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4058,
+          "observations": 8116,
+          "rate": 0.118038,
+          "yes_events": 958
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 68,
+          "rate": 0.117647,
+          "yes_events": 8
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.085845,
+          "delta_vs_always_50": -0.164155,
+          "matches": 2832,
+          "questions": 5664,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        }
+      }
+    },
+    "first_goal:2H:team": {
+      "contract_key": "first_goal:2H:team",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4173,
+          "observations": 8346,
+          "rate": 0.382459,
+          "yes_events": 3192
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 68,
+          "rate": 0.382353,
+          "yes_events": 26
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.213127,
+          "delta_vs_always_50": -0.036873,
+          "matches": 2936,
+          "questions": 5872,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.19659,
+          "delta_vs_always_50": -0.05341,
+          "matches": 5,
+          "questions": 5
+        }
+      }
+    },
+    "first_goal:full:team": {
+      "contract_key": "first_goal:full:team",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4173,
+          "observations": 8346,
+          "rate": 0.457824,
+          "yes_events": 3821
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 68,
+          "rate": 0.485294,
+          "yes_events": 33
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.211316,
+          "delta_vs_always_50": -0.038684,
+          "matches": 2936,
+          "questions": 5872,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        }
+      }
+    },
+    "goal_window:after_second_hydration:reg": {
+      "contract_key": "goal_window:after_second_hydration:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4173,
+          "observations": 4173,
+          "rate": 0.569854,
+          "yes_events": 2378
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 34,
+          "rate": 0.647059,
+          "yes_events": 22
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.244425,
+          "delta_vs_always_50": -0.005575,
+          "matches": 2652,
+          "questions": 2652,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        }
+      }
+    },
+    "goal_window:before_first_hydration:reg": {
+      "contract_key": "goal_window:before_first_hydration:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4173,
+          "observations": 4173,
+          "rate": 0.418404,
+          "yes_events": 1746
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 34,
+          "rate": 0.558824,
+          "yes_events": 19
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.240947,
+          "delta_vs_always_50": -0.009053,
+          "matches": 2936,
+          "questions": 2936,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.107584,
+          "delta_vs_always_50": -0.142416,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "goal_window:stoppage:1H": {
+      "contract_key": "goal_window:stoppage:1H",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4173,
+          "observations": 4173,
+          "rate": 0.044812,
+          "yes_events": 187
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 34,
+          "rate": 0.0,
+          "yes_events": 0
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.049695,
+          "delta_vs_always_50": -0.200305,
+          "matches": 2936,
+          "questions": 2936,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        }
+      }
+    },
+    "goal_window:stoppage:2H": {
+      "contract_key": "goal_window:stoppage:2H",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4173,
+          "observations": 4173,
+          "rate": 0.1052,
+          "yes_events": 439
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 34,
+          "rate": 0.029412,
+          "yes_events": 1
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.093244,
+          "delta_vs_always_50": -0.156756,
+          "matches": 2936,
+          "questions": 2936,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        }
+      }
+    },
+    "half_conditional:halftime_lead": {
+      "contract_key": "half_conditional:halftime_lead",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4487,
+          "observations": 8974,
+          "rate": 0.299978,
+          "yes_events": 2692
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 68,
+          "rate": 0.323529,
+          "yes_events": 22
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.18273,
+          "delta_vs_always_50": -0.06727,
+          "matches": 3186,
+          "questions": 6372,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.175067,
+          "delta_vs_always_50": -0.074933,
+          "matches": 7,
+          "questions": 7
+        }
+      }
+    },
+    "half_conditional:halftime_tied": {
+      "contract_key": "half_conditional:halftime_tied",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 13,
+          "observations": 13,
+          "rate": 0.230769,
+          "yes_events": 3
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.212757,
+          "delta_vs_always_50": -0.037243,
+          "matches": 13,
+          "questions": 13
+        }
+      }
+    },
+    "half_conditional:more_goals_2h": {
+      "contract_key": "half_conditional:more_goals_2h",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4487,
+          "observations": 4487,
+          "rate": 0.431692,
+          "yes_events": 1937
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 34,
+          "rate": 0.352941,
+          "yes_events": 12
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.244882,
+          "delta_vs_always_50": -0.005118,
+          "matches": 3186,
+          "questions": 3186,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.246601,
+          "delta_vs_always_50": -0.003399,
+          "matches": 11,
+          "questions": 11
+        }
+      }
+    },
+    "half_conditional:team_goal_in_half": {
+      "contract_key": "half_conditional:team_goal_in_half",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 33,
+          "observations": 37,
+          "rate": 0.648649,
+          "yes_events": 24
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.214045,
+          "delta_vs_always_50": -0.035955,
+          "matches": 33,
+          "questions": 37
+        }
+      }
+    },
+    "match_result:draw:reg": {
+      "contract_key": "match_result:draw:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 1,
+          "observations": 1,
+          "rate": 0.0,
+          "yes_events": 0
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.085849,
+          "delta_vs_always_50": -0.164151,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "match_result:team:advance": {
+      "contract_key": "match_result:team:advance",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 1,
+          "observations": 1,
+          "rate": 0.0,
+          "yes_events": 0
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.173889,
+          "delta_vs_always_50": -0.076111,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "match_result:team:reg": {
+      "contract_key": "match_result:team:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 58,
+          "observations": 58,
+          "rate": 0.568966,
+          "yes_events": 33
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.236608,
+          "delta_vs_always_50": -0.013392,
+          "matches": 58,
+          "questions": 58
+        }
+      }
+    },
+    "penalty_awarded:reg": {
+      "contract_key": "penalty_awarded:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4173,
+          "observations": 4173,
+          "rate": 0.222861,
+          "yes_events": 930
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 34,
+          "rate": 0.176471,
+          "yes_events": 6
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.1746,
+          "delta_vs_always_50": -0.0754,
+          "matches": 2652,
+          "questions": 2652,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.134318,
+          "delta_vs_always_50": -0.115682,
+          "matches": 7,
+          "questions": 7
+        }
+      }
+    },
+    "penalty_or_red:match": {
+      "contract_key": "penalty_or_red:match",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 1,
+          "observations": 1,
+          "rate": 1.0,
+          "yes_events": 1
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.461041,
+          "delta_vs_always_50": 0.211041,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "penalty_or_red:reg": {
+      "contract_key": "penalty_or_red:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4173,
+          "observations": 4173,
+          "rate": 0.313923,
+          "yes_events": 1310
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 34,
+          "rate": 0.264706,
+          "yes_events": 9
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.216382,
+          "delta_vs_always_50": -0.033618,
+          "matches": 2652,
+          "questions": 2652,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.18634,
+          "delta_vs_always_50": -0.06366,
+          "matches": 31,
+          "questions": 31
+        }
+      }
+    },
+    "player_score:full:reg:player": {
+      "contract_key": "player_score:full:reg:player",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 13,
+          "observations": 13,
+          "rate": 0.0,
+          "yes_events": 0
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.141296,
+          "delta_vs_always_50": -0.108704,
+          "matches": 13,
+          "questions": 13
+        }
+      }
+    },
+    "player_score_or_assist:full:match:player": {
+      "contract_key": "player_score_or_assist:full:match:player",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 1,
+          "observations": 1,
+          "rate": 1.0,
+          "yes_events": 1
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.634342,
+          "delta_vs_always_50": 0.384342,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "player_score_or_assist:full:reg:player": {
+      "contract_key": "player_score_or_assist:full:reg:player",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 21,
+          "observations": 21,
+          "rate": 0.190476,
+          "yes_events": 4
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.194572,
+          "delta_vs_always_50": -0.055428,
+          "matches": 21,
+          "questions": 21
+        }
+      }
+    },
+    "player_stat:shots_on_target:2H:>=:1:reg:player": {
+      "contract_key": "player_stat:shots_on_target:2H:>=:1:reg:player",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 14,
+          "observations": 14,
+          "rate": 0.285714,
+          "yes_events": 4
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.198662,
+          "delta_vs_always_50": -0.051338,
+          "matches": 14,
+          "questions": 14
+        }
+      }
+    },
+    "player_stat:shots_on_target:full:>=:1:match:player": {
+      "contract_key": "player_stat:shots_on_target:full:>=:1:match:player",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 1,
+          "observations": 1,
+          "rate": 1.0,
+          "yes_events": 1
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.107197,
+          "delta_vs_always_50": -0.142803,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "player_stat:shots_on_target:full:>=:1:reg:player": {
+      "contract_key": "player_stat:shots_on_target:full:>=:1:reg:player",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 49,
+          "observations": 60,
+          "rate": 0.266667,
+          "yes_events": 16
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.222302,
+          "delta_vs_always_50": -0.027698,
+          "matches": 49,
+          "questions": 60
+        }
+      }
+    },
+    "red_card:match": {
+      "contract_key": "red_card:match",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 343,
+          "observations": 343,
+          "rate": 0.151603,
+          "yes_events": 52
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.137126,
+          "delta_vs_always_50": -0.112874,
+          "matches": 284,
+          "questions": 284,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        }
+      }
+    },
+    "stat_window:corners:before_first_hydration:reg:>=:2": {
+      "contract_key": "stat_window:corners:before_first_hydration:reg:>=:2",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 314,
+          "observations": 314,
+          "rate": 0.525478,
+          "yes_events": 165
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.252083,
+          "delta_vs_always_50": 0.002083,
+          "matches": 250,
+          "questions": 250,
+          "test_folds": [
+            2021,
+            2022,
+            2024
+          ]
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        }
+      }
+    },
+    "stat_window:offsides:before_first_hydration:reg:>=:1": {
+      "contract_key": "stat_window:offsides:before_first_hydration:reg:>=:1",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 314,
+          "observations": 314,
+          "rate": 0.493631,
+          "yes_events": 155
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 1,
+          "observations": 1,
+          "rate": 0.0,
+          "yes_events": 0
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.251761,
+          "delta_vs_always_50": 0.001761,
+          "matches": 250,
+          "questions": 250,
+          "test_folds": [
+            2021,
+            2022,
+            2024
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.238144,
+          "delta_vs_always_50": -0.011856,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "substitute_score:reg": {
+      "contract_key": "substitute_score:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 2974,
+          "observations": 2974,
+          "rate": 0.337256,
+          "yes_events": 1003
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 34,
+          "rate": 0.441176,
+          "yes_events": 15
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.24472,
+          "delta_vs_always_50": -0.00528,
+          "matches": 2277,
+          "questions": 2277,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.072025,
+          "delta_vs_always_50": -0.177975,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "substitution_before_halftime:reg": {
+      "contract_key": "substitution_before_halftime:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4173,
+          "observations": 4173,
+          "rate": 0.196981,
+          "yes_events": 822
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 34,
+          "rate": 0.058824,
+          "yes_events": 2
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.155229,
+          "delta_vs_always_50": -0.094771,
+          "matches": 2936,
+          "questions": 2936,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        }
+      }
+    },
+    "total_goals:2H:>=:2:reg": {
+      "contract_key": "total_goals:2H:>=:2:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 9,
+          "observations": 9,
+          "rate": 0.333333,
+          "yes_events": 3
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.214161,
+          "delta_vs_always_50": -0.035839,
+          "matches": 9,
+          "questions": 9
+        }
+      }
+    },
+    "total_goals:full:<=:2:match": {
+      "contract_key": "total_goals:full:<=:2:match",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 1,
+          "observations": 1,
+          "rate": 0.0,
+          "yes_events": 0
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.273529,
+          "delta_vs_always_50": 0.023529,
+          "matches": 1,
+          "questions": 1
+        }
+      }
+    },
+    "total_goals:full:<=:2:reg": {
+      "contract_key": "total_goals:full:<=:2:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 17,
+          "observations": 17,
+          "rate": 0.529412,
+          "yes_events": 9
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.236646,
+          "delta_vs_always_50": -0.013354,
+          "matches": 17,
+          "questions": 17
+        }
+      }
+    },
+    "total_goals:full:>=:3:reg": {
+      "contract_key": "total_goals:full:>=:3:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": false,
+          "reason": "No exact historical labels for this contract."
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "settled SportPredict question instances",
+          "matches": 10,
+          "observations": 10,
+          "rate": 0.7,
+          "yes_events": 7
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.283071,
+          "delta_vs_always_50": 0.033071,
+          "matches": 10,
+          "questions": 10
+        }
+      }
+    },
+    "total_shots_threshold:shots_total:>=:20:reg": {
+      "contract_key": "total_shots_threshold:shots_total:>=:20:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 2974,
+          "observations": 2974,
+          "rate": 0.413921,
+          "yes_events": 1231
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 34,
+          "rate": 0.323529,
+          "yes_events": 11
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.243081,
+          "delta_vs_always_50": -0.006919,
+          "matches": 2277,
+          "questions": 2277,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        }
+      }
+    },
+    "total_shots_threshold:shots_total:>=:22:reg": {
+      "contract_key": "total_shots_threshold:shots_total:>=:22:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 2974,
+          "observations": 2974,
+          "rate": 0.289173,
+          "yes_events": 860
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 34,
+          "rate": 0.264706,
+          "yes_events": 9
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.197715,
+          "delta_vs_always_50": -0.052285,
+          "matches": 2277,
+          "questions": 2277,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        }
+      }
+    },
+    "win_margin:reg:2": {
+      "contract_key": "win_margin:reg:2",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4487,
+          "observations": 8974,
+          "rate": 0.211834,
+          "yes_events": 1901
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 68,
+          "rate": 0.235294,
+          "yes_events": 16
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "always_50_brier": 0.25,
+          "available": true,
+          "brier": 0.13764,
+          "delta_vs_always_50": -0.11236,
+          "matches": 3186,
+          "questions": 6372,
+          "test_folds": [
+            2021,
+            2022,
+            2023,
+            2024,
+            2025,
+            2026
+          ]
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        }
+      }
+    }
+  },
+  "methodology": {
+    "all_history_performance": "Rolling-origin calendar folds; every test match is later than all model-fitting data.",
+    "empirical_rates": "Observed YES count divided by exact labelable instances; WC2026 prefers every labelable match in the shipped tournament data and otherwise uses settled questions.",
+    "wc2026_performance": "Settled SportPredict questions priced by artifacts fitted only through 2025."
+  },
+  "schema_version": 1
+}

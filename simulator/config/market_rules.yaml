@@ -1,0 +1,30 @@
+# Per-market resolution rules. The resolvers read these so behaviour is config-driven,
+# not hard-coded. Defaults follow the assumptions documented in the plan.
+
+# "more than" comparison markets (A_stat vs B_stat)
+team_vs_team_more:
+  # How a tie (A_stat == B_stat) resolves for a "more than" question.
+  #   strict_no  -> ties count as NO  (P = P(A > B))
+  #   split      -> ties split 50/50  (P = P(A > B) + 0.5*P(A == B))
+  tie_rule: strict_no
+
+# Whether full-match count markets include extra-time events for knockout matches.
+# (Per user decision: knockout counts include extra time; shootout goals never count.)
+include_extra_time_in_counts: true
+
+# Half-specific markets ("second-half corners", "second-half shots on target") refer to the
+# regulation second half (minutes 46-90), NOT extra time.
+half_markets_use_regulation_only: true
+
+# Match result (1X2): knockout results resolve on the official progressing side
+# (after extra time + penalty shootout). Group-stage results allow a draw.
+# NOTE: documentation only — the behaviour is implemented in model/goals.py
+# (resolve_extra_time_and_result) and selected per question by the parser's
+# "regulation" flag; this key is not read at runtime.
+match_result:
+  knockout_resolves_after_shootout: true
+
+# Player score-or-assist: a goal counts for the scorer; an assist counts for the assister.
+# Own goals are never credited to a player for this market.
+player_score_or_assist:
+  count_own_goals: false
