@@ -125,7 +125,7 @@ class WC2026EvidenceTests(unittest.TestCase):
         self.assertEqual(rate["matches"], 1)
         self.assertEqual(rate["observations"], 2)
         self.assertEqual(rate["yes_events"], 1)
-        self.assertFalse(rate["complete"])
+        self.assertTrue(rate["complete"])
         self.assertEqual(rate["population"], "all_labelable_matches")
 
 

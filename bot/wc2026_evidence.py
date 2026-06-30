@@ -145,7 +145,9 @@ def _scope_rate(key: str, eligible: list[dict], covered: list[dict], *, stage, c
     covered_scope = [row for row in covered if stage is None or row["stage"] == stage]
     labels = []
     labeled_matches = 0
+    source_complete = True
     for row in covered_scope:
+        source_complete = source_complete and _source_available(key, row["facts"])
         values = _labels(key, row["facts"])
         if values is None:
             continue
@@ -157,7 +159,7 @@ def _scope_rate(key: str, eligible: list[dict], covered: list[dict], *, stage, c
             "reason": "No exact historical labels before the target kickoff.",
             "eligible_matches": len(eligible_scope),
             "covered_matches": labeled_matches,
-            "complete": len(eligible_scope) == labeled_matches,
+            "complete": source_complete,
             "target_kickoff": cutoff.isoformat(),
         }
     yes = sum(bool(value) for value in labels)
@@ -173,7 +175,7 @@ def _scope_rate(key: str, eligible: list[dict], covered: list[dict], *, stage, c
         "rate": round(yes / len(labels), 6),
         "eligible_matches": len(eligible_scope),
         "covered_matches": labeled_matches,
-        "complete": len(eligible_scope) == labeled_matches,
+        "complete": source_complete,
         "data_through": covered_scope[-1]["kickoff"] if covered_scope else None,
         "target_kickoff": cutoff.isoformat(),
     }
@@ -214,6 +216,14 @@ def _needs_statistics(key: str) -> bool:
 
 def _needs_players(key: str) -> bool:
     return key.startswith(("any_player_threshold:", "substitute_score:"))
+
+
+def _source_available(key: str, facts: dict) -> bool:
+    if _needs_statistics(key):
+        return bool(facts.get("statistics_available"))
+    if _needs_players(key):
+        return bool(facts.get("players_available"))
+    return bool(facts.get("events_available"))
 
 
 def _compare_value(value: float, comparator: str, threshold: float) -> bool:
@@ -509,6 +519,8 @@ def _fixture_facts(
     facts["events_available"] = events is not None
     facts["team_statistics"] = _team_statistics(statistics, team_ids)
     facts["players"] = _player_facts(players)
+    facts["statistics_available"] = statistics is not None
+    facts["players_available"] = players is not None
     facts["stats_include_extra_time"] = _fixture_status(fixture) in {"AET", "PEN"}
     winners = [
         bool((teams.get(side) or {}).get("winner"))
