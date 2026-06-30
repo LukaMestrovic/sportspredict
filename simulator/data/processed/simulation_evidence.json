@@ -1861,6 +1861,43 @@
         }
       }
     },
+    "goal_window:after_second_hydration:et": {
+      "contract_key": "goal_window:after_second_hydration:et",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 4173,
+          "observations": 4173,
+          "rate": 0.57225,
+          "yes_events": 2387
+        },
+        "knockout_history": {
+          "available": true,
+          "matches": 343,
+          "observations": 343,
+          "rate": 0.580175,
+          "yes_events": 199
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "Runtime T-30 refresh supplies the target-time WC2026 scope."
+        },
+        "wc2026_knockout": {
+          "available": false,
+          "reason": "Runtime T-30 refresh supplies the target-time WC2026 knockout scope."
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No leakage-safe out-of-sample scores for this exact extra-time contract."
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        }
+      }
+    },
     "goal_window:after_second_hydration:reg": {
       "contract_key": "goal_window:after_second_hydration:reg",
       "empirical_rate": {
@@ -1870,6 +1907,13 @@
           "observations": 4173,
           "rate": 0.569854,
           "yes_events": 2378
+        },
+        "knockout_history": {
+          "available": true,
+          "matches": 343,
+          "observations": 343,
+          "rate": 0.553936,
+          "yes_events": 190
         },
         "wc2026": {
           "available": true,
@@ -2610,6 +2654,13 @@
       "empirical_rate": {
         "all_history": {
           "available": true,
+          "matches": 4173,
+          "observations": 4173,
+          "rate": 0.130601,
+          "yes_events": 545
+        },
+        "knockout_history": {
+          "available": true,
           "matches": 343,
           "observations": 343,
           "rate": 0.151603,
@@ -2622,6 +2673,10 @@
       },
       "model_performance": {
         "all_history": {
+          "available": false,
+          "reason": "Existing rolling-origin rows cover knockout matches only."
+        },
+        "knockout_history": {
           "always_50_brier": 0.25,
           "available": true,
           "brier": 0.137126,

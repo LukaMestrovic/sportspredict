@@ -118,7 +118,7 @@ def run_match(
             res.match_context = match_context.build(af, fixture, home, away, lineups)
         except Exception:
             res.match_context = {}
-        bundle = evidence.build_match_evidence(res, ctx, lineups, minutes_before)
+        bundle = evidence.build_match_evidence(res, ctx, lineups, minutes_before, af=af)
         path = evidence.write_evidence(bundle)
         res.evidence_json = bundle
         res.evidence_path = str(path)

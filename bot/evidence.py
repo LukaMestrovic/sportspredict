@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
-from . import config, simulator
+from . import config, simulator, wc2026_evidence
 from . import oddsapi as oapi
 from . import predictor as afpred
 from .matcher import match_intent, match_intent_oddsapi
@@ -28,6 +28,7 @@ def build_match_evidence(
     ctx: PriceCtx,
     lineups: list[dict] | None,
     minutes_before: float | None,
+    af=None,
 ) -> dict:
     """Return the full JSON-serialisable evidence bundle for one match."""
     direct_by_market: dict[str, list[dict]] = {}
@@ -53,6 +54,22 @@ def build_match_evidence(
         stage=_fixture_stage(result),
         lineups=lineups,
     )
+    wc2026_refresh = None
+    if simulator_by_market and af is not None:
+        try:
+            contract_keys = {
+                estimate.get("contract_key") for estimate in simulator_by_market.values()
+                if estimate.get("contract_key")
+            }
+            wc2026_refresh = wc2026_evidence.refresh(
+                af, result.sp_match.get("opening_time"), contract_keys,
+            )
+            wc2026_evidence.overlay(simulator_by_market, wc2026_refresh)
+        except Exception as exc:
+            wc2026_refresh = {
+                "complete": False,
+                "error": f"WC2026 evidence refresh failed: {exc}",
+            }
 
     context = getattr(result, "match_context", None) or {}
     player_index = context.get("player_index") or {}
@@ -103,6 +120,7 @@ def build_match_evidence(
         ],
         "question_evidence": question_evidence,
         "provider_odds_summary": _provider_odds_summary(_dedupe_observations(all_obs)),
+        "wc2026_evidence_refresh": wc2026_refresh,
         "llm_research_requirements": [
             "Find any additional market prices or odds available online, including "
             "Kalshi, Polymarket, Pinnacle, Betfair Exchange, and betting platforms.",

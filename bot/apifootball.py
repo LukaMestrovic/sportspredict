@@ -45,6 +45,7 @@ class APIFootball:
                 lambda: self._get("/fixtures", league=config.WC_LEAGUE_ID,
                                   season=config.WC_SEASON)["response"],
                 ttl=3600,
+                refresh=self.refresh_odds,
             )
         return self._fixtures_cache
 
@@ -115,6 +116,14 @@ class APIFootball:
         return cache.get_or_fetch(
             "af_statistics", str(fixture_id),
             lambda: self._get("/fixtures/statistics", fixture=fixture_id)["response"],
+            ttl=0,
+        )
+
+    def settled_events(self, fixture_id: int) -> list[dict]:
+        """Final timestamped events, cached forever after a fixture is final."""
+        return cache.get_or_fetch(
+            "af_settled_events", str(fixture_id),
+            lambda: self._get("/fixtures/events", fixture=fixture_id)["response"],
             ttl=0,
         )
 

@@ -185,6 +185,16 @@ def _explanation(market: str, params: dict, notes: str | None) -> str:
 
 
 def _adjustment_guidance(market: str, params: dict, question: str) -> str:
+    """Empirical calibration rule plus deterministic market-specific directions."""
+    calibration = (
+        "Calibrate the simulator against the overall, current-WC and knockout-stage "
+        "empirical rates that are available, weighting them by sample size and freshness "
+        "rather than averaging them; explain any material departure."
+    )
+    return f"{calibration} {_market_adjustment_guidance(market, params, question)}"
+
+
+def _market_adjustment_guidance(market: str, params: dict, question: str) -> str:
     """Deterministic pre-match directions for the web-grounded LLM layer."""
     lower = question.lower()
     if market == CARD_WINDOW and params.get("window") == "after_second_hydration":
@@ -210,9 +220,7 @@ def _adjustment_guidance(market: str, params: dict, question: str) -> str:
             if params.get("include_et"):
                 return (
                     "This contract includes regulation after minute 67 plus any extra time. "
-                    "Calibrate the simulator against the overall, current-WC and knockout-stage "
-                    "empirical rates, weighted by sample size rather than averaged. Explicitly "
-                    "use the de-vigged regulation-draw probability: a higher draw probability "
+                    "Explicitly use the de-vigged regulation-draw probability: a higher draw probability "
                     "raises extra-time exposure and therefore the chance of a later goal. Also "
                     "raise for higher goal totals, attacking benches and likely late chasing; "
                     "lower for low totals and defensive benches. Do not double-count draw odds "
@@ -254,8 +262,7 @@ def _adjustment_guidance(market: str, params: dict, question: str) -> str:
         )
     if market in {RED_CARD, BOTH_TEAMS_CARD} or "card" in market or "card" in lower:
         return (
-            "Calibrate against the overall, current-WC and knockout-stage empirical rates, weighted "
-            "by sample size rather than averaged. Raise for direct red-card evidence, a referee with "
+            "Raise for direct red-card evidence, a referee with "
             "high red-card incidence, team red-card/foul profiles and genuine knockout tension; lower "
             "for a lenient referee and low-contact matchup. For match-scope knockout contracts, higher "
             "regulation-draw odds modestly raise extra-time exposure. Do not treat ordinary yellow-card "

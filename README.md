@@ -129,9 +129,13 @@ tail -f logs/cron.log
 
 The dispatcher is normally a fast no-op. At T−30 it refreshes provider odds
 once, fetches current lineups, forces a fresh cached pricing/web-search call for
-that submission window, submits through the ledger, and writes its audit. A
-file lock prevents overlapping ticks and a per-match marker prevents duplicate
-fires.
+that submission window, and refreshes exact WC2026 empirical rates from every
+final API-Football fixture strictly before the target kickoff. Final event
+responses and the compact tournament snapshot live in bind-mounted `cache/`, so
+this stays current across short-lived containers without rebuilding the frozen
+image after every match. It then submits through the ledger and writes its
+audit. A file lock prevents overlapping ticks and a per-match marker prevents
+duplicate fires.
 
 The image is immutable between deploys. Re-run `scripts/deploy.sh` to ship new
 code. `scripts/run.sh` bind-mounts this checkout's `cache/` and `logs/`, so paid
@@ -182,6 +186,9 @@ scores, web search, or Brier values.
 - The Odds API cache key includes event, market, and regions because billing is
   `markets × regions`.
 - API-Football fixtures and odds have TTLs; settled statistics are permanent.
+- Final API-Football event timelines are fetched once and retained permanently;
+  each T−30 fire rebuilds `cache/wc2026_empirical.json` with a strict target-time
+  cutoff and separate all-stage/knockout coverage counts.
 - The T−30 job deliberately refreshes odds once, with identical requests
   deduplicated inside the run.
 - Parser and compound fallback calls are cached by prompt version, model, and

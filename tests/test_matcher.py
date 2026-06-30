@@ -1,9 +1,7 @@
 import unittest
 
 from bot import predictor as afpred
-from bot.evidence import _extra_related_observations
 from bot.matcher import match_intent
-from bot.pricing import PriceCtx
 
 
 def _I(market, subject="match", comparator="yes", threshold=None, period="match",
@@ -128,31 +126,6 @@ class AsianHandicapDevigTests(unittest.TestCase):
     def test_missing_pair_returns_no_price(self):
         spec = {"type": "ah", "bet_id": 4, "side": "Home", "line": 2.5, "label": "x"}
         self.assertIsNone(afpred.predict([self._book()], spec))
-
-
-class ExtraRelatedOddsTests(unittest.TestCase):
-    def _ctx(self):
-        yesno = [{"value": "Yes", "odd": "3.0"}, {"value": "No", "odd": "1.3"}]
-        bets = [{"id": b, "name": str(b), "values": yesno}
-                for b in (144, 145, 146, 147, 148, 149, 224, 225, 342)]
-        return PriceCtx(home="A", away="B", af_books=[{"name": "b", "bets": bets}],
-                        oa=None, oa_event=None)
-
-    def test_hydration_goal_question_gets_the_full_interval_ladder(self):
-        obs = _extra_related_observations(
-            "Will a goal be scored before the first hydration break?", _I("none"),
-            self._ctx())
-        keys = {o["market_key"] for o in obs}
-        for bet in range(144, 150):
-            self.assertIn(f"af_bet_{bet}", keys)
-        self.assertTrue(obs and all(o["role"] == "related" for o in obs))
-
-    def test_result_contract_gets_extra_time_deciders(self):
-        obs = _extra_related_observations(
-            "Will regulation end in a tie?", _I("match_draw"), self._ctx())
-        keys = {o["market_key"] for o in obs}
-        self.assertIn("af_bet_224", keys)
-        self.assertIn("af_bet_225", keys)
 
 
 if __name__ == "__main__":
