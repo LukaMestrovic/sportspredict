@@ -86,7 +86,7 @@ $begin
 * * * * * $ROOT/scripts/run.sh >> $ROOT/logs/cron.log 2>&1
 # Every five minutes: settle explicit SportPredict outcomes and rebuild the
 # leakage-safe live WC2026 simulator-family benchmark from frozen evidence.
-*/5 * * * * $ROOT/scripts/run.sh --settle >> $ROOT/logs/settle.log 2>&1
+2-59/5 * * * * $ROOT/scripts/run.sh --settle >> $ROOT/logs/settle.log 2>&1
 $end
 EOF
 )"
