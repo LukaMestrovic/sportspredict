@@ -37,7 +37,12 @@ def build_match_evidence(
         mid = market["id"]
         intent = result.intents.get(mid)
         direct, spec = _direct_odds(intent, ctx)
-        direct_by_market[mid] = _tag_observations(direct, "direct", "exact mapped contract")
+        why = (
+            "regulation first-team-to-score proxy for the full-match contract; "
+            "extra-time-only difference accepted as immaterial"
+            if (spec or {}).get("scope_proxy") else "exact mapped contract"
+        )
+        direct_by_market[mid] = _tag_observations(direct, "direct", why)
         spec_by_market[mid] = spec
 
     # Direct odds are computed first so the simulator only prices the markets
@@ -91,9 +96,9 @@ def build_match_evidence(
                 [simulator_by_market[mid]] if not direct and mid in simulator_by_market else []
             ),
             "audit_requirement": (
-                "The raw LLM response must explain which exact provided odds or "
-                "fallback simulator context, online odds, and non-odds factors "
-                "were used or downweighted."
+                "The raw LLM response must explain which exact provided odds, "
+                "explicitly labeled regulation proxy, or fallback simulator context, "
+                "online odds, and non-odds factors were used or downweighted."
             ),
         }
         # For a player-specific market, attach THAT player's exact form row so the

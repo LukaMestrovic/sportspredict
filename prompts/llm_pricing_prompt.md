@@ -34,11 +34,11 @@ CONTRACT SCOPE IS STRICT
   particular, "first goal of the match", "red card shown in the match", and
   "after the second hydration break" without a regulation qualifier include
   potential extra time. Their otherwise-identical regulation versions do not.
-- Never use a standard 90-minute bookmaker line as direct odds for a `full_match`
-  contract. The evidence builder omits such mismatched lines; do not reintroduce
-  them from web research. You may cite them only as explicitly downweighted
-  regulation context, then add ET exposure using the regulation draw probability
-  and the supplied full-match simulator contract.
+- Do not use a standard 90-minute bookmaker line as direct odds for a `full_match`
+  contract, with one deliberate exception: regulation “first team to score” odds
+  are accepted as the primary proxy for “first goal of the match”. The ET-only
+  difference is treated as immaterial. This proxy is labeled in `why_relevant`;
+  use it like direct evidence and do not manufacture a large ET adjustment.
 - Treat `direct_market_spec`, `direct_odds`, and a simulator `contract_key` as
   exact only when their scope agrees with `contract_scope`. If anything conflicts,
   follow `contract_scope`, reject the mismatched evidence, and say so in the audit.

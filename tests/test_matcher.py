@@ -75,15 +75,17 @@ class DirectContractTests(unittest.TestCase):
         )
         self.assertEqual((spec["bet_id"], spec["value"]), (14, "Home"))
 
-    def test_full_match_knockout_question_rejects_regulation_odds(self):
+    def test_full_match_first_goal_accepts_narrow_regulation_proxy(self):
         intent = _I("first_team_to_score", "home")
         intent["time_scope"] = "full_match"
-        self.assertIsNone(match_intent(
-            intent, "Home", "Away", stage="knockout",
-        ))
-        self.assertIsNotNone(match_intent(
-            intent, "Home", "Away", stage="group",
-        ))
+        knockout = match_intent(intent, "Home", "Away", stage="knockout")
+        group = match_intent(intent, "Home", "Away", stage="group")
+        self.assertEqual(knockout["bet_id"], 14)
+        self.assertEqual(
+            knockout["scope_proxy"],
+            "regulation_first_team_to_score_for_full_match",
+        )
+        self.assertNotIn("scope_proxy", group)
 
     def test_own_goal_uses_exact_yes_no_contract(self):
         spec = self.match(

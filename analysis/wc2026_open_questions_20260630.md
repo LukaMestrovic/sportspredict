@@ -1,12 +1,12 @@
 # WC2026 open-question pipeline audit — 2026-06-30
 
-Captured 180 open questions across 12 SportPredict matches. Every question was parsed with the parser LLM patched to fail, proving that the current inventory is deterministic. Evidence-route counts: AF exact 117, simulator 61, web-only 2.
+Captured 180 open questions across 12 SportPredict matches. Every question was parsed with the parser LLM patched to fail, proving that the current inventory is deterministic. Evidence-route counts: AF exact 117, AF regulation proxy 7, simulator 54, web-only 2.
 
-`AF exact` means the exact API-Football contract had at least one current/cached observation. `simulator` is the exact fallback contract when no API-Football observation was available; an exact Odds API quote can supersede it during the live evidence build. `web-only` is intentionally empty deterministic evidence and must be priced/audited by the web-grounded LLM.
+`AF exact` means the exact API-Football contract had at least one current/cached observation. `AF regulation proxy` is the deliberate use of bet 14 for a full-match first-goal question; the ET-only difference is accepted as immaterial and remains labeled in evidence. `simulator` is the exact fallback contract when no API-Football observation was available; an exact Odds API quote can supersede it during the live evidence build. `web-only` is intentionally empty deterministic evidence and must be priced/audited by the web-grounded LLM.
 
 ## Regulation / extra-time distinctions
 
-- The seven “first goal of the match” questions are `full_match` and use `first_goal:full:et:team`; standard 90-minute bet 14 is rejected.
+- The seven “first goal of the match” questions remain `full_match`, but use regulation bet 14 as a labeled primary proxy because the ET-only difference is accepted as immaterial.
 - “Will a red card be shown in the match?” is `full_match` and uses `red_card:match`; standard regulation red-card odds are rejected.
 - Both open “after the second hydration break in regulation” questions use `goal_window:after_second_hydration:reg`. The otherwise-identical unqualified wording is covered by regression tests and uses `goal_window:after_second_hydration:et`.
 - “Before the first hydration break”, halftime, and stoppage-time windows are regulation-bounded by their wording even without the word “regulation”.
@@ -33,7 +33,7 @@ Captured 180 open questions across 12 SportPredict matches. Every question was p
 - `6884f21b-23c3-4663-b7b3-0487ec6b64ea` — **regulation / none** — simulator `goal_window:before_first_hydration:reg` — Will a goal be scored before the first hydration break?
 - `14b4ad9e-de55-4d15-8e3b-a4dda355438f` — **regulation / team_shots_on_target** — simulator `count:shots_on_target:team:full:>=:6:reg` — Will Norway have 6 or more shots on target in regulation (90 minutes + stoppage time)?
 - `3289ea43-973f-4f2a-86a2-39d3fc7750a4` — **regulation / player_shots_on_target** — simulator `player_stat:shots_on_target:full:>=:2:reg:player` — Will Alexander Sørloth (Norway) have 2 or more shots on target in regulation (90 minutes + stoppage time)?
-- `b58c9664-1cc6-4f32-97ab-a20235f7d5da` — **full_match / first_team_to_score** — simulator `first_goal:full:et:team` — Will Norway score the first goal of the match?
+- `b58c9664-1cc6-4f32-97ab-a20235f7d5da` — **full_match / first_team_to_score** — AF regulation proxy bet 14 (away scores first) — Will Norway score the first goal of the match?
 - `654cd80b-9113-4492-8430-a43381e4387f` — **regulation / total_offsides** — AF exact bet 164 (total_offsides Over 3.5) — Will there be 4 or more offside calls in regulation (90 minutes + stoppage time)?
 - `400defa1-95d4-4aa0-bcaa-70c36c520a8a` — **regulation / total_cards** — AF exact bet 80 (total_cards Over 3.5) — Will there be 4 or more total cards shown in regulation (90 minutes + stoppage time)?
 - `20d8186a-6616-46bd-bc59-52c125028520` — **regulation / none** — simulator `goal_window:after_second_hydration:reg` — Will a goal be scored after the second hydration break in regulation (90 minutes + stoppage time)?
@@ -50,7 +50,7 @@ Captured 180 open questions across 12 SportPredict matches. Every question was p
 - `7f647172-e410-45cd-bdb0-d660e2221568` — **full_match / red_card** — simulator `red_card:match` — Will a red card be shown in the match?
 - `c0e4cdaf-87d1-44ec-9cb8-2a0fade828cb` — **regulation / player_goal_scorer** — AF exact bet 92 (player anytime scorer) — Will Viktor Gyökeres (Sweden) score a goal (excluding own goals) in regulation (90 minutes + stoppage time)?
 - `abd59093-ba5b-4947-8923-2513ae203251` — **regulation / player_shots_on_target** — AF exact bet 242 (player SoT) — Will Alexander Isak (Sweden) have 2 or more shots on target in regulation (90 minutes + stoppage time)?
-- `9cc9f5d8-6b2f-4a5a-96f1-84ea7b5875a9` — **full_match / first_team_to_score** — simulator `first_goal:full:et:team` — Will France score the first goal of the match?
+- `9cc9f5d8-6b2f-4a5a-96f1-84ea7b5875a9` — **full_match / first_team_to_score** — AF regulation proxy bet 14 (home scores first) — Will France score the first goal of the match?
 - `8cf30b49-0133-481c-94fe-507bdf509d93` — **regulation / btts** — AF exact bet 8 (Both teams score) — Will both teams score in regulation (90 minutes + stoppage time)?
 - `52d5f862-b2c6-4f05-9c41-8d4b150974fc` — **regulation / team_shots_on_target** — simulator `count:shots_on_target:team:full:>=:7:reg` — Will France have 7 or more shots on target in regulation (90 minutes + stoppage time)?
 - `5464f357-04db-4d93-b147-a79e6fe71e6a` — **regulation / total_cards** — AF exact bet 80 (total_cards Over 4.5) — Will there be 5 or more total cards shown in regulation (90 minutes + stoppage time)?
@@ -135,7 +135,7 @@ Captured 180 open questions across 12 SportPredict matches. Every question was p
 - `15ef3b72-4d19-41b1-8381-7964a9d16bfe` — **regulation / player_goal_scorer** — AF exact bet 92 (player anytime scorer) — Will Mikel Oyarzabal (Spain) score a goal (excluding own goals) in regulation (90 minutes + stoppage time)?
 - `7c63bc5a-d25a-4f9f-afa8-343c6fa5ebee` — **regulation / player_score_or_assist** — simulator `player_score_or_assist:full:reg:player` — Will Marcel Sabitzer (Austria) score or assist a goal (excluding own goals) in regulation (90 minutes + stoppage time)?
 - `99c182e7-b2aa-40d3-a1fb-dbe304d17754` — **regulation / total_goals** — AF exact bet 5 (total_goals Over 2.5) — Will the match have 3 or more total goals in regulation (90 minutes + stoppage time)?
-- `5a166126-68d8-412d-a368-b1d4f94e2d87` — **full_match / first_team_to_score** — simulator `first_goal:full:et:team` — Will Spain score the first goal of the match?
+- `5a166126-68d8-412d-a368-b1d4f94e2d87` — **full_match / first_team_to_score** — AF regulation proxy bet 14 (home scores first) — Will Spain score the first goal of the match?
 - `5bc19a3f-7e30-45c8-85eb-c3f9c583c332` — **regulation / team_shots_on_target** — simulator `count:shots_on_target:team:full:>=:8:reg` — Will Spain have 8 or more shots on target in regulation (90 minutes + stoppage time)?
 - `061aeb81-321a-4deb-8998-e2a1f55a7c4c` — **regulation / team_shots_on_target** — simulator `count:shots_on_target:team:full:>=:4:reg` — Will Austria have 4 or more shots on target in regulation (90 minutes + stoppage time)?
 - `48406c6e-9222-4f1b-b57f-16f979b54cd5` — **regulation / team_corners** — AF exact bet 57 (home team_corners Over 6.5) — Will Spain have 7 or more corner kicks in regulation (90 minutes + stoppage time)?
@@ -179,7 +179,7 @@ Captured 180 open questions across 12 SportPredict matches. Every question was p
 - `9b2e143a-a8bf-4b7c-9564-06fa011459bf` — **regulation / team_shots_on_target** — simulator `count:shots_on_target:team:full:>=:5:reg` — Will Switzerland have 5 or more shots on target in regulation (90 minutes + stoppage time)?
 - `63f01042-2244-4ffe-b50f-6c938f9d957c` — **regulation / match_draw** — AF exact bet 13 (draw 1H) — Will the match be tied at halftime?
 - `72f2792d-e035-4065-bd37-a99d1d20c5f2` — **regulation / none** — simulator `penalty_or_red:reg` — Will a penalty kick be awarded OR a red card be shown in regulation (90 minutes + stoppage time)?
-- `ccc9e313-254b-46c7-944c-4de8e3038e95` — **full_match / first_team_to_score** — simulator `first_goal:full:et:team` — Will Switzerland score the first goal of the match?
+- `ccc9e313-254b-46c7-944c-4de8e3038e95` — **full_match / first_team_to_score** — AF regulation proxy bet 14 (home scores first) — Will Switzerland score the first goal of the match?
 - `f30adbfb-9db8-4ef1-9428-ad64b27910fe` — **regulation / none** — simulator `goal_window:after_second_hydration:reg` — Will a goal be scored after the second hydration break in regulation (90 minutes + stoppage time)?
 - `f0062b9e-2b5e-49d4-8ecd-77bc2dd99b7c` — **full_match / to_advance** — AF exact bet 61 (to_advance home) — Will Switzerland advance to the Round of 16?
 
@@ -195,7 +195,7 @@ Captured 180 open questions across 12 SportPredict matches. Every question was p
 - `83418d99-16ff-4054-b688-0eeaeb6ad937` — **regulation / none** — simulator `penalty_or_red:reg` — Will a penalty kick be awarded OR a red card be shown in regulation (90 minutes + stoppage time)?
 - `5a56e10d-51d9-44ea-8e1e-22a68e966f3c` — **regulation / team_shots_on_target** — simulator `count:shots_on_target:team:full:>=:5:reg` — Will Egypt have 5 or more shots on target in regulation (90 minutes + stoppage time)?
 - `1302cc43-72aa-4013-815d-4cee35349ae2` — **regulation / total_corners** — AF exact bet 45 (total_corners Over 8.5) — Will there be 9 or more total corner kicks in regulation (90 minutes + stoppage time)?
-- `c1bfe7e5-5fb8-48af-8e31-cf2d12b001e9` — **full_match / first_team_to_score** — simulator `first_goal:full:et:team` — Will Egypt score the first goal of the match?
+- `c1bfe7e5-5fb8-48af-8e31-cf2d12b001e9` — **full_match / first_team_to_score** — AF regulation proxy bet 14 (away scores first) — Will Egypt score the first goal of the match?
 - `98a7eed2-6074-4c63-be57-15da97bc4119` — **regulation / highest_scoring_half_2h** — AF exact bet 11 (2nd half outscores 1st) — Will the second half produce more goals than the first half in regulation (90 minutes + stoppage time)?
 - `5b659dfa-fb37-4a8e-bb88-f7d0f99606b8` — **regulation / total_offsides** — AF exact bet 164 (total_offsides Over 2.5) — Will there be 3 or more offside calls in regulation (90 minutes + stoppage time)?
 - `62b66a1e-1865-481c-b939-a1b1a2a37c97` — **regulation / none** — simulator `substitution_before_halftime:reg` — Will a substitution be made before halftime?
@@ -214,7 +214,7 @@ Captured 180 open questions across 12 SportPredict matches. Every question was p
 - `69616caf-9b07-4d23-9282-2aca8c998480` — **regulation / team_shots_on_target** — simulator `count:shots_on_target:team:full:>=:8:reg` — Will Argentina have 8 or more shots on target in regulation (90 minutes + stoppage time)?
 - `2c487b3c-4b7d-4e37-88c9-a773faa0ddee` — **regulation / player_score_or_assist** — simulator `player_score_or_assist:full:reg:player` — Will Julián Álvarez (Argentina) score or assist a goal (excluding own goals) in regulation (90 minutes + stoppage time)?
 - `28f248b8-10fc-45fc-8a4c-a35908c18d43` — **regulation / total_cards** — AF exact bet 80 (total_cards Over 2.5) — Will there be 3 or more total cards shown in regulation (90 minutes + stoppage time)?
-- `1af93b86-8ea1-4030-b614-105dd07817ba` — **full_match / first_team_to_score** — simulator `first_goal:full:et:team` — Will Argentina score the first goal of the match?
+- `1af93b86-8ea1-4030-b614-105dd07817ba` — **full_match / first_team_to_score** — AF regulation proxy bet 14 (home scores first) — Will Argentina score the first goal of the match?
 - `acababe1-851f-433e-9d89-475c08f392d0` — **regulation / team_corners** — AF exact bet 57 (home team_corners Over 7.5) — Will Argentina have 8 or more corner kicks in regulation (90 minutes + stoppage time)?
 - `76925538-dec6-4caa-b4d5-4cb1e8e56dfe` — **regulation / match_winner** — AF exact bet 13 (match_winner home 1H) — Will Argentina be ahead at halftime?
 - `2c0ffaa7-880d-492e-81a9-fd41caf1499a` — **regulation / total_shots** — AF exact bet 211 (total_shots Over 21.5) — Will there be 22 or more total shots (on and off target) in regulation (90 minutes + stoppage time)?
@@ -227,7 +227,7 @@ Captured 180 open questions across 12 SportPredict matches. Every question was p
 - `ae1f6d42-b88d-4511-92d2-28e3d1436b06` — **regulation / btts** — AF exact bet 8 (Both teams score) — Will both teams score in regulation (90 minutes + stoppage time)?
 - `94e9a2aa-8af1-460e-ad7e-cbb6aa98258d` — **regulation / player_goal_scorer** — AF exact bet 92 (player anytime scorer) — Will Jordan Ayew (Ghana) score a goal (excluding own goals) in regulation (90 minutes + stoppage time)?
 - `89c1eba5-e3a7-4b8b-9522-e2562824704f` — **regulation / team_shots_on_target** — simulator `count:shots_on_target:team:full:>=:7:reg` — Will Colombia have 7 or more shots on target in regulation (90 minutes + stoppage time)?
-- `ea3308ff-eddc-4499-9cca-97650ae6b83e` — **full_match / first_team_to_score** — simulator `first_goal:full:et:team` — Will Colombia score the first goal of the match?
+- `ea3308ff-eddc-4499-9cca-97650ae6b83e` — **full_match / first_team_to_score** — AF regulation proxy bet 14 (home scores first) — Will Colombia score the first goal of the match?
 - `2e0e676c-0153-43d3-bd9c-8706469813fb` — **regulation / total_cards** — AF exact bet 80 (total_cards Over 3.5) — Will there be 4 or more total cards shown in regulation (90 minutes + stoppage time)?
 - `b224fee8-4a45-4ce8-9156-de1fa31a14d0` — **regulation / match_winner** — AF exact bet 13 (match_winner home 1H) — Will Colombia be ahead at halftime?
 - `5087567c-989c-43d8-83db-2cd9d4ae5159` — **regulation / total_shots** — AF exact bet 211 (total_shots Over 21.5) — Will there be 22 or more total shots (on and off target) in regulation (90 minutes + stoppage time)?
@@ -236,4 +236,3 @@ Captured 180 open questions across 12 SportPredict matches. Every question was p
 - `2b595d63-8732-4a43-8e03-9436ea414afe` — **regulation / total_goals** — AF exact bet 5 (total_goals Over 2.5) — Will the match have 3 or more total goals in regulation (90 minutes + stoppage time)?
 - `02b77526-49b7-4819-b7c1-82d4cdd10862` — **regulation / none** — simulator `goal_window:before_first_hydration:reg` — Will a goal be scored before the first hydration break?
 - `af49eb21-f513-4c43-ae24-882e2f887606` — **full_match / to_advance** — AF exact bet 61 (to_advance home) — Will Colombia advance to the Round of 16?
-

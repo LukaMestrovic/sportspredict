@@ -30,6 +30,17 @@ def _oa_h2h_books():
     }]
 
 
+def _af_first_goal_books():
+    return [{
+        "name": "Bet365",
+        "bets": [{"id": 14, "values": [
+            {"value": "Home", "odd": "2.25"},
+            {"value": "Draw", "odd": "11.00"},
+            {"value": "Away", "odd": "1.73"},
+        ]}],
+    }]
+
+
 class _OA:
     def __init__(self):
         self.requested = []
@@ -132,7 +143,7 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(evidence["question_evidence"][0]["simulator_model_estimates"], [])
 
-    def test_full_match_knockout_scope_rejects_regulation_odds(self):
+    def test_full_match_first_goal_uses_labeled_regulation_proxy(self):
         result = _result({
             "first": {
                 "market": "first_team_to_score", "subject": "home",
@@ -140,7 +151,9 @@ class EvidenceTests(unittest.TestCase):
                 "time_scope": "full_match",
             },
         }, question="Will Home score the first goal of the match?")
-        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None, stage="knockout")
+        ctx = PriceCtx(
+            "Home", "Away", _af_first_goal_books(), None, None, stage="knockout",
+        )
         sim = {"contract_key": "first_goal:full:et:team", "probability": 0.45}
 
         with patch("bot.evidence.simulator.simulator_estimates",
@@ -151,9 +164,11 @@ class EvidenceTests(unittest.TestCase):
 
         question = bundle["question_evidence"][0]
         self.assertEqual(bundle["schema_version"], 7)
-        self.assertIsNone(question["direct_market_spec"])
-        self.assertEqual(question["direct_odds"], [])
-        self.assertEqual(question["simulator_model_estimates"], [sim])
+        self.assertEqual(question["direct_market_spec"]["bet_id"], 14)
+        self.assertEqual(len(question["direct_odds"]), 1)
+        self.assertIn("regulation first-team-to-score proxy",
+                      question["direct_odds"][0]["why_relevant"])
+        self.assertEqual(question["simulator_model_estimates"], [])
         self.assertEqual(question["contract_scope"], {
             "time_scope": "full_match",
             "interpretation": "Full match: include extra time if played; exclude shootout events.",

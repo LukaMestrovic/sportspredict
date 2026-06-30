@@ -173,13 +173,14 @@ def match_intent(
 
     # Standard pre-match bookmaker contracts settle at 90 minutes. In a
     # knockout match they are not exact evidence for an unqualified full-match
-    # question, which includes extra time. Qualification is the exception: that
-    # contract deliberately includes ET/penalties. Half markets never reach ET.
+    # question, which includes extra time. Qualification is exact; first-team-
+    # to-score is the deliberate narrow proxy exception because ET-only first
+    # goals are rare and the direct market is materially stronger evidence.
     if (
         str(stage or "").lower() == "knockout"
         and intent.get("time_scope") == "full_match"
         and period == "match"
-        and market != "to_advance"
+        and market not in {"to_advance", "first_team_to_score"}
     ):
         return None
     if market == "highest_scoring_half_2h":
@@ -237,9 +238,13 @@ def match_intent(
     if market == "first_team_to_score":
         if subject not in ("home", "away") or period != "match":
             return None
-        return {"type": "select", "bet_id": 14,
+        spec = {"type": "select", "bet_id": 14,
                 "value": "Home" if subject == "home" else "Away",
                 "label": f"{subject} scores first"}
+        if (str(stage or "").lower() == "knockout"
+                and intent.get("time_scope") == "full_match"):
+            spec["scope_proxy"] = "regulation_first_team_to_score_for_full_match"
+        return spec
 
     if market == "btts":
         return {"type": "select", "bet_id": 8, "value": "Yes", "label": "Both teams score"}

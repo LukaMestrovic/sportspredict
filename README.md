@@ -149,6 +149,8 @@ survive image rebuilds. Never delete those directories during deployment.
 For every match, the evidence file contains:
 
 - raw provider odds and per-book de-vigged probabilities for exact contracts;
+- regulation first-team-to-score odds as the one explicit full-match proxy,
+  labeled as such because the extra-time-only difference is accepted as immaterial;
 - an explicit `contract_scope`: regulation is distinct from a full knockout
   match that can include extra time;
 - one simulator fallback for supported questions without an exact direct quote
