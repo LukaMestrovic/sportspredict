@@ -159,9 +159,9 @@ def _reports_by_market(raw: dict) -> dict[str, dict]:
     ``historical_evidence`` (exact-contract empirical rates plus family Brier
     comparisons against both 50/50 and prior empirical-rate baselines, with
     sample sizes for all-history and WC2026, each scope possibly ``available:
-    false``) — the pricing LLM needs those scopes and counts intact to weight the
-    estimate. Match-level internals, other questions' probabilities and
-    ``unsupported_questions`` are intentionally not attached.
+    false``). The evidence builder later projects these internals into the small
+    decision-only structure sent to the pricing LLM. Match-level internals, other
+    questions' probabilities and ``unsupported_questions`` are not attached here.
     """
     raw = raw or {}
     model_meta = raw.get("model") or {}

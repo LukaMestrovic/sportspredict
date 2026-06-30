@@ -169,6 +169,13 @@ For every match, the evidence file contains:
   comparisons against always-50% and leakage-safe empirical-rate baselines; and
 - provenance and freshness timestamps.
 
+The LLM receives a compact simulator projection rather than the full internal
+report: one percentage, its basis and adjustment directions, available empirical
+rates as `(rate_pct, n)`, and one family-comparison row per useful scope. Model
+provenance, repeated refresh metadata, unavailable scopes, derived deltas,
+confidence intervals, and legacy performance blocks remain in the retained
+artifacts/snapshots but are not repeated in every question sent to the LLM.
+
 The pricing model must return `probability_int`, odds used, independent online
 odds, non-odds factors, downweighted evidence, sources, and a concise reasoning
 summary for every submitted market. The prompt is

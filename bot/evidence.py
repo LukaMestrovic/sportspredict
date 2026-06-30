@@ -94,16 +94,12 @@ def build_match_evidence(
             "intent": intent,
             "contract_scope": _contract_scope(intent),
             "direct_market_spec": spec_by_market[mid],
-            "direct_odds": direct,
-            "simulator_model_estimates": (
-                [simulator_by_market[mid]] if not direct and mid in simulator_by_market else []
-            ),
-            "audit_requirement": (
-                "The raw LLM response must explain which exact provided odds, "
-                "explicitly labeled regulation proxy, or fallback simulator context, "
-                "online odds, and non-odds factors were used or downweighted."
-            ),
+            "direct_odds": [_compact_direct_odd(obs) for obs in direct],
         }
+        if not direct and mid in simulator_by_market:
+            item["simulator_estimate"] = _compact_simulator_estimate(
+                simulator_by_market[mid]
+            )
         # For a player-specific market, attach THAT player's exact form row so the
         # model cannot read the wrong player's line from the match-level list.
         player_form = _player_form_for(intent, player_index)
@@ -111,40 +107,15 @@ def build_match_evidence(
             item["player_form"] = player_form
         question_evidence.append(item)
 
-    all_obs = []
-    for item in question_evidence:
-        all_obs.extend(item["direct_odds"])
     evidence = {
-        "schema_version": 8,
+        "schema_version": 9,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "match": _match_meta(result, lineups, minutes_before),
         "team_form": context.get("team_form") or {},
         "player_form": context.get("player_form") or {},
         "referee_profile": context.get("referee_profile") or {},
         "injuries": context.get("injuries") or {},
-        "questions": [
-            {"market_id": m["id"], "question": m["question"],
-             "intent": result.intents.get(m["id"])}
-            for m in result.markets
-        ],
         "question_evidence": question_evidence,
-        "provider_odds_summary": _provider_odds_summary(_dedupe_observations(all_obs)),
-        "wc2026_evidence_refresh": wc2026_refresh,
-        "live_simulator_benchmark": {
-            key: live_benchmark.get(key)
-            for key in (
-                "generated_at", "settled_ledger_questions",
-                "comparable_simulator_questions", "matches",
-            )
-        } if live_benchmark else None,
-        "llm_research_requirements": [
-            "Find any additional market prices or odds available online, including "
-            "Kalshi, Polymarket, Pinnacle, Betfair Exchange, and betting platforms.",
-            "Convert every used online price or odd into a probability and cite the URL.",
-            "Use only information published before kickoff.",
-            "Report tactics, lineups, weather, referee, motivation, and other non-odds "
-            "factors that materially affect each probability.",
-        ],
     }
     evidence["evidence_hash"] = evidence_hash(evidence)
     return evidence
@@ -220,6 +191,91 @@ def _contract_scope(intent: dict | None) -> dict:
     return {"time_scope": time_scope, "interpretation": interpretation}
 
 
+def _compact_direct_odd(observation: dict) -> dict:
+    """Keep only the price, coherent raw contract, and audit provenance."""
+    compact = {
+        key: observation.get(key)
+        for key in (
+            "source", "bookmaker", "market_key", "contract",
+            "probability_pct", "raw_odds", "devig_method",
+        )
+        if observation.get(key) is not None
+    }
+    why = observation.get("why_relevant")
+    if why and why != "exact mapped contract":
+        compact["contract_note"] = why
+    return compact
+
+
+def _compact_simulator_estimate(estimate: dict) -> dict:
+    """Project the verbose internal simulator report into LLM decision inputs."""
+    probability_pct = estimate.get("probability_pct")
+    if probability_pct is None and estimate.get("probability") is not None:
+        probability_pct = round(float(estimate["probability"]) * 100.0, 2)
+    compact = {
+        key: value for key, value in (
+            ("family", estimate.get("family")),
+            ("contract_key", estimate.get("contract_key")),
+            ("probability_pct", probability_pct),
+            ("basis", estimate.get("explanation")),
+            ("adjustment_guidance", estimate.get("adjustment_guidance")),
+        ) if value is not None
+    }
+
+    inputs = estimate.get("conditioning_inputs") or {}
+    draw = inputs.get("regulation_draw_probability")
+    if draw is not None:
+        compact["conditioning"] = {
+            "regulation_draw_probability_pct": round(float(draw) * 100.0, 2),
+        }
+
+    history = estimate.get("historical_evidence") or {}
+    empirical_rates = {}
+    for scope, row in (history.get("empirical_rate") or {}).items():
+        if not row or not row.get("available") or row.get("rate") is None:
+            continue
+        observations = row.get("observations") or row.get("matches")
+        rate = {"rate_pct": round(float(row["rate"]) * 100.0, 2)}
+        if observations is not None:
+            rate["n"] = int(observations)
+        if row.get("matches") is not None and row.get("matches") != observations:
+            rate["matches"] = int(row["matches"])
+        if row.get("data_through"):
+            rate["through"] = row["data_through"]
+        if row.get("complete") is False:
+            rate["complete"] = False
+        empirical_rates[scope] = rate
+    if empirical_rates:
+        compact["empirical_rates"] = empirical_rates
+
+    comparisons = {}
+    for scope, row in (history.get("family_performance") or {}).items():
+        if scope in {"family", "live_refresh"} or not isinstance(row, dict):
+            continue
+        if not row.get("available"):
+            continue
+        sample = (row.get("sample_size") or {}).get("level")
+        comparison = {
+            "signal": row.get("comparison_signal"),
+            "matches": row.get("matches"),
+            "sample": sample,
+        }
+        # Do not expose unstable point estimates from explicitly tiny samples.
+        if sample != "too_small":
+            brier = row.get("brier") or {}
+            comparison["brier"] = {
+                key: brier.get(key)
+                for key in ("simulator", "empirical_rate", "always_50")
+                if brier.get(key) is not None
+            }
+        comparisons[scope] = {
+            key: value for key, value in comparison.items() if value is not None
+        }
+    if comparisons:
+        compact["family_comparison"] = comparisons
+    return compact
+
+
 def _fixture_referee(result) -> str | None:
     fixture = (result.fixture or {}).get("fixture", {}) if result.fixture else {}
     return fixture.get("referee")
@@ -284,43 +340,6 @@ def _tag_observations(observations: Iterable[dict], role: str, why: str) -> list
         item["why_relevant"] = why
         tagged.append(item)
     return tagged
-
-
-def _dedupe_observations(
-    observations: Iterable[dict], *, exclude: Iterable[dict] = ()
-) -> list[dict]:
-    excluded = {_obs_key(obs) for obs in exclude}
-    seen = set()
-    out = []
-    for obs in observations:
-        key = _obs_key(obs)
-        if key in excluded or key in seen:
-            continue
-        seen.add(key)
-        out.append(obs)
-    return out
-
-
-def _provider_odds_summary(observations: list[dict]) -> dict:
-    by_source: dict[str, int] = {}
-    by_market: dict[str, int] = {}
-    for obs in observations:
-        source = obs.get("source") or "unknown"
-        market = f"{source}:{obs.get('market_key')}"
-        by_source[source] = by_source.get(source, 0) + 1
-        by_market[market] = by_market.get(market, 0) + 1
-    return {
-        "total_observations": len(observations),
-        "by_source": by_source,
-        "by_market": by_market,
-    }
-
-
-def _obs_key(obs: dict) -> tuple:
-    return (
-        obs.get("source"), obs.get("bookmaker"), obs.get("market_key"),
-        obs.get("contract"), obs.get("probability"),
-    )
 
 
 def _slug(value: str) -> str:

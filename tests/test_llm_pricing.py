@@ -69,7 +69,7 @@ class LLMFinalPricingTests(unittest.TestCase):
 
         self.assertIn("simulator estimate: 23.47%", report)
         self.assertIn("any_player_threshold:goals:>:1:reg", report)
-        self.assertIn("all-history Brier 0.168899", report)
+        self.assertIn("family Brier sim=0.168899 emp=0.17 50=0.25", report)
 
     def test_missing_audit_field_skips_market(self):
         bad = _audit("m1", 57)
@@ -133,24 +133,18 @@ def _evidence(with_context=False, with_simulator=False):
         "related_odds": [],
     }
     if with_simulator:
-        question["simulator_model_estimates"] = [{
-            "source": "sportspredict-simulator",
+        question["simulator_estimate"] = {
             "family": "any_player_threshold",
             "contract_key": "any_player_threshold:goals:>:1:reg",
-            "probability": 0.2347,
             "probability_pct": 23.47,
-            "historical_evidence": {
-                "model_performance": {
-                    "all_history": {"available": True, "brier": 0.168899,
-                                    "always_50_brier": 0.25, "matches": 2277},
-                    "wc2026": {"available": False, "reason": "no unseen settled"},
-                },
-                "empirical_rate": {
-                    "all_history": {"available": True, "rate": 0.234701, "matches": 2974},
-                    "wc2026": {"available": True, "rate": 0.382353, "matches": 34},
+            "family_comparison": {
+                "all_history": {
+                    "signal": "inconclusive", "matches": 2277, "sample": "large",
+                    "brier": {"simulator": 0.168899, "empirical_rate": 0.17,
+                              "always_50": 0.25},
                 },
             },
-        }]
+        }
     evidence = {
         "schema_version": 5,
         "evidence_hash": "abc",

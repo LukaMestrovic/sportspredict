@@ -191,13 +191,8 @@ def _explanation(market: str, params: dict, notes: str | None) -> str:
 
 
 def _adjustment_guidance(market: str, params: dict, question: str) -> str:
-    """Empirical calibration rule plus deterministic market-specific directions."""
-    calibration = (
-        "Calibrate the simulator against the overall, current-WC and knockout-stage "
-        "empirical rates that are available, weighting them by sample size and freshness "
-        "rather than averaging them; explain any material departure."
-    )
-    return f"{calibration} {_market_adjustment_guidance(market, params, question)}"
+    """Deterministic market-specific directions; calibration is structured separately."""
+    return _market_adjustment_guidance(market, params, question)
 
 
 def _market_adjustment_guidance(market: str, params: dict, question: str) -> str:

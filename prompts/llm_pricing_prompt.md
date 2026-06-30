@@ -37,7 +37,7 @@ CONTRACT SCOPE IS STRICT
 - Do not use a standard 90-minute bookmaker line as direct odds for a `full_match`
   contract, with one deliberate exception: regulation “first team to score” odds
   are accepted as the primary proxy for “first goal of the match”. The ET-only
-  difference is treated as immaterial. This proxy is labeled in `why_relevant`;
+  difference is treated as immaterial. This proxy is labeled in `contract_note`;
   use it like direct evidence and do not manufacture a large ET adjustment.
 - Treat `direct_market_spec`, `direct_odds`, and a simulator `contract_key` as
   exact only when their scope agrees with `contract_scope`. If anything conflicts,
@@ -64,14 +64,14 @@ HOW TO USE THE PROVIDED ODDS
   estimate toward the market instead. A direct shots/scorer price already encodes
   the book's expected minutes for that player, so if the lineup is unconfirmed,
   fade it only modestly.
-- Simulator model estimates (`simulator_model_estimates`) are context only, but
-  they are your strongest signal for the markets with no direct contract — timing
+- A `simulator_estimate` is context only, but it is your strongest signal for a
+  market with no direct contract — timing
   windows, first scorer, substitutions/substitute scorers, any-player props,
   total shots, win margin, red/both-team cards, regulation-only named-player
-  props, penalties and goal compounds. Each item gives a YES `probability`/
-  `probability_pct`, the resolved `family` and `contract_key`, a deterministic
-  `explanation` of exactly what it is built from, `adjustment_guidance`, and
-  `historical_evidence`. Read the `explanation` and follow the deterministic
+  props, penalties and goal compounds. It gives a YES `probability_pct`, the
+  resolved `family` and `contract_key`, a short `basis`, market-specific
+  `adjustment_guidance`, exact-contract `empirical_rates`, and a compact
+  `family_comparison`. Read the `basis` and follow the deterministic
   `adjustment_guidance` — it tells you which confirmed lineups, referee, odds and
   game-state factors should raise or lower this exact contract, and which
   directions to avoid (e.g. no extra-time uplift on a regulation-only window).
@@ -82,38 +82,22 @@ HOW TO USE THE PROVIDED ODDS
   A simulator fallback is not supplied when exact direct odds exist. In the per-market
   audit, state whether you used or downweighted the simulator estimate and why
   (cite it in non_odds_factors_used or ignored_or_downweighted_evidence).
-- Use `historical_evidence.family_performance` to decide whether to lean toward
-  the simulator probability or the empirical rate for this FAMILY. Its
-  `all_history`, `wc2026`, and (when settled live predictions exist)
-  `live_wc2026` scopes score three rules on identical unseen rows: the simulator,
-  always 50%, and "always predict the prior exact-contract empirical YES rate."
-  Brier is lower-is-better. A negative
-  `delta_brier.simulator_minus_empirical_rate` favors the simulator; a positive
-  value favors the empirical rate. Prefer `comparison_signal` over the raw point
-  difference because it also uses the paired, match-clustered 95% interval.
-  This comparison is family-level: the empirical rule is still fitted separately
-  for each exact contract before results are aggregated, so unlike thresholds
-  are not assigned one nonsensical shared rate.
-- Obey `family_performance.*.sample_size`. `too_small` is inconclusive and must
-  not choose either signal. `limited` is only a weak directional check even when
-  its point estimate or interval names a winner. Let the large rolling-origin
-  `all_history` scope dominate a small WC2026 scope; use WC2026 as corroboration
-  only as its unique-match sample grows. Never let a small tournament sample
-  override liquid direct odds or strong confirmed match-specific evidence. If
-  the broad family result reliably says `simulator_better`, lean more toward the
-  simulator estimate; if it says `empirical_rate_better`, lean more toward this
-  contract's available empirical rate. If it is `inconclusive`, combine both as
-  checks and decide from the exact contract, odds, and match context. State which
-  signal you favored and why in the audit.
-- `historical_evidence.empirical_rate` contains the exact-contract observed YES
-  rate and denominator, with `all_history`, `knockout_history`, `wc2026`, and
-  `wc2026_knockout` where available. Weight rates by denominator and freshness;
-  do not average scopes. The legacy exact-contract `model_performance` versus
-  always 50% remains an additional check, not the simulator-versus-empirical
-  decision rule. When a scope is unavailable, rely on the remaining probability,
-  explanation, guidance, and odds. For extra-time-sensitive knockout contracts,
-  give knockout rates more relevance while retaining the larger all-history
-  rate as the broad prior.
+- Use `simulator_estimate.family_comparison` to decide whether to lean toward the
+  simulator or the empirical rate for this FAMILY. Each available scope reports
+  `signal`, unique `matches`, `sample`, and (unless the sample is `too_small`)
+  Brier scores for `simulator`, `empirical_rate`, and `always_50`; lower Brier is
+  better. `all_history` is the broad rolling-origin test, `wc2026` is the frozen
+  unseen tournament test, and `live_wc2026` contains actual pre-match estimates
+  settled later. The empirical rule was fitted per exact contract before family
+  aggregation. `too_small` is inconclusive; `limited` is only a weak check. Let
+  broad history dominate small WC samples. Lean toward the named winner only
+  when the sample supports it, and state the choice in the audit.
+- `simulator_estimate.empirical_rates` gives this exact contract's observed YES
+  `rate_pct` and sample `n` for available scopes. Treat it as a base rate, not a
+  match-specific prediction. Weight scope by size and relevance rather than
+  averaging: use knockout history for extra-time-sensitive knockout contracts,
+  but retain all-history as the broad prior. Never let a small tournament sample
+  override liquid direct odds or confirmed match-specific evidence.
 - Do not average blindly. Consider market liquidity, bookmaker independence,
   line relevance, lineup certainty, tactical fit, weather, referee, and whether
   a price is stale or one-sided.

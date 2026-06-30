@@ -333,17 +333,31 @@ def _markdown_report(result, evidence: dict, evidence_path: Path | None, respons
             lines.append("- audit note: no direct or online odds were used; related evidence follows.")
         if qe.get("direct_odds"):
             lines.append(f"- provided direct odds available: {len(qe['direct_odds'])}")
-        sim = qe.get("simulator_model_estimates") or []
-        if sim:
-            est = sim[0]
+        est = qe.get("simulator_estimate")
+        if est is None:
+            legacy_estimates = qe.get("simulator_model_estimates") or []
+            est = legacy_estimates[0] if legacy_estimates else None
+        if est:
             history = est.get("historical_evidence") or {}
-            family = (history.get("family_performance") or {}).get("all_history") or {}
+            family = (
+                (est.get("family_comparison") or {}).get("all_history")
+                or (history.get("family_performance") or {}).get("all_history")
+                or {}
+            )
             if family.get("available"):
                 suffix = (
                     f", family Brier sim={family.get('brier', {}).get('simulator')} "
                     f"emp={family.get('brier', {}).get('empirical_rate')} "
                     f"50={family.get('brier', {}).get('always_50')} "
                     f"signal={family.get('comparison_signal')} "
+                    f"(matches={family.get('matches')})"
+                )
+            elif family.get("brier"):
+                suffix = (
+                    f", family Brier sim={family['brier'].get('simulator')} "
+                    f"emp={family['brier'].get('empirical_rate')} "
+                    f"50={family['brier'].get('always_50')} "
+                    f"signal={family.get('signal')} "
                     f"(matches={family.get('matches')})"
                 )
             else:

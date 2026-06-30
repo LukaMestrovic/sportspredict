@@ -60,14 +60,14 @@ class LiveFamilyBenchmarkTests(unittest.TestCase):
             evidence.write_text(json.dumps({
                 "question_evidence": [{
                     "market_id": "q1",
-                    "simulator_model_estimates": [{
+                    "simulator_estimate": {
                         "family": "goal_window",
                         "contract_key": "goal_window:test",
-                        "probability": 0.8,
-                        "historical_evidence": {"empirical_rate": {
-                            "all_history": {"available": True, "rate": 0.6},
-                        }},
-                    }],
+                        "probability_pct": 80.0,
+                        "empirical_rates": {
+                            "all_history": {"rate_pct": 60.0, "n": 100},
+                        },
+                    },
                 }],
             }))
             ledger = root / "ledger.sqlite3"

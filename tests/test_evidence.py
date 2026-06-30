@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from bot.evidence import build_match_evidence
+from bot.evidence import _compact_simulator_estimate, build_match_evidence
 from bot.simulator import model_estimate_kind
 from bot.pipeline import MatchResult
 from bot.pricing import PriceCtx
@@ -68,6 +68,59 @@ class EvidenceTests(unittest.TestCase):
         self.assertIn("Bet365", books)
         self.assertIn("DraftKings", books)
         self.assertTrue(all(obs["raw_odds"] for obs in q["direct_odds"]))
+        self.assertTrue(all("probability" not in obs for obs in q["direct_odds"]))
+        self.assertTrue(all("role" not in obs for obs in q["direct_odds"]))
+        self.assertTrue(all("why_relevant" not in obs for obs in q["direct_odds"]))
+
+    def test_simulator_projection_keeps_decisions_not_internal_bookkeeping(self):
+        compact = _compact_simulator_estimate({
+            "source": "sportspredict-simulator",
+            "family": "goal_window",
+            "contract_key": "goal_window:before_first_hydration:reg",
+            "probability": 0.421,
+            "probability_pct": 42.1,
+            "explanation": "Learned goal counts and timing.",
+            "adjustment_guidance": "Raise for attacking lineups.",
+            "model": {"n_sims": 8000, "rate_model": "LearnedRateModel"},
+            "note": "context only",
+            "historical_evidence": {
+                "model_performance": {"all_history": {"brier": 0.16}},
+                "empirical_rate": {
+                    "all_history": {"available": True, "rate": 0.418, "observations": 3000},
+                    "wc2026": {"available": True, "rate": 0.44, "matches": 77,
+                               "data_through": "2026-06-30"},
+                },
+                "family_performance": {
+                    "family": "goal_window",
+                    "all_history": {
+                        "available": True, "comparison_signal": "inconclusive",
+                        "matches": 2900, "sample_size": {"level": "large"},
+                        "brier": {"simulator": 0.157, "empirical_rate": 0.156,
+                                  "always_50": 0.25},
+                        "coverage": {"fraction": 1.0}, "test_folds": [2021, 2022],
+                    },
+                    "live_wc2026": {
+                        "available": True, "comparison_signal": "inconclusive_small_sample",
+                        "matches": 2, "sample_size": {"level": "too_small"},
+                        "brier": {"simulator": 0.1, "empirical_rate": 0.2,
+                                  "always_50": 0.25},
+                    },
+                },
+            },
+        })
+
+        self.assertEqual(compact["probability_pct"], 42.1)
+        self.assertEqual(compact["empirical_rates"]["all_history"], {
+            "rate_pct": 41.8, "n": 3000,
+        })
+        self.assertEqual(compact["family_comparison"]["all_history"]["brier"], {
+            "simulator": 0.157, "empirical_rate": 0.156, "always_50": 0.25,
+        })
+        self.assertEqual(compact["family_comparison"]["live_wc2026"], {
+            "signal": "inconclusive_small_sample", "matches": 2, "sample": "too_small",
+        })
+        for redundant in ("source", "model", "note", "historical_evidence", "probability"):
+            self.assertNotIn(redundant, compact)
 
     def test_unmapped_question_omits_broad_related_odds(self):
         result = _result({
@@ -103,9 +156,10 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(estimates.call_args.kwargs["intents"], result.intents)
         q = evidence["question_evidence"][0]
-        self.assertEqual(evidence["schema_version"], 8)
-        self.assertEqual(q["simulator_model_estimates"], [sim])
-        self.assertIn("fallback simulator context", q["audit_requirement"])
+        self.assertEqual(evidence["schema_version"], 9)
+        self.assertEqual(q["simulator_estimate"], {"probability_pct": 24.1})
+        self.assertNotIn("simulator_model_estimates", q)
+        self.assertNotIn("audit_requirement", q)
 
     def test_sot_question_receives_simulator_context(self):
         result = _result({
@@ -127,7 +181,10 @@ class EvidenceTests(unittest.TestCase):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
         estimates.assert_called_once()
-        self.assertEqual(evidence["question_evidence"][0]["simulator_model_estimates"], [sim])
+        self.assertEqual(
+            evidence["question_evidence"][0]["simulator_estimate"],
+            {"probability_pct": 53.1},
+        )
 
     def test_non_penalty_question_gets_empty_simulator_context(self):
         result = _result({
@@ -141,7 +198,7 @@ class EvidenceTests(unittest.TestCase):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
         estimates.assert_called_once()
-        self.assertEqual(evidence["question_evidence"][0]["simulator_model_estimates"], [])
+        self.assertNotIn("simulator_estimate", evidence["question_evidence"][0])
 
     def test_full_match_first_goal_uses_labeled_regulation_proxy(self):
         result = _result({
@@ -163,12 +220,12 @@ class EvidenceTests(unittest.TestCase):
             )
 
         question = bundle["question_evidence"][0]
-        self.assertEqual(bundle["schema_version"], 8)
+        self.assertEqual(bundle["schema_version"], 9)
         self.assertEqual(question["direct_market_spec"]["bet_id"], 14)
         self.assertEqual(len(question["direct_odds"]), 1)
         self.assertIn("regulation first-team-to-score proxy",
-                      question["direct_odds"][0]["why_relevant"])
-        self.assertEqual(question["simulator_model_estimates"], [])
+                      question["direct_odds"][0]["contract_note"])
+        self.assertNotIn("simulator_estimate", question)
         self.assertEqual(question["contract_scope"], {
             "time_scope": "full_match",
             "interpretation": "Full match: include extra time if played; exclude shootout events.",
@@ -192,11 +249,16 @@ class ContextEvidenceTests(unittest.TestCase):
         with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
-        self.assertEqual(evidence["schema_version"], 8)
+        self.assertEqual(evidence["schema_version"], 9)
         self.assertEqual(evidence["team_form"]["home"]["gf_avg"], 1.7)
         self.assertEqual(evidence["player_form"]["home"][0]["name"], "Striker One")
         self.assertEqual(evidence["referee_profile"]["yellows_per_game"], 4.0)
         self.assertEqual(evidence["injuries"]["home"][0]["player"], "X")
+        for redundant in (
+            "questions", "provider_odds_summary", "wc2026_evidence_refresh",
+            "live_simulator_benchmark", "llm_research_requirements",
+        ):
+            self.assertNotIn(redundant, evidence)
 
     def test_player_market_gets_that_players_exact_row(self):
         result = _result({

@@ -69,15 +69,24 @@ def _benchmark_rows(ledger_path: Path) -> tuple[list[dict], int]:
             for item in evidence_cache[path].get("question_evidence", [])
         }
         item = questions.get(str(row["market_id"])) or {}
-        estimates = item.get("simulator_model_estimates") or []
-        if not estimates:
+        estimate = item.get("simulator_estimate")
+        if estimate is None:
+            estimates = item.get("simulator_model_estimates") or []
+            estimate = estimates[0] if estimates else None
+        if not estimate:
             continue
-        estimate = estimates[0]
         history = estimate.get("historical_evidence") or {}
         empirical = (history.get("empirical_rate") or {}).get("all_history") or {}
         try:
-            p_model = float(estimate["probability"])
-            p_empirical = float(empirical["rate"])
+            p_model = (
+                float(estimate["probability"])
+                if estimate.get("probability") is not None
+                else float(estimate["probability_pct"]) / 100.0
+            )
+            if empirical.get("rate") is not None:
+                p_empirical = float(empirical["rate"])
+            else:
+                p_empirical = float(estimate["empirical_rates"]["all_history"]["rate_pct"]) / 100.0
             outcome = int(row["outcome"])
         except (KeyError, TypeError, ValueError):
             continue
