@@ -70,9 +70,8 @@ HOW TO USE THE PROVIDED ODDS
   total shots, win margin, red/both-team cards, regulation-only named-player
   props, penalties and goal compounds. It gives a YES `probability_pct`, the
   resolved `family` and `contract_key`, a short `basis`, market-specific
-  `adjustment_guidance`, exact-contract `empirical_rates`, and compact
-  `contract_comparison` / `family_comparison` reliability checks. Read the
-  `basis` and follow the deterministic
+  `adjustment_guidance`, exact-contract `empirical_rates`, and a compact
+  `contract_comparison` reliability check. Read the `basis` and follow the deterministic
   `adjustment_guidance` — it tells you which confirmed lineups, referee, odds and
   game-state factors should raise or lower this exact contract, and which
   directions to avoid (e.g. no extra-time uplift on a regulation-only window).
@@ -83,14 +82,13 @@ HOW TO USE THE PROVIDED ODDS
   A simulator fallback is not supplied when exact direct odds exist. In the per-market
   audit, state whether you used or downweighted the simulator estimate and why
   (cite it in non_odds_factors_used or ignored_or_downweighted_evidence).
-- Prefer `simulator_estimate.contract_comparison` when available: it evaluates
+- Use `simulator_estimate.contract_comparison` when available: it evaluates
   this exact contract on every labelable settled WC2026 fixture, independently
   of whether SportPredict published that question. Team-relative contracts use
   one observation for each team; match-level and each-team conjunction contracts
-  use one observation per match. Use `family_comparison` as the broader fallback
-  across all exhaustively evaluated contracts in the same family. Each WC2026
-  comparison reports labelable/comparable match and observation counts, `sample`,
-  `signal`, and (unless the sample is `too_small`)
+  use one observation per match. Each WC2026 comparison reports
+  labelable/comparable match and observation counts, `sample`, `signal`, and
+  (unless the sample is `too_small`)
   Brier scores for `simulator`, `always_50`, and `empirical_rate` when a
   pre-tournament exact-contract baseline exists; lower Brier is better.
   `signal=empirical_baseline_unavailable` means only the simulator-vs-50 check

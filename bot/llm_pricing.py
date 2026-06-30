@@ -339,26 +339,28 @@ def _markdown_report(result, evidence: dict, evidence_path: Path | None, respons
             est = legacy_estimates[0] if legacy_estimates else None
         if est:
             history = est.get("historical_evidence") or {}
-            family = (
-                (est.get("family_comparison") or {}).get("all_history")
-                or (history.get("family_performance") or {}).get("all_history")
+            comparison = (
+                (est.get("contract_comparison") or {}).get("wc2026")
+                or (history.get("contract_performance") or {}).get("wc2026")
+                or (est.get("contract_comparison") or {}).get("all_history")
+                or (history.get("contract_performance") or {}).get("all_history")
                 or {}
             )
-            if family.get("available"):
+            if comparison.get("available"):
                 suffix = (
-                    f", family Brier sim={family.get('brier', {}).get('simulator')} "
-                    f"emp={family.get('brier', {}).get('empirical_rate')} "
-                    f"50={family.get('brier', {}).get('always_50')} "
-                    f"signal={family.get('comparison_signal')} "
-                    f"(matches={family.get('matches')})"
+                    f", contract Brier sim={comparison.get('brier', {}).get('simulator')} "
+                    f"emp={comparison.get('brier', {}).get('empirical_rate')} "
+                    f"50={comparison.get('brier', {}).get('always_50')} "
+                    f"signal={comparison.get('comparison_signal')} "
+                    f"(obs={comparison.get('observations')})"
                 )
-            elif family.get("brier"):
+            elif comparison.get("brier"):
                 suffix = (
-                    f", family Brier sim={family['brier'].get('simulator')} "
-                    f"emp={family['brier'].get('empirical_rate')} "
-                    f"50={family['brier'].get('always_50')} "
-                    f"signal={family.get('signal')} "
-                    f"(matches={family.get('matches')})"
+                    f", contract Brier sim={comparison['brier'].get('simulator')} "
+                    f"emp={comparison['brier'].get('empirical_rate')} "
+                    f"50={comparison['brier'].get('always_50')} "
+                    f"signal={comparison.get('signal')} "
+                    f"(obs={comparison.get('comparable_observations')})"
                 )
             else:
                 legacy = (history.get("model_performance") or {}).get("all_history") or {}

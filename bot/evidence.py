@@ -108,7 +108,7 @@ def build_match_evidence(
         question_evidence.append(item)
 
     evidence = {
-        "schema_version": 11,
+        "schema_version": 12,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "match": _match_meta(result, lineups, minutes_before),
         "team_form": context.get("team_form") or {},
@@ -250,7 +250,7 @@ def _compact_simulator_estimate(estimate: dict) -> dict:
     if empirical_rates:
         compact["empirical_rates"] = empirical_rates
 
-    def compact_comparisons(source: dict, *, exact_contract: bool) -> dict:
+    def compact_contract_comparisons(source: dict) -> dict:
         comparisons = {}
         for scope, row in source.items():
             if scope in {"family", "live_refresh"} or not isinstance(row, dict):
@@ -263,11 +263,7 @@ def _compact_simulator_estimate(estimate: dict) -> dict:
                 "signal": row.get("comparison_signal"),
                 "sample": sample,
                 "basis": (
-                    (
-                        "exhaustive_exact_contract_on_all_labelable_wc2026_matches"
-                        if exact_contract else
-                        "exhaustive_family_contracts_on_all_labelable_wc2026_matches"
-                    )
+                    "exhaustive_exact_contract_on_all_labelable_wc2026_matches"
                     if scope == "wc2026" else "rolling_origin_unseen_matches"
                 ),
             }
@@ -278,10 +274,7 @@ def _compact_simulator_estimate(estimate: dict) -> dict:
                     "simulator_observations": coverage.get("simulator_observations"),
                     "comparable_observations": coverage.get("comparable_observations"),
                 })
-                if exact_contract:
-                    comparison["observation_unit"] = row.get("observation_unit")
-                else:
-                    comparison["contracts"] = row.get("contracts")
+                comparison["observation_unit"] = row.get("observation_unit")
             else:
                 comparison.update({
                     "matches": row.get("matches"),
@@ -300,13 +293,8 @@ def _compact_simulator_estimate(estimate: dict) -> dict:
             }
         return comparisons
 
-    comparisons = compact_comparisons(
-        history.get("family_performance") or {}, exact_contract=False,
-    )
-    if comparisons:
-        compact["family_comparison"] = comparisons
-    contract_comparisons = compact_comparisons(
-        history.get("contract_performance") or {}, exact_contract=True,
+    contract_comparisons = compact_contract_comparisons(
+        history.get("contract_performance") or {},
     )
     if contract_comparisons:
         compact["contract_comparison"] = contract_comparisons
