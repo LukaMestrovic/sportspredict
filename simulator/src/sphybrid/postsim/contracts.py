@@ -34,7 +34,9 @@ def contract_key(market: str, params: dict | None, *, stage: str | None = None) 
             f"{params.get('comparator', '>=')}:{_number(params.get('threshold', 1))}"
         )
     if market == "first_goal":
-        return f"first_goal:{params.get('half') or 'full'}:team"
+        period = params.get("half") or "full"
+        scope = ":et" if period == "full" and params.get("include_et") else ""
+        return f"first_goal:{period}{scope}:team"
     if market == "compound_and":
         return "compound:first_goal_and_other_team_scores_2h"
     if market in {"any_player_threshold", "total_shots_threshold"}:

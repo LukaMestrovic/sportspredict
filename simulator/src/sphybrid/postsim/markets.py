@@ -330,7 +330,14 @@ def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
 
     leg = _parse_leg(core, ctx)
     if leg and leg[0] == "first":
-        return ExtSpec(FIRST_GOAL, {"team": leg[1], "half": leg[2] if len(leg) > 2 else None}, question)
+        regulation_only = any(token in raw_lower for token in (
+            "regulation", "90 minutes", "excluding extra time",
+        ))
+        return ExtSpec(FIRST_GOAL, {
+            "team": leg[1],
+            "half": leg[2] if len(leg) > 2 else None,
+            "include_et": len(leg) <= 2 and not regulation_only,
+        }, question)
     if leg and leg[0] == "window":
         return ExtSpec(GOAL_WINDOW, {"window": "numeric", "team": leg[1],
                                      "lo": leg[2], "hi": leg[3]}, question)
@@ -420,7 +427,10 @@ def resolve_extended(
             ),
         )
     if spec.market == FIRST_GOAL:
-        mask = timeline.first_scorer_is(spec.params["team"], spec.params.get("half"))
+        mask = timeline.first_scorer_is(
+            spec.params["team"], spec.params.get("half"),
+            include_et=bool(spec.params.get("include_et")),
+        )
     elif spec.market == GOAL_WINDOW:
         mask = timeline.any(_window_mask(timeline, spec.params))
     elif spec.market == CARD_WINDOW:

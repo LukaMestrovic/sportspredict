@@ -79,6 +79,33 @@ class BundledSimulatorTests(unittest.TestCase):
             item["conditioning_inputs"]["regulation_draw_probability"], 0.306321,
         )
 
+    def test_first_goal_scope_distinguishes_regulation_from_full_match(self):
+        payload = {
+            "home": "France", "away": "Sweden",
+            "kickoff": "2026-06-30T21:00:00Z", "stage": "knockout",
+            "questions": [
+                {
+                    "market_id": "full",
+                    "question": "Will France score the first goal of the match?",
+                },
+                {
+                    "market_id": "reg",
+                    "question": (
+                        "Will France score the first goal in regulation "
+                        "(90 minutes + stoppage time)?"
+                    ),
+                },
+            ],
+            "market_odds": {"regulation_draw_probability": 0.31},
+            "n_sims": 100,
+        }
+        report = self._run_bridge(payload)
+        by_id = {item["market_id"]: item for item in report["question_reports"]}
+        self.assertEqual(by_id["full"]["contract_key"], "first_goal:full:et:team")
+        self.assertIn("including extra time", by_id["full"]["explanation"])
+        self.assertEqual(by_id["reg"]["contract_key"], "first_goal:full:team")
+        self.assertIn("regulation only", by_id["reg"]["explanation"])
+
     def _run_bridge(self, payload):
         env = os.environ.copy()
         env["PYTHONPATH"] = str(SIMULATOR / "src")

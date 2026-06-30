@@ -73,9 +73,10 @@ def _simulator_can_parse(item: dict[str, str], ctx: MatchContext) -> bool:
 def _explanation(market: str, params: dict, notes: str | None) -> str:
     """One deterministic, family-specific sentence; no generated prose or hidden heuristics."""
     if market == FIRST_GOAL:
+        scope = "including extra time" if params.get("include_et") else "regulation only"
         return (
             "Estimated from learned team/half goal counts and historical goal timing, with the "
-            "first scorer resolved inside each shared simulated match world."
+            f"first scorer resolved inside each shared simulated match world ({scope})."
         )
     if market == GOAL_WINDOW:
         if params.get("window") == "before_first_hydration":
@@ -197,6 +198,15 @@ def _adjustment_guidance(market: str, params: dict, question: str) -> str:
 def _market_adjustment_guidance(market: str, params: dict, question: str) -> str:
     """Deterministic pre-match directions for the web-grounded LLM layer."""
     lower = question.lower()
+    if market == FIRST_GOAL:
+        extra_time = (
+            " Include regulation draw odds because this contract also counts extra time."
+            if params.get("include_et") else " Do not add extra-time exposure."
+        )
+        return (
+            "Raise for stronger team goal odds and an aggressive starting attack; lower for a "
+            "defensive setup or missing attackers." + extra_time
+        )
     if market == CARD_WINDOW and params.get("window") == "after_second_hydration":
         if params.get("include_et"):
             return (

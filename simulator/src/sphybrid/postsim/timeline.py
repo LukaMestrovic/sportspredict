@@ -176,13 +176,16 @@ class GoalTimeline(EventTimeline):
         del et_minutes  # retained for backward API compatibility; learned ET tokens own the clock.
         return cls(count_timeline(outcome, GOALS, "goals", timing or TimingModel(), rng))
 
-    def first_scorer_is(self, team: int, half: str | None = None) -> np.ndarray:
+    def first_scorer_is(
+        self, team: int, half: str | None = None, *, include_et: bool = False,
+    ) -> np.ndarray:
         other = TEAM_B if team == TEAM_A else TEAM_A
         if half in ("1H", "2H", "ET"):
             idx = _PHASE_IDX[half]
             return self.first_order[team, idx] < self.first_order[other, idx]
-        mine = np.minimum(self.first_order[team, H1], self.first_order[team, H2])
-        theirs = np.minimum(self.first_order[other, H1], self.first_order[other, H2])
+        phases = (H1, H2, _PHASE_IDX["ET"]) if include_et else (H1, H2)
+        mine = np.min(self.first_order[team, list(phases)], axis=0)
+        theirs = np.min(self.first_order[other, list(phases)], axis=0)
         return mine < theirs
 
     def any_first_goal(self) -> np.ndarray:
