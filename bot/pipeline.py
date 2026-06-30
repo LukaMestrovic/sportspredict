@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from . import derive, evidence, external, ledger, match_context
+from . import derive, evidence, ledger, match_context
 from .apifootball import APIFootball
 from .oddsapi import OddsAPI
 from .parser import parse_questions
@@ -68,7 +68,6 @@ def run_match(
     af: APIFootball,
     oa: OddsAPI | None = None,
     *,
-    allow_external: bool = True,
     llm_pricing_enabled: bool = True,
     llm_pricing_refresh: bool = False,
     lineups: list[dict] | None = None,
@@ -134,7 +133,6 @@ def run_match(
         )
         return res
 
-    kickoff = sp_match["opening_time"]
     for m in markets:
         q = m["question"]
         intent = intents.get(m["id"])
@@ -160,9 +158,6 @@ def run_match(
                 skip_reason = "parser returned no intent"
             if not out:
                 out, src = derive.price_empirical(q, intent, ctx)
-        # 3) last resort: web-grounded external estimate
-        if not out and allow_external:
-            out, src = external.estimate(q, home, away, kickoff)
         res.market_specs[m["id"]] = spec
         if out:
             res.predictions.append(_mk_pred(m, out, src))

@@ -11,7 +11,7 @@ from bot.web import WebAPI
 
 
 _SRC_TAG = {"api-football": "AF", "odds-api": "OA", "af+oa": "AF+OA",
-            "derived": "DRV", "empirical": "EMP", "external": "WEB",
+            "derived": "DRV", "empirical": "EMP",
             "llm-pricing": "LLM"}
 
 

@@ -43,7 +43,7 @@ class SkipReasonTests(unittest.TestCase):
         market = {"id": "m", "question": "Will something unsupported happen?"}
         with patch("bot.pipeline.parse_questions", return_value={
             "m": {"market": "none", "subject": "match"}
-        }), patch("bot.pipeline.external.estimate", return_value=(None, None)):
+        }):
             result = run_match(
                 {"name": "HOME vs AWAY", "opening_time": "2026-01-01T00:00:00Z"},
                 [market], af, None,
@@ -51,23 +51,19 @@ class SkipReasonTests(unittest.TestCase):
             )
         self.assertEqual(result.skipped[0][1], "parser marked unsupported")
 
-    def test_external_fallback_can_be_disabled_for_backtests(self):
+    def test_unparsed_question_is_skipped_without_a_fallback_call(self):
         fixture = {
             "fixture": {"id": 1},
             "teams": {"home": {"name": "Home"}, "away": {"name": "Away"}},
         }
         market = {"id": "m", "question": "Will something unsupported happen?"}
-        with patch("bot.pipeline.parse_questions", return_value={}), patch(
-            "bot.pipeline.external.estimate"
-        ) as estimate:
+        with patch("bot.pipeline.parse_questions", return_value={}):
             result = run_match(
                 {"name": "Home vs Away", "opening_time": "2026-01-01T00:00:00Z"},
                 [market],
                 _AF(fixture),
-                allow_external=False,
                 llm_pricing_enabled=False,
             )
-        estimate.assert_not_called()
         self.assertEqual(len(result.skipped), 1)
         self.assertEqual(result.markets, [market])
         self.assertEqual(result.skip_reasons["m"], "parser returned no intent")

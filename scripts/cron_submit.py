@@ -160,7 +160,7 @@ def _process_match(
     except Exception as exc:
         _log(f"  lineup fetch warning: {exc}")
     result = run_match(
-        sp_match, markets, af, oa, allow_external=False,
+        sp_match, markets, af, oa,
         llm_pricing_enabled=True, llm_pricing_refresh=True,
         lineups=lineups, minutes_before=mins,
     )

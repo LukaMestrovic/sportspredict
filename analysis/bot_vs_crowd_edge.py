@@ -83,8 +83,8 @@ def collect(limit: int) -> list[dict]:
     for sm in settled:
         try:
             crowd = web.crowd_stats(sm["id"], lobby["id"])
-            # web layer OFF: a web search on a past match could leak its result.
-            res = run_match(sm, crowd, af, oa, allow_external=False)
+            # Deterministic path only: web research could leak a settled result.
+            res = run_match(sm, crowd, af, oa, llm_pricing_enabled=False)
         except Exception as e:  # keep going across the whole settled history
             print(f"{sm['name']:<24} ERROR {type(e).__name__}: {e}")
             continue

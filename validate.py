@@ -7,7 +7,7 @@ For every FINISHED WC2026 fixture in the window we:
   3. settle each question from API-Football final score + statistics,
   4. score the bot's probability with the Brier score (p - outcome)^2.
 
-The paid Odds API and external web fallback are disabled: backtests must not
+The paid Odds API and web-grounded LLM pricing are disabled: backtests must not
 spend paid credits or leak settled results through web search. API-Football
 purges pre-match odds a few days after kickoff, so older fixtures price fewer
 markets.
@@ -125,7 +125,6 @@ def main() -> None:
             {"name": f"{home} vs {away}", "opening_time": fx["fixture"]["date"]},
             questions,
             af,
-            allow_external=False,
             llm_pricing_enabled=False,
         )
         predictions = {p.market_id: p for p in result.predictions}

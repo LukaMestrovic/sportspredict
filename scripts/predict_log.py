@@ -17,7 +17,7 @@ from bot.pipeline import run_match, submit_with_ledger
 from bot.sportspredict import SportPredict
 
 TAG = {"api-football": "AF", "odds-api": "OA", "derived": "DRV",
-       "empirical": "EMP", "external": "WEB", "llm-pricing": "LLM"}
+       "empirical": "EMP", "llm-pricing": "LLM"}
 
 
 def main() -> None:

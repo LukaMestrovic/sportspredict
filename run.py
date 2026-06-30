@@ -38,7 +38,7 @@ def main() -> None:
             for p in r.predictions:
                 tag = {"api-football": "AF", "odds-api": "OA", "af+oa": "AF+OA",
                        "derived": "DRV", "empirical": "EMP",
-                       "external": "WEB", "llm-pricing": "LLM"}.get(p.source, "??")
+                       "llm-pricing": "LLM"}.get(p.source, "??")
                 books = f" {p.n_books}b" if p.n_books else ""
                 print(f"  {p.probability_int:>5}%  [{tag}{books}] {p.question}")
                 if p.llm_reasoning_summary:
