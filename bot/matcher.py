@@ -1,9 +1,9 @@
 """Market matcher: structured intent -> API-Football bet specification.
 
 Maps a parsed question intent to (bet_id, target outcome) drawn from the
-API-Football pre-match catalog (soccer_live_odds_market_catalog.pdf). ODDS-API
-markets are intentionally ignored. If no market fits, returns None and the
-question is skipped (predict nothing).
+API-Football pre-match market catalog. Odds API markets are handled separately.
+If no API-Football market fits, returns None and the question is skipped from
+that provider path.
 
 A spec is one of:
   {"type": "ou",     "bet_id": int, "side": "Over"|"Under", "line": float}

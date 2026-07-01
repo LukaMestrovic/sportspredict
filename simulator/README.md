@@ -17,4 +17,5 @@ Everything required at runtime is tracked here:
 
 Training, ingestion, notebooks, historical raw data, and standalone competition
 clients are intentionally excluded. Model artifacts are updated and reviewed in
-this repository; deployment never reads a sibling checkout or prebuilt wheel.
+this repository; deployment reads only the bundled runtime and tracked
+artifacts.

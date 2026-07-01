@@ -11,6 +11,4 @@ out/
 .git/
 __pycache__/
 *.pyc
-notebooks/
 tests/
-*.pdf

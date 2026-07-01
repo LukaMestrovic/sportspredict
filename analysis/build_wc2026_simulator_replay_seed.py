@@ -72,7 +72,7 @@ def main() -> int:
     parser.add_argument(
         "--replay",
         type=Path,
-        default=DEFAULT_SOURCE_ROOT / "notebooks" / "wc2026_simulator_oos_rows.csv",
+        default=DEFAULT_SOURCE_ROOT / "exports" / "wc2026_simulator_oos_rows.csv",
     )
     parser.add_argument(
         "--artifact",

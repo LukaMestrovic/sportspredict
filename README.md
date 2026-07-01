@@ -50,10 +50,10 @@ unique when multiple group matches start together.
 ## Repository boundary
 
 This repository contains the complete production bot. Runtime and deployment
-do not read `../sportspredict`, `../sportspredict-hybrid`, a generated source
-snapshot, or a prebuilt project wheel. The bundled simulator is intentionally
-runtime-only: training pipelines, large historical corpora, notebooks, and
-standalone competition clients are not copied into the production component.
+use only source, configuration, compact benchmark exports, and fitted artifacts
+tracked in this checkout. The bundled simulator is intentionally runtime-only:
+training pipelines, large historical corpora, notebooks, and standalone
+competition clients are not copied into the production component.
 
 The Docker build uses only files tracked here. `cache/`, `logs/`, `.env`, and
 the local virtual environment are excluded from the image.
@@ -284,8 +284,7 @@ scripts/
   run.sh                 cron-safe container runner
   settle_ledger.py       explicit-outcome settlement and Brier reporting
 tests/                   unit and bundled-runtime integration tests
-analysis/, notebooks/    optional post-mortem tools; never deployed
-analysis/data/           compact benchmark exports for artifact regeneration
+analysis/                compact benchmark regeneration tools and exports
 cache/                   retained runtime cache; git-ignored
 logs/                    retained evidence, audits, and ledger; git-ignored
 run.py                   manual predict/submit CLI
@@ -293,8 +292,7 @@ validate.py              deterministic settled-fixture validation
 ```
 
 The tracked family benchmark artifact is regenerated from compact rolling-origin
-exports under `analysis/data/simulator_benchmarks/`; no sibling checkout is
-required:
+exports under `analysis/data/simulator_benchmarks/`:
 
 ```bash
 .venv/bin/python analysis/build_simulator_family_benchmarks.py

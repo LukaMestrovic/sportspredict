@@ -67,7 +67,7 @@ def _read_csv(path: Path) -> list[dict[str, str]]:
 def _fold_rates(source_root: Path, years: set[int]) -> dict[int, dict[str, dict]]:
     result: dict[int, dict[str, dict]] = {}
     for year in sorted(years):
-        path = source_root / "notebooks" / f"oos_{year}" / "exotic_empirical_rates.csv"
+        path = source_root / "exports" / f"oos_{year}" / "exotic_empirical_rates.csv"
         rates = {}
         for row in _read_csv(path):
             rates[_canonical_key(row["contract_key"])] = {
@@ -80,7 +80,7 @@ def _fold_rates(source_root: Path, years: set[int]) -> dict[int, dict[str, dict]
 
 def load_comparison_rows(source_root: Path, contract_keys: set[str]) -> list[dict]:
     """Load OOS predictions and attach empirical rates learned before each fold."""
-    paths = _csv_paths(source_root / "notebooks", "oos_*/exotic_oos_rows.csv")
+    paths = _csv_paths(source_root / "exports", "oos_*/exotic_oos_rows.csv")
     raw_rows = [row for path in paths for row in _read_csv(path)]
     years = {int(row["fold_year"]) for row in raw_rows}
     rates = _fold_rates(source_root, years)
@@ -321,7 +321,7 @@ def build_family_benchmarks(source_root: Path, artifact: dict) -> dict[str, dict
         for key, record in (artifact.get("contracts") or {}).items()
     }
     wc2026_rows = []
-    replay_path = source_root / "notebooks" / "wc2026_simulator_oos_rows.csv"
+    replay_path = source_root / "exports" / "wc2026_simulator_oos_rows.csv"
     if _resolve_csv(replay_path).is_file():
         for row in _read_csv(replay_path):
             key = _canonical_key(row["contract_key"])

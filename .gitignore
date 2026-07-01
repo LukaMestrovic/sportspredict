@@ -26,9 +26,6 @@ logs/prediction_ledger.sqlite3*
 # paid odds-api cache
 cache/
 
-# generated analysis outputs (regenerate via analysis/*.py)
-analysis/*.png
-analysis/*.csv
 logs/calibration_runs/
 logs/llm_pricing_runs/
 logs/*.log
