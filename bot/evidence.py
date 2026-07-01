@@ -1,9 +1,9 @@
 """Build auditable per-match evidence for the LLM pricing layer.
 
 The evidence file is the deterministic handoff between provider odds and the
-raw LLM judgement. It contains per-book de-vigged probabilities and raw odds for
-the exact SportPredict contract, or one simulator fallback when no exact price
-exists. Broad related-market bundles are deliberately excluded.
+raw LLM judgement. It contains per-book de-vigged probabilities for the exact
+SportPredict contract, or one simulator fallback when no exact price exists.
+Broad related-market bundles are deliberately excluded.
 """
 from __future__ import annotations
 
@@ -108,7 +108,7 @@ def build_match_evidence(
         question_evidence.append(item)
 
     evidence = {
-        "schema_version": 13,
+        "schema_version": 14,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "match": _match_meta(result, lineups, minutes_before),
         "team_form": context.get("team_form") or {},
@@ -192,12 +192,12 @@ def _contract_scope(intent: dict | None) -> dict:
 
 
 def _compact_direct_odd(observation: dict) -> dict:
-    """Keep only the price, coherent raw contract, and audit provenance."""
+    """Keep only the de-vigged price, coherent contract, and audit provenance."""
     compact = {
         key: observation.get(key)
         for key in (
             "source", "bookmaker", "market_key", "contract",
-            "probability_pct", "raw_odds", "devig_method",
+            "probability_pct", "devig_method",
         )
         if observation.get(key) is not None
     }

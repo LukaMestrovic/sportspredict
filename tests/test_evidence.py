@@ -51,7 +51,7 @@ class _OA:
 
 
 class EvidenceTests(unittest.TestCase):
-    def test_direct_mapped_odds_include_provider_bookmaker_and_raw_prices(self):
+    def test_direct_mapped_odds_include_provider_bookmaker_and_compact_prices(self):
         result = _result({
             "win": {"market": "match_winner", "subject": "home",
                     "comparator": "win", "threshold": None, "period": "match"},
@@ -67,7 +67,8 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(sources, {"api-football", "odds-api"})
         self.assertIn("Bet365", books)
         self.assertIn("DraftKings", books)
-        self.assertTrue(all(obs["raw_odds"] for obs in q["direct_odds"]))
+        self.assertTrue(all("probability_pct" in obs for obs in q["direct_odds"]))
+        self.assertTrue(all("raw_odds" not in obs for obs in q["direct_odds"]))
         self.assertTrue(all("probability" not in obs for obs in q["direct_odds"]))
         self.assertTrue(all("role" not in obs for obs in q["direct_odds"]))
         self.assertTrue(all("why_relevant" not in obs for obs in q["direct_odds"]))
@@ -223,7 +224,7 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(estimates.call_args.kwargs["intents"], result.intents)
         q = evidence["question_evidence"][0]
-        self.assertEqual(evidence["schema_version"], 13)
+        self.assertEqual(evidence["schema_version"], 14)
         self.assertEqual(q["simulator_estimate"], {"probability_pct": 24.1})
         self.assertNotIn("simulator_model_estimates", q)
         self.assertNotIn("audit_requirement", q)
@@ -287,7 +288,7 @@ class EvidenceTests(unittest.TestCase):
             )
 
         question = bundle["question_evidence"][0]
-        self.assertEqual(bundle["schema_version"], 13)
+        self.assertEqual(bundle["schema_version"], 14)
         self.assertEqual(question["direct_market_spec"]["bet_id"], 14)
         self.assertEqual(len(question["direct_odds"]), 1)
         self.assertIn("regulation first-team-to-score proxy",
@@ -316,7 +317,7 @@ class ContextEvidenceTests(unittest.TestCase):
         with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
-        self.assertEqual(evidence["schema_version"], 13)
+        self.assertEqual(evidence["schema_version"], 14)
         self.assertEqual(evidence["team_form"]["home"]["gf_avg"], 1.7)
         self.assertEqual(evidence["player_form"]["home"][0]["name"], "Striker One")
         self.assertEqual(evidence["referee_profile"]["yellows_per_game"], 4.0)
