@@ -2,9 +2,9 @@
 
 The baseline prices a player count prop (e.g. "<player> 2+ shots on target") with a standalone
 position-Poisson that is *independent* of the match simulation, so the player market and the team
-market for the same statistic can drift apart. The fix scoped in ``docs/player_props_feasibility.md``
-is an allocation layer: the player's count is a **share of the same simulated team total** (which the
-odds anchor has already corrected), keeping player and team markets coherent.
+market for the same statistic can drift apart. The allocation layer makes the player's count a
+**share of the same simulated team total** (which the odds anchor has already corrected), keeping
+player and team markets coherent.
 
 Given the team's simulated total ``T`` for a statistic (an array over worlds) and a per-unit
 ownership probability ``p = share * exposure``, the player's count is ``Binomial(T, p)`` conditional
