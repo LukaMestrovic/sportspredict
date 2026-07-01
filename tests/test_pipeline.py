@@ -5,9 +5,11 @@ from bot.derive import is_compound_question
 from bot.pipeline import (
     MatchResult,
     Prediction,
+    PlatformVerificationError,
     run_match,
     submit_predictions,
     submit_with_ledger,
+    verify_platform_predictions,
 )
 
 
@@ -180,6 +182,34 @@ class SubmissionTests(unittest.TestCase):
         failed.assert_called_once()
         submitted.assert_not_called()
 
+    def test_platform_verification_requires_matching_probabilities(self):
+        sp = _SP(existing=[
+            {"market_id": "a", "id": "pa", "probability": 49, "market_status": "open"},
+        ])
+        verification = verify_platform_predictions(
+            sp, "lobby",
+            [{"market_id": "a", "lobby_id": "lobby", "probability": 50}],
+        )
+        self.assertFalse(verification["ok"])
+        self.assertEqual(verification["mismatched"][0]["actual"], 49)
+
+    def test_failed_platform_verification_marks_ledger_failed(self):
+        sp = _SP(mismatch_after_submit=True)
+        result = MatchResult(
+            {"id": "match", "name": "Home vs Away",
+             "opening_time": "2026-06-22T17:00:00Z"},
+            None, "Home", "Away",
+            predictions=[Prediction("m", "question", 0.5, 50, 1, "label")],
+        )
+        with patch("bot.pipeline.ledger.record_run", return_value="run"), patch(
+            "bot.pipeline.ledger.mark_submitted"
+        ) as submitted, patch("bot.pipeline.ledger.mark_failed") as failed:
+            with self.assertRaises(PlatformVerificationError):
+                submit_with_ledger(sp, "event", "lobby", [result],
+                                   window_min=5, minutes_before=4.8)
+        failed.assert_called_once()
+        submitted.assert_not_called()
+
 
 class _AF:
     def __init__(self, fixture):
@@ -193,25 +223,41 @@ class _AF:
 
 
 class _SP:
-    def __init__(self, existing=None, submit_response=None):
+    def __init__(self, existing=None, submit_response=None, mismatch_after_submit=False):
         self.batches = []
         self.updated = []
         self._existing = existing or []
         self._submit_response = submit_response
+        self._mismatch_after_submit = mismatch_after_submit
 
     def submit_batch(self, batch):
         self.batches.append(batch)
         if self._submit_response is not None:
             return self._submit_response
+        for payload in batch:
+            self._existing.append({
+                "market_id": payload["market_id"],
+                "id": f"p-{payload['market_id']}",
+                "probability": payload["probability"],
+                "market_status": "open",
+            })
         return {"succeeded": len(batch), "failed": 0,
                 "results": [{"market_id": p["market_id"], "success": True}
                             for p in batch]}
 
     def list_predictions(self, lobby_id):
+        if self._mismatch_after_submit and self.batches:
+            return [
+                {**row, "probability": int(row["probability"]) - 1}
+                for row in self._existing
+            ]
         return self._existing
 
     def update_prediction(self, prediction_id, probability):
         self.updated.append((prediction_id, probability))
+        for row in self._existing:
+            if row["id"] == prediction_id:
+                row["probability"] = probability
         return {"id": prediction_id, "probability": probability}
 
 

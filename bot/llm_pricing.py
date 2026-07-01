@@ -22,7 +22,8 @@ from .pipeline import Prediction
 
 
 LLM_PRICING_VERSION = "lp6"
-MODEL = os.environ.get("LLM_PRICING_MODEL", "gpt-5.4-mini")
+MODEL = os.environ.get("LLM_PRICING_MODEL", "gpt-5.5")
+REASONING_EFFORT = os.environ.get("LLM_PRICING_REASONING_EFFORT", "high")
 PROMPT_PATH = config.ROOT / "prompts" / "llm_pricing_prompt.md"
 ENABLED = os.environ.get("LLM_PRICING_ENABLED", "1") != "0"
 # Read timeout (seconds) for the single per-match OpenAI call. This model does
@@ -120,7 +121,7 @@ def _call_llm(evidence: dict) -> dict:
     payload = {
         "model": MODEL,
         "tools": [{"type": "web_search", "search_context_size": "low"}],
-        "reasoning": {"effort": "medium"},
+        "reasoning": {"effort": REASONING_EFFORT},
         "input": f"{_load_prompt()}\n\nMATCH EVIDENCE JSON:\n"
                  f"{json.dumps(evidence, ensure_ascii=False)}",
     }
@@ -180,9 +181,24 @@ def price_match(
         _skip_all(result, f"LLM pricing failed: {exc}")
         return result
 
+    return apply_pricing_response(result, evidence, evidence_path, response)
+
+
+def apply_pricing_response(
+    result,
+    evidence: dict,
+    evidence_path: Path | None,
+    response: dict,
+    *,
+    require_all_markets: bool = False,
+    model_label: str | None = None,
+):
+    """Validate an audited pricing JSON response and attach predictions."""
     markets = response.get("markets")
     if not isinstance(markets, list):
         _skip_all(result, "LLM pricing returned no markets list")
+        if require_all_markets:
+            raise ValueError("LLM pricing returned no markets list")
         return result
 
     result.llm_pricing_briefing = response.get("briefing")
@@ -228,8 +244,12 @@ def price_match(
         pred.llm_reasoning_summary = audit.get("reasoning_summary")
         result.predictions.append(pred)
 
+    if require_all_markets and result.skipped:
+        problems = "; ".join(f"{q}: {why}" for q, why in result.skipped[:5])
+        raise ValueError(f"invalid pricing response: {problems}")
+
     audit_path, report_path = write_audit_bundle(
-        result, evidence, evidence_path, response,
+        result, evidence, evidence_path, response, model_label=model_label,
     )
     result.llm_pricing_audit_path = str(audit_path)
     result.llm_pricing_report_path = str(report_path)
@@ -259,6 +279,7 @@ def write_audit_bundle(
     response: dict,
     *,
     directory: Path | None = None,
+    model_label: str | None = None,
 ) -> tuple[Path, Path]:
     directory = directory or config.ROOT / "logs" / "llm_pricing_runs"
     directory.mkdir(parents=True, exist_ok=True)
@@ -268,9 +289,10 @@ def write_audit_bundle(
     audit_path = directory / f"{stamp}_{slug}_llm_audit.json"
     report_path = directory / f"{stamp}_{slug}_llm_audit.md"
 
+    model = model_label or MODEL
     payload = {
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "model": MODEL,
+        "model": model,
         "evidence_path": str(evidence_path) if evidence_path else None,
         "evidence_hash": evidence.get("evidence_hash"),
         "response": response,
@@ -278,17 +300,27 @@ def write_audit_bundle(
         "skipped": [{"question": q, "why": why} for q, why in result.skipped],
     }
     audit_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-    report_path.write_text(_markdown_report(result, evidence, evidence_path, response) + "\n")
+    report_path.write_text(
+        _markdown_report(result, evidence, evidence_path, response, model_label=model)
+        + "\n"
+    )
     return audit_path, report_path
 
 
-def _markdown_report(result, evidence: dict, evidence_path: Path | None, response: dict) -> str:
+def _markdown_report(
+    result,
+    evidence: dict,
+    evidence_path: Path | None,
+    response: dict,
+    *,
+    model_label: str | None = None,
+) -> str:
     match = evidence.get("match", {})
     lines = [
         f"# LLM pricing audit: {match.get('home')} vs {match.get('away')}",
         "",
         f"- kickoff: {match.get('kickoff')}",
-        f"- model: {MODEL}",
+        f"- model: {model_label or MODEL}",
         f"- evidence: {evidence_path or 'not written'}",
         f"- evidence hash: {evidence.get('evidence_hash')}",
     ]

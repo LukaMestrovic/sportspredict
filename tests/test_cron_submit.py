@@ -97,6 +97,7 @@ class ProcessMatchTest(unittest.TestCase):
             cron_submit.APIFootball, cron_submit.OddsAPI, cron_submit.run_match,
             cron_submit.submit_with_ledger, cron_submit.simulator_benchmark.refresh,
             cron_submit.lineup_fetcher.fetch_lineups,
+            cron_submit.submission_state.submitted_run_exists,
         )
         cron_submit.simulator_benchmark.refresh = lambda *_a, **_k: {}
 
@@ -105,6 +106,7 @@ class ProcessMatchTest(unittest.TestCase):
             cron_submit.APIFootball, cron_submit.OddsAPI, cron_submit.run_match,
             cron_submit.submit_with_ledger, cron_submit.simulator_benchmark.refresh,
             cron_submit.lineup_fetcher.fetch_lineups,
+            cron_submit.submission_state.submitted_run_exists,
         ) = self._orig
 
     def test_cron_fire_refreshes_odds_lineups_and_llm_pricing(self):
@@ -153,6 +155,40 @@ class ProcessMatchTest(unittest.TestCase):
         self.assertTrue(seen["lineups_refresh"])
         self.assertTrue(seen["run_match_kwargs"]["llm_pricing_enabled"])
         self.assertTrue(seen["run_match_kwargs"]["llm_pricing_refresh"])
+
+    def test_submitted_ledger_run_skips_before_paid_work(self):
+        calls = []
+
+        class _AF:
+            def __init__(self, *, refresh_odds=False):
+                calls.append("af")
+
+        class _OA:
+            def __init__(self, *, refresh_odds=False):
+                calls.append("oa")
+
+        cron_submit.APIFootball = _AF
+        cron_submit.OddsAPI = _OA
+        cron_submit.run_match = lambda *a, **k: calls.append("run")
+        cron_submit.lineup_fetcher.fetch_lineups = (
+            lambda *a, **k: calls.append("lineups")
+        )
+        cron_submit.submission_state.submitted_run_exists = lambda *a, **k: True
+
+        sp = SimpleNamespace(markets=lambda lobby_id, match_id: calls.append("markets") or [])
+        kickoff = datetime.now(timezone.utc) + timedelta(minutes=30)
+        cron_submit._process_match(
+            {"id": "m1", "name": "A vs B",
+             "opening_time": kickoff.strftime("%Y-%m-%dT%H:%M:%S.000Z")},
+            kickoff,
+            datetime.now(timezone.utc),
+            sp,
+            {"id": "event"},
+            {"id": "lobby"},
+            SimpleNamespace(dry_run=True),
+        )
+
+        self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":

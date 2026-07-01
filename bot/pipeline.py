@@ -58,6 +58,12 @@ class MatchResult:
     llm_pricing_report_path: str | None = None
 
 
+class PlatformVerificationError(RuntimeError):
+    def __init__(self, verification: dict):
+        super().__init__(f"SportPredict platform verification failed: {verification}")
+        self.verification = verification
+
+
 def _clamp_int(p: float) -> int:
     return max(1, min(99, round(p * 100)))
 
@@ -70,6 +76,7 @@ def run_match(
     *,
     llm_pricing_enabled: bool = True,
     llm_pricing_refresh: bool = False,
+    llm_pricing_call: bool = True,
     lineups: list[dict] | None = None,
     minutes_before: float | None = None,
 ) -> MatchResult:
@@ -128,9 +135,10 @@ def run_match(
             for item in bundle.get("question_evidence", [])
         }
         res.oa_observations = list(getattr(ctx.oa, "observations", [])) if ctx.oa else []
-        llm_pricing.price_match(
-            res, bundle, path, minutes_before, refresh=llm_pricing_refresh,
-        )
+        if llm_pricing_call:
+            llm_pricing.price_match(
+                res, bundle, path, minutes_before, refresh=llm_pricing_refresh,
+            )
         return res
 
     for m in markets:
@@ -270,14 +278,92 @@ def submit_with_ledger(
     # "landed" = our intended value is now on the platform (newly created,
     # patched, or already equal). Only flag the run failed if nothing landed.
     landed = summary["submitted"] + summary["updated"] + summary["unchanged"]
+    if not summary["payload"] or landed == 0:
+        message = (
+            "no predictions to submit" if not summary["payload"]
+            else f"0 landed, {summary['failed']} rejected: {summary['errors'][:1]}"
+        )
+        for run_id in run_ids:
+            ledger.mark_failed(run_id, message)
+        return summary, run_ids
+
+    verification = verify_platform_predictions(sp, lobby_id, summary["payload"])
+    summary["platform_verification"] = verification
+    if not verification["ok"]:
+        for run_id in run_ids:
+            ledger.mark_failed(run_id, json_dumps_compact(verification))
+        raise PlatformVerificationError(verification)
+
     for run_id in run_ids:
-        if landed == 0 and summary["failed"]:
-            ledger.mark_failed(
-                run_id, f"0 landed, {summary['failed']} rejected: "
-                        f"{summary['errors'][:1]}")
-        else:
-            ledger.mark_submitted(run_id)
+        ledger.mark_submitted(run_id)
     return summary, run_ids
+
+
+def verify_platform_predictions(
+    sp: SportPredict,
+    lobby_id: str,
+    payload: list[dict],
+) -> dict:
+    """Confirm SportPredict has every intended open-market probability."""
+    expected = {
+        item["market_id"]: int(item["probability"])
+        for item in payload
+        if item.get("market_id") is not None
+    }
+    rows = sp.list_predictions(lobby_id)
+    open_by_market = {}
+    ignored_closed = []
+    for row in rows:
+        mid = row.get("market_id")
+        if not mid:
+            continue
+        status = row.get("market_status", "open")
+        if status != "open":
+            if mid in expected:
+                ignored_closed.append({"market_id": mid, "market_status": status})
+            continue
+        open_by_market[mid] = row
+
+    missing = []
+    mismatched = []
+    for mid, prob in expected.items():
+        row = open_by_market.get(mid)
+        if row is None:
+            missing.append(mid)
+            continue
+        actual = _platform_probability_int(row)
+        if actual != prob:
+            mismatched.append({
+                "market_id": mid,
+                "expected": prob,
+                "actual": actual,
+            })
+    return {
+        "ok": not missing and not mismatched,
+        "checked": len(expected) - len(missing),
+        "expected": len(expected),
+        "missing": missing,
+        "mismatched": mismatched,
+        "ignored_closed": ignored_closed,
+    }
+
+
+def _platform_probability_int(row: dict) -> int | None:
+    value = row.get("probability")
+    if value is None:
+        value = row.get("probability_submitted")
+    if value is None:
+        return None
+    try:
+        return int(round(float(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def json_dumps_compact(value) -> str:
+    import json
+
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
 def predict_open_matches(

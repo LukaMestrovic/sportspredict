@@ -26,7 +26,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from bot import ledger, lineups as lineup_fetcher, llm_pricing, simulator_benchmark
+from bot import lineups as lineup_fetcher, llm_pricing, simulator_benchmark
+from bot import submission_state
 from bot.apifootball import APIFootball
 from bot.config import ROOT
 from bot.oddsapi import OddsAPI
@@ -41,8 +42,8 @@ WINDOWS = (30,)
 # Ignore matches further out than this so most ticks exit cheaply.
 LOOKAHEAD_MIN = WINDOWS[0] + 1
 
-STATE_DIR = ROOT / "cache" / "cron_state"
-LOCK_PATH = ROOT / "cache" / "cron_submit.lock"
+STATE_DIR = submission_state.STATE_DIR
+LOCK_PATH = submission_state.LOCK_PATH
 
 
 def _parse_kickoff(opening_time: str) -> datetime:
@@ -57,8 +58,9 @@ def _log(msg: str) -> None:
 
 
 def _marker(match_id: str, kickoff: datetime, window: int) -> Path:
-    epoch = int(kickoff.timestamp())
-    return STATE_DIR / f"{match_id}_{epoch}__w{window}.done"
+    return submission_state.marker_path(
+        match_id, kickoff, window, state_dir=STATE_DIR,
+    )
 
 
 def main() -> None:
@@ -127,7 +129,11 @@ def _dispatch(args) -> None:
         submitted = {
             m.get("name", m["id"]): [
                 w for w in WINDOWS if _marker(m["id"], k, w).exists()
-            ] or "none"
+            ] or (
+                "ledger" if submission_state.submitted_run_exists(
+                    m["id"], kickoff=m["opening_time"], lobby_id=lobby["id"],
+                ) else "none"
+            )
             for m, k in slot
         }
         _log(f"next slot: {names}  kickoff {next_kickoff.isoformat()}  "
@@ -158,6 +164,11 @@ def _process_match(
                    and not _marker(sp_match["id"], kickoff, w).exists()), None)
     if window is None:
         _log(f"{head} in {mins:.1f} min — windows already submitted")
+        return
+    if submission_state.submitted_run_exists(
+        sp_match["id"], kickoff=sp_match["opening_time"], lobby_id=lobby["id"],
+    ):
+        _log(f"{head} in {mins:.1f} min — submitted ledger run exists; skip")
         return
 
     _log(f"FIRING {window}-min window for {head} (kickoff in {mins:.1f} min)")
@@ -204,7 +215,15 @@ def _process_match(
     # Mark this window and every wider one so a delayed start can't re-fire them.
     for w in WINDOWS:
         if w >= window:
-            _marker(sp_match["id"], kickoff, w).touch()
+            submission_state.write_marker(
+                sp_match["id"], kickoff, w,
+                source="cron",
+                metadata={
+                    "ledger_run_id": run_id,
+                    "evidence_hash": getattr(result, "evidence_hash", None),
+                },
+                state_dir=STATE_DIR,
+            )
     _write_audit(head, kickoff, window, mins, outcome, by_src, result, run_id)
     _write_llm_pricing_report(head, kickoff, mins, result, run_id)
     landed = outcome["submitted"] + outcome["updated"] + outcome["unchanged"]

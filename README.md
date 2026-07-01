@@ -101,7 +101,8 @@ Useful optional settings:
 | Key | Default | Purpose |
 |---|---:|---|
 | `PARSER_MODEL` | `gpt-5.4-mini` | unfamiliar question parsing |
-| `LLM_PRICING_MODEL` | `gpt-5.4-mini` | final per-match pricing |
+| `LLM_PRICING_MODEL` | `gpt-5.5` | final per-match pricing |
+| `LLM_PRICING_REASONING_EFFORT` | `high` | API fallback reasoning effort |
 | `LLM_PRICING_ENABLED` | `1` | set `0` for deterministic local checks |
 | `ODDS_REGIONS` | `eu,uk,us` | Odds API breadth and credit use |
 | `SPORTSPREDICT_SIMULATOR_N_SIMS` | `8000` | simulator draws; capped at 10000 |
@@ -132,18 +133,20 @@ Prerequisites are Docker, a running Docker daemon, `crontab`, and a completed
 
 ```bash
 scripts/deploy.sh
-scripts/run.sh --status
+cache/deployed/run.sh --status
 crontab -l
 tail -f logs/cron.log
 ```
 
 `scripts/deploy.sh` performs the whole deployment:
 
-1. builds `sportspredict-llm:v1` from `docker/Dockerfile`;
+1. builds an immutable `sportspredict-llm:<git-sha>-<timestamp>` image
+   plus the convenience `sportspredict-llm:v1` alias from `docker/Dockerfile`;
 2. smoke-tests the bundled learned model and its audit artifacts without keys;
 3. runs a read-only SportPredict status check with keys passed at runtime; and
-4. idempotently installs the per-minute T−30 dispatcher and five-minute
-   settlement/benchmark refresh cron entries.
+4. writes `cache/deployed/run.sh` pinned to that immutable image and
+   idempotently installs the per-minute T−30 dispatcher and five-minute
+   settlement/benchmark refresh cron entries through that runner.
 
 The dispatcher is normally a fast no-op. At T−30 it refreshes provider odds
 once, fetches current lineups, forces a fresh cached pricing/web-search call for
@@ -164,9 +167,9 @@ unchanged pre-2026 simulator artifacts; no LLM probabilities or reasoning enter
 it. The T−30 tick refreshes this retained snapshot again before pricing, so each
 new LLM evidence bundle sees every result settled so far.
 
-The image is immutable between deploys. Re-run `scripts/deploy.sh` to ship new
-code. `scripts/run.sh` bind-mounts this checkout's `cache/` and `logs/`, so paid
-responses, parser/pricing caches, cron markers, evidence, audits, and the ledger
+The active image is immutable between deploys. Re-run `scripts/deploy.sh` to
+ship new code. `cache/deployed/run.sh` bind-mounts this checkout's `cache/` and
+`logs/`, so paid responses, parser/pricing caches, cron markers, evidence, audits, and the ledger
 survive image rebuilds. Never delete those directories during deployment.
 
 ## Evidence and pricing contract

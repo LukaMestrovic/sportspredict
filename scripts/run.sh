@@ -38,6 +38,7 @@ mkdir -p "$ROOT/cache" "$ROOT/logs"
 exec docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -e SPORTSPREDICT_KEY -e APIFOOTBALL_KEY -e ODDS_API_KEY -e OPENAI_API_KEY \
   -e PARSER_MODEL -e ODDS_REGIONS -e LLM_PRICING_ENABLED -e LLM_PRICING_MODEL \
+  -e LLM_PRICING_REASONING_EFFORT -e SPLLM_HOST_ROOT="$ROOT" \
   -e SPORTSPREDICT_SIMULATOR_N_SIMS \
   -v "$ROOT/cache:/app/cache" \
   -v "$ROOT/logs:/app/logs" \
