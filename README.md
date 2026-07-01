@@ -49,11 +49,25 @@ unique when multiple group matches start together.
 
 ## Repository boundary
 
-This repository contains the complete production bot. Runtime and deployment
-use only source, configuration, compact benchmark exports, and fitted artifacts
-tracked in this checkout. The bundled simulator is intentionally runtime-only:
-training pipelines, large historical corpora, notebooks, and standalone
-competition clients are not copied into the production component.
+This repository contains the complete production bot: the scheduled entrypoints,
+deterministic parsers, provider adapters, market matching logic, evidence
+builder, web-grounded pricing layer, submission ledger, deployment files, and
+the learned simulator used as labeled context. Runtime and deployment use only
+source, configuration, compact benchmark exports, and fitted artifacts tracked
+in this checkout.
+
+The bundled simulator is intentionally a runtime component, not a research
+workspace. It includes the code and model artifacts needed to price supported
+WC2026 contracts from the bot, but excludes training pipelines, large historical
+corpora, exploratory notebooks, and standalone competition clients. Those
+materials are useful while developing or retraining a simulator, but they are
+not needed to operate this bot and would make the production repository harder
+to audit.
+
+Analysis files that remain in `analysis/` are either small reproducibility tools
+for the tracked simulator artifacts or current planning notes for WC2026 market
+coverage. Generated runtime state stays in `cache/` and `logs/`, which are
+retained on the machine but excluded from source control and Docker images.
 
 The Docker build uses only files tracked here. `cache/`, `logs/`, `.env`, and
 the local virtual environment are excluded from the image.
