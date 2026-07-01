@@ -104,10 +104,17 @@ class DirectContractTests(unittest.TestCase):
             ("select", 59, "Yes"),
         )
 
-    def test_team_score_excluding_own_goals_rejects_scoreboard_contract(self):
+    def test_team_score_excluding_own_goals_uses_labeled_scoreboard_proxy(self):
         intent = _I("team_score", "away")
         intent["excludes_own_goals"] = True
-        self.assertIsNone(match_intent(intent, "Home", "Away"))
+        spec = match_intent(intent, "Home", "Away")
+        self.assertEqual((spec["type"], spec["bet_id"], spec["value"]),
+                         ("select", 44, "Yes"))
+        self.assertEqual(
+            spec["contract_proxy"],
+            "team_to_score_for_team_score_excluding_own_goals",
+        )
+        self.assertIn("own goals", spec["proxy_note"])
 
 
 class KnockoutMarketMappingTests(unittest.TestCase):

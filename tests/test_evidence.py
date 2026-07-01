@@ -54,6 +54,16 @@ def _af_cards_compare_books():
     }]
 
 
+def _af_team_score_books():
+    return [{
+        "name": "Bet365",
+        "bets": [{"id": 44, "values": [
+            {"value": "Yes", "odd": "1.70"},
+            {"value": "No", "odd": "2.20"},
+        ]}],
+    }]
+
+
 class _OA:
     def __init__(self):
         self.requested = []
@@ -453,6 +463,32 @@ class EvidenceTests(unittest.TestCase):
         self.assertIn("yellow-card/bookings", direct["contract_note"])
         self.assertNotIn("simulator_estimate", question)
 
+    def test_team_score_excluding_own_goals_uses_labeled_scoreboard_proxy(self):
+        result = _result({
+            "score": {
+                "market": "team_score", "subject": "away",
+                "comparator": "yes", "threshold": None, "period": "match",
+                "time_scope": "regulation", "excludes_own_goals": True,
+            },
+        }, question="Will Away score a goal (excluding own goals)?")
+        ctx = PriceCtx("Home", "Away", _af_team_score_books(), None, None)
+
+        with patch("bot.evidence.simulator.simulator_estimates",
+                   return_value={"score": {"probability_pct": 40.0}}):
+            bundle = build_match_evidence(
+                result, ctx, lineups=None, minutes_before=30,
+            )
+
+        question = bundle["question_evidence"][0]
+        self.assertEqual(question["direct_market_spec"]["bet_id"], 44)
+        self.assertEqual(
+            question["direct_market_spec"]["contract_proxy"],
+            "team_to_score_for_team_score_excluding_own_goals",
+        )
+        self.assertEqual(len(question["direct_odds"]), 1)
+        self.assertIn("excluding-own-goals", question["direct_odds"][0]["contract_note"])
+        self.assertNotIn("simulator_estimate", question)
+
 
 class ContextEvidenceTests(unittest.TestCase):
     def test_match_context_blocks_are_embedded_at_top_level(self):
@@ -560,6 +596,38 @@ class ContextEvidenceTests(unittest.TestCase):
         self.assertIn("Team Total", guidance)
         self.assertIn("de-vig", guidance)
 
+    def test_second_half_sot_market_gets_period_specific_stat_guidance(self):
+        result = _result({
+            "sot": {"market": "shots_on_target_compare", "subject": "away",
+                    "player": None, "comparator": "more",
+                    "threshold": None, "period": "2H"},
+        }, question="Will Away have more shots on target than Home in the second half?")
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+
+        with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
+            evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+        guidance = evidence["question_evidence"][0]["adjustment_guidance"]
+        self.assertIn("second half / 2nd half", guidance)
+        self.assertIn("most shots on target", guidance)
+        self.assertIn("1x2/most-SOT", guidance)
+
+    def test_player_score_or_assist_market_gets_direct_search_guidance(self):
+        result = _result({
+            "soa": {"market": "player_score_or_assist", "subject": "player",
+                    "player": "Martin Odegaard", "comparator": "yes",
+                    "threshold": None, "period": "match"},
+        }, question="Will Martin Odegaard score or assist a goal?")
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+
+        with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
+            evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+        guidance = evidence["question_evidence"][0]["adjustment_guidance"]
+        self.assertIn("score or assist", guidance)
+        self.assertIn("player assists", guidance)
+        self.assertIn("combine them as a labeled proxy", guidance)
+
     def test_penalty_red_compound_gets_component_odds_guidance(self):
         result = _result({
             "compound": {"market": "none", "subject": "match", "player": None,
@@ -571,10 +639,52 @@ class ContextEvidenceTests(unittest.TestCase):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
         guidance = evidence["question_evidence"][0]["adjustment_guidance"]
+        self.assertIn("Penalty or Red card: yes", guidance)
         self.assertIn("component odds", guidance)
         self.assertIn("penalty awarded", guidance)
         self.assertIn("red card shown", guidance)
         self.assertIn("combine as a union", guidance)
+
+    def test_match_special_questions_get_online_specials_guidance(self):
+        cases = [
+            (
+                "Will a goal be scored before the first hydration break?",
+                "Goal scored before the 1st half hydration break",
+            ),
+            (
+                "Will a substitute score a goal in regulation?",
+                "Substitute to come on and score",
+            ),
+            (
+                "Will any player record 2 or more shots on target?",
+                "any player 2+ shots on target",
+            ),
+        ]
+        for question, expected in cases:
+            result = _result({
+                "special": {"market": "none", "subject": "match", "player": None,
+                            "comparator": "yes", "threshold": None, "period": "match"},
+            }, question=question)
+            ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+
+            with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
+                evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+            self.assertIn(expected, evidence["question_evidence"][0]["adjustment_guidance"])
+
+    def test_btts_and_goals_compound_gets_combined_market_guidance(self):
+        result = _result({
+            "compound": {"market": "none", "subject": "match", "player": None,
+                         "comparator": "yes", "threshold": None, "period": "match"},
+        }, question="Will both teams score AND the match have 3 or more total goals?")
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+
+        with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
+            evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+        guidance = evidence["question_evidence"][0]["adjustment_guidance"]
+        self.assertIn("BTTS & Over 2.5", guidance)
+        self.assertIn("exact combined odds", guidance)
 
     def test_non_player_market_has_no_player_form_key(self):
         result = _result({

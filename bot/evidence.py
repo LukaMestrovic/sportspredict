@@ -20,6 +20,8 @@ from . import predictor as afpred
 from .matcher import (
     CARDS_COMPARE_PROXY,
     CARDS_COMPARE_PROXY_NOTE,
+    TEAM_SCORE_NO_OWN_GOALS_PROXY,
+    TEAM_SCORE_NO_OWN_GOALS_PROXY_NOTE,
     match_intent,
     match_intent_oddsapi,
 )
@@ -191,6 +193,9 @@ def _adjustment_guidance(
     compound_guidance = _compound_market_guidance(question)
     if compound_guidance:
         parts.append(compound_guidance)
+    special_guidance = _special_market_guidance(question)
+    if special_guidance:
+        parts.append(special_guidance)
     return "\n\n".join(parts) if parts else None
 
 
@@ -200,10 +205,25 @@ def _player_form_guidance(intent: dict | None) -> str | None:
     if not player or player == "None":
         return None
     market = (intent or {}).get("market")
+    search_clause = ""
     if market == "player_goal_scorer":
         metrics = "goals_per90, shots_per90, sot_per90, starts and minutes"
     elif market == "player_shots_on_target":
         metrics = "sot_per90, shots_per90, starts and minutes"
+        search_clause = (
+            " Search online for direct player shots-on-target props, including "
+            "bet-builder Player Total Shots On Target / SoT tabs and any half-specific "
+            "variant before relying only on form."
+        )
+    elif market == "player_score_or_assist":
+        metrics = "assists, chances created, goals_per90, shots_per90, starts and minutes"
+        search_clause = (
+            " Search online for direct bookmaker or bet-builder prices labelled "
+            "\"player to score or assist\", \"score or assist\", \"to score or assist\", "
+            "or player assists plus anytime scorer component prices. Use an exact "
+            "score-or-assist quote as direct online odds; if only components exist, "
+            "combine them as a labeled proxy and avoid double-counting overlap."
+        )
     else:
         metrics = "recent attacking involvement, starts and minutes"
     return (
@@ -214,6 +234,7 @@ def _player_form_guidance(intent: dict | None) -> str | None:
         "rotation or bench risk, limited minutes, or role uncertainty. When no "
         "direct_odds exist, use simulator_estimate as context and apply the same "
         "player-form adjustment."
+        f"{search_clause}"
     )
 
 
@@ -230,6 +251,8 @@ def _stat_market_guidance(
         return None
 
     side = intent.get("subject")
+    period = intent.get("period")
+    player = intent.get("player")
     team = home if side == "home" else away if side == "away" else None
     threshold = intent.get("threshold")
     line_hint = None
@@ -240,30 +263,108 @@ def _stat_market_guidance(
             line_hint = f"{float(threshold) + 0.5:g}"
     except (TypeError, ValueError):
         line_hint = None
-    target = f"{team} shots on target" if team else "match/team shots on target"
+    if player:
+        target = f"{player} shots on target"
+    elif "both teams" in lower:
+        target = "both teams shots on target"
+    else:
+        target = f"{team} shots on target" if team else "match/team shots on target"
     line_clause = f" at line {line_hint}" if line_hint else ""
+    period_clause = ""
+    if period == "1H":
+        period_clause = " for the first half / 1st half tab"
+    elif period == "2H":
+        period_clause = " for the second half / 2nd half tab"
     return (
         f"Before relying on the simulator for this SOT stat market, search for "
-        f"direct online odds for {target}{line_clause}: phrases such as "
-        "\"team total shots on target\", \"shots on goal\", \"Team Total\", "
-        "\"alternative team total\", and \"statistics\" pages. On bookmaker "
+        f"direct online odds for {target}{line_clause}{period_clause}: phrases such as "
+        "\"team total shots on target\", \"player total shots on target\", "
+        "\"shots on goal\", \"Team Total\", \"alternative team total\", "
+        "\"most shots on target\", and \"statistics\" pages. On bookmaker "
         "statistics pages, if the enclosing event is labelled shots on target, "
         "generic row headers like Total, Total Goals, or Team Total refer to the "
         "stat count, not football goals. Use an exact over/under pair when found "
-        "and de-vig the two sides from the same book."
+        "and de-vig the two sides from the same book; use 1x2/most-SOT markets "
+        "as strong proxies for comparison questions when the period and statistic match."
     )
 
 
 def _compound_market_guidance(question: str) -> str | None:
     lower = question.lower()
-    if "penalty kick" not in lower or "red card" not in lower:
-        return None
-    return (
-        "For this penalty/red-card OR compound, search for direct component odds "
-        "for penalty awarded and red card shown before relying on the simulator. "
-        "Use same-source prices when possible, convert each component probability, "
-        "combine as a union, and note any positive correlation adjustment."
-    )
+    if "penalty kick" in lower and "red card" in lower:
+        return (
+            "For this penalty/red-card OR compound, first search for an exact combined "
+            "special such as \"Penalty or Red card: yes\" / \"Penalty or Red Card\". "
+            "If absent, search for direct component odds for penalty awarded and red "
+            "card shown before relying on the simulator. Use same-source prices when "
+            "possible, convert each component probability, combine as a union, and "
+            "note any positive correlation adjustment."
+        )
+    if (
+        "both teams score" in lower
+        and ("3 or more total goals" in lower or "over 2.5" in lower)
+    ):
+        return (
+            "For this BTTS plus goals compound, search for exact combined odds such "
+            "as \"Both Teams To Score and Over 2.5 Goals\", \"BTTS & Over 2.5\", "
+            "or bet-builder same-game combinations. Treat exact combined prices as "
+            "direct online odds; if absent, use the provided component/derived "
+            "context and explain the positive correlation."
+        )
+    return None
+
+
+def _special_market_guidance(question: str) -> str | None:
+    """Research checklist for online match-special markets not in provider feeds."""
+    lower = question.lower()
+    parts: list[str] = []
+    if "hydration break" in lower:
+        parts.append(
+            "Search bookmaker Match Specials / Market Specials for hydration-break "
+            "props. Exact phrases include \"Goal scored before the 1st half hydration "
+            "break\" and \"goal before first hydration break\". For after-second-"
+            "hydration goal questions, exact after-break props are best; otherwise "
+            "nearby late-window prices such as \"Goal scored 80:00 - Full time\" or "
+            "\"Goal scored 85:00 - Full time\" are only labeled proxies. For card, "
+            "corner, offside, or substitution hydration questions, use a special only "
+            "when both the event type and time window match closely."
+        )
+    if "substitute" in lower and ("score" in lower or "goal" in lower):
+        parts.append(
+            "Search match specials for \"A substitute to score\", \"Substitute to "
+            "come on and score\", and \"Bench player will score\". Treat exact "
+            "substitute-to-score prices as direct online odds for this contract, "
+            "with an own-goal caveat when the SportPredict wording excludes own goals."
+        )
+    if "stoppage" in lower or "added time" in lower:
+        parts.append(
+            "Search for exact stoppage/added-time goal specials first. If unavailable, "
+            "late-window prices such as \"45:00 - half time\", \"80:00 - Full time\", "
+            "or \"85:00 - Full time\" can be directional proxies only when their "
+            "time window is clearly broader than the SportPredict contract."
+        )
+    if "outside the penalty area" in lower or "outside the box" in lower:
+        parts.append(
+            "Search scoring-event and goal-method specials for \"outside the box\", "
+            "\"outside the penalty area\", and \"method of goal\" before falling back "
+            "to simulator/base-rate evidence."
+        )
+    if "any player" in lower and (
+        "more than 1 goal" in lower or "2 or more shots on target" in lower
+    ):
+        parts.append(
+            "Search match specials and player-prop tabs for \"any player to score 2+\", "
+            "\"to score a brace\", \"any player 2+ shots on target\", and player "
+            "ladder markets. Use exact any-player prices when found; otherwise combine "
+            "top-player ladders only as a labeled proxy."
+        )
+    if "substitution" in lower and "before halftime" in lower:
+        parts.append(
+            "Search match specials for first-substitution timing / substitution before "
+            "halftime. If no exact timing market is found, do not treat generic "
+            "substitution or lineup news as direct odds."
+        )
+    return "\n\n".join(parts) if parts else None
 
 
 def _contract_scope(intent: dict | None) -> dict:
@@ -502,6 +603,10 @@ def _direct_contract_note(spec: dict | None) -> str:
         )
     if spec.get("contract_proxy") == CARDS_COMPARE_PROXY:
         return CARDS_COMPARE_PROXY_NOTE
+    if spec.get("contract_proxy") == TEAM_SCORE_NO_OWN_GOALS_PROXY:
+        return TEAM_SCORE_NO_OWN_GOALS_PROXY_NOTE
+    if spec.get("proxy_note"):
+        return str(spec["proxy_note"])
     return "exact mapped contract"
 
 

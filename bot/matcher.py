@@ -68,6 +68,11 @@ CARDS_COMPARE_PROXY_NOTE = (
     "yellow-card/bookings team-most-cards 1x2 proxy for the all-cards "
     "comparison; red cards are rare but can change SportPredict settlement"
 )
+TEAM_SCORE_NO_OWN_GOALS_PROXY = "team_to_score_for_team_score_excluding_own_goals"
+TEAM_SCORE_NO_OWN_GOALS_PROXY_NOTE = (
+    "team-to-score scoreboard proxy for the excluding-own-goals contract; "
+    "opponent own goals are rare but can change SportPredict settlement"
+)
 
 # Player markets — sourced from the Odds API (API-Football rarely quotes them).
 _PLAYER_MARKETS = [
@@ -176,9 +181,6 @@ def match_intent(
     if not market or market == "none":
         return None
     market = _normalize(market, subject, comp, period)
-    if market == "team_score" and intent.get("excludes_own_goals"):
-        return None
-
     # Standard pre-match bookmaker contracts settle at 90 minutes. In a
     # knockout match they are not exact evidence for an unqualified full-match
     # question, which includes extra time. Qualification is exact; first-team-
@@ -322,8 +324,12 @@ def match_intent(
         if comp == "more":
             return None
         bet_id = _TEAM_YESNO[market][0 if subject == "home" else 1]
-        return {"type": "select", "bet_id": bet_id, "value": "Yes",
+        spec = {"type": "select", "bet_id": bet_id, "value": "Yes",
                 "label": f"{market} {subject} Yes"}
+        if market == "team_score" and intent.get("excludes_own_goals"):
+            spec["contract_proxy"] = TEAM_SCORE_NO_OWN_GOALS_PROXY
+            spec["proxy_note"] = TEAM_SCORE_NO_OWN_GOALS_PROXY_NOTE
+        return spec
 
     if market in _COMPARE:
         if subject not in ("home", "away"):

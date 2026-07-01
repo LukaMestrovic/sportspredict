@@ -70,10 +70,27 @@ Use high-quality sources before lower-quality commentary. Useful places to look:
   enclosing event is labelled for a stat, generic rows such as Total, Total
   Goals, or Team Total refer to that stat count, not football goals. Exact
   stat over/under pairs should be de-vigged and used as direct odds.
+- Player involvement props: for score-or-assist, player assists, player shots
+  on target, and player ladder contracts, search bookmaker player-prop and
+  bet-builder tabs before falling back to form. Exact "to score or assist",
+  "player total shots on target", "SoT", "scorer", and "assists" prices are
+  direct online odds when the period and settlement scope match.
 - Compound rare events: when the question is an OR/AND of two bookable events
-  such as penalty awarded OR red card shown, search for the component prices and
-  compose them transparently instead of stopping after no single combined line
-  is found.
+  such as penalty awarded OR red card shown, first search for exact combined
+  specials such as "Penalty or Red card: yes" or "BTTS & Over 2.5". If no exact
+  combined line exists, search for the component prices and compose them
+  transparently instead of stopping after no single combined line is found.
+- Match specials and exotic props: search Match Specials / Market Specials for
+  hydration-break goals, "Goal scored 80:00 - Full time", "Goal scored 85:00 -
+  Full time", substitute-to-score / bench-player-score, stoppage-time goals,
+  first-substitution timing, any-player braces or 2+ shots-on-target, VAR
+  reviews, and goal-method props such as header, own goal, outside the box, or
+  outside the penalty area. Treat exact specials as direct online odds; nearby
+  time windows or related specials are proxies and must be labeled as such.
+- Team scoring with "excluding own goals": normal team-to-score, team total
+  goals, or exact team goals markets are strong near-direct proxies. Label the
+  own-goal settlement difference and downweight only modestly unless match
+  context makes an own goal unusually salient.
 - Lineups/injuries/minutes: confirmed FIFA/team lineups, federation reports,
   Reuters/AP/BBC/ESPN, FotMob, SofaScore, Transfermarkt injury notes, trusted
   local reporters. Corroborate predicted lineups before moving far from odds.
