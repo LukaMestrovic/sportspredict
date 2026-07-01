@@ -229,6 +229,90 @@ class EvidenceTests(unittest.TestCase):
 
         self.assertEqual(set(compact["contract_comparison"]), {"all_history"})
 
+    def test_baked_wc2026_scopes_are_omitted_without_live_refresh(self):
+        result = _result({
+            "odd": {"market": "none", "subject": "match",
+                    "comparator": "yes", "threshold": None, "period": "match"},
+        }, question="Will there be a goal before the first hydration break?")
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+        sim = {
+            "contract_key": "goal_window:before_first_hydration:reg",
+            "probability": 0.42,
+            "historical_evidence": {
+                "empirical_rate": {
+                    "all_history": {"available": True, "rate": 0.4, "observations": 1000},
+                    "wc2026": {"available": True, "rate": 0.55, "observations": 34},
+                },
+                "contract_performance": {
+                    "all_history": {
+                        "available": True,
+                        "observations": 1000,
+                        "brier": {"simulator": 0.2},
+                    },
+                    "wc2026": {
+                        "available": True,
+                        "observations": 34,
+                        "brier": {"simulator": 0.18},
+                    },
+                },
+            },
+        }
+
+        with patch("bot.evidence.simulator.simulator_estimates",
+                   return_value={"odd": sim}), patch(
+            "bot.evidence.simulator_benchmark.load", return_value={},
+        ):
+            evidence = build_match_evidence(
+                result, ctx, lineups=None, minutes_before=30,
+            )
+
+        compact = evidence["question_evidence"][0]["simulator_estimate"]
+        self.assertEqual(set(compact["empirical_rates"]), {"all_history"})
+        self.assertEqual(set(compact["contract_comparison"]), {"all_history"})
+
+    def test_live_wc2026_refresh_readds_current_scopes(self):
+        result = _result({
+            "odd": {"market": "none", "subject": "match",
+                    "comparator": "yes", "threshold": None, "period": "match"},
+        }, question="Will there be a goal before the first hydration break?")
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+        sim = {
+            "contract_key": "goal_window:before_first_hydration:reg",
+            "probability": 0.42,
+            "historical_evidence": {
+                "empirical_rate": {
+                    "all_history": {"available": True, "rate": 0.4, "observations": 1000},
+                    "wc2026": {"available": True, "rate": 0.55, "observations": 34},
+                },
+            },
+        }
+        snapshot = {
+            "contracts": {
+                "goal_window:before_first_hydration:reg": {
+                    "wc2026": {
+                        "available": True,
+                        "rate": 0.481013,
+                        "observations": 79,
+                        "matches": 79,
+                    },
+                },
+            },
+        }
+
+        with patch("bot.evidence.simulator.simulator_estimates",
+                   return_value={"odd": sim}), patch(
+            "bot.evidence.wc2026_evidence.refresh", return_value=snapshot,
+        ), patch("bot.evidence.simulator_benchmark.load", return_value={}):
+            evidence = build_match_evidence(
+                result, ctx, lineups=None, minutes_before=30, af=object(),
+            )
+
+        empirical = (
+            evidence["question_evidence"][0]["simulator_estimate"]["empirical_rates"]
+        )
+        self.assertEqual(empirical["wc2026"]["n"], 79)
+        self.assertEqual(empirical["wc2026"]["rate"], 0.481013)
+
     def test_penalty_question_receives_simulator_context(self):
         result = _result({
             "pen": {"market": "none", "subject": "match",
@@ -250,7 +334,7 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(estimates.call_args.kwargs["intents"], result.intents)
         q = evidence["question_evidence"][0]
-        self.assertEqual(evidence["schema_version"], 16)
+        self.assertEqual(evidence["schema_version"], 17)
         self.assertEqual(q["simulator_estimate"], {"probability_pct": 24.1})
         self.assertLess(
             list(q).index("direct_odds"),
@@ -318,7 +402,7 @@ class EvidenceTests(unittest.TestCase):
             )
 
         question = bundle["question_evidence"][0]
-        self.assertEqual(bundle["schema_version"], 16)
+        self.assertEqual(bundle["schema_version"], 17)
         self.assertEqual(question["direct_market_spec"]["bet_id"], 14)
         self.assertEqual(len(question["direct_odds"]), 1)
         self.assertIn("regulation first-team-to-score proxy",
@@ -347,7 +431,7 @@ class ContextEvidenceTests(unittest.TestCase):
         with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
-        self.assertEqual(evidence["schema_version"], 16)
+        self.assertEqual(evidence["schema_version"], 17)
         self.assertEqual(evidence["team_form"]["home"]["gf_avg"], 1.7)
         self.assertEqual(evidence["player_form"]["home"][0]["name"], "Striker One")
         self.assertEqual(evidence["referee_profile"]["yellows_per_game"], 4.0)

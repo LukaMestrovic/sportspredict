@@ -58,6 +58,8 @@ def build_match_evidence(
         stage=_fixture_stage(result),
         lineups=lineups,
     )
+    if simulator_by_market:
+        _drop_static_wc2026_scopes(simulator_by_market)
     wc2026_refresh = None
     if simulator_by_market and af is not None:
         try:
@@ -104,7 +106,7 @@ def build_match_evidence(
         question_evidence.append(item)
 
     evidence = {
-        "schema_version": 16,
+        "schema_version": 17,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "match": _match_meta(result, lineups, minutes_before),
         "team_form": context.get("team_form") or {},
@@ -115,6 +117,23 @@ def build_match_evidence(
     }
     evidence["evidence_hash"] = evidence_hash(evidence)
     return evidence
+
+
+def _drop_static_wc2026_scopes(estimates: dict[str, dict]) -> None:
+    """Keep current-tournament scopes only when a live refresh overlays them."""
+    for estimate in estimates.values():
+        history = estimate.get("historical_evidence")
+        if not isinstance(history, dict):
+            continue
+        for section in (
+            "empirical_rate", "contract_performance",
+            "model_performance", "family_performance",
+        ):
+            rows = history.get(section)
+            if not isinstance(rows, dict):
+                continue
+            rows.pop("wc2026", None)
+            rows.pop("wc2026_knockout", None)
 
 
 def write_evidence(evidence: dict, *, directory: Path = EVIDENCE_DIR) -> Path:
@@ -237,11 +256,13 @@ def _compact_simulator_estimate(estimate: dict) -> dict:
         if not empirical_source:
             break
         row = empirical_source.get(scope)
-        if not row or not row.get("available") or row.get("rate") is None:
+        if not isinstance(row, dict):
+            continue
+        if not row.get("available") or row.get("rate") is None:
             empirical_rates[scope] = {
                 "n": 0,
                 "rate": None,
-                "population": _population_description(scope, row or {}),
+                "population": _population_description(scope, row),
             }
             continue
         observations = row.get("observations") or row.get("matches")
