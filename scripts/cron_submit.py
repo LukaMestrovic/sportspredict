@@ -128,12 +128,12 @@ def _dispatch(args) -> None:
         names = ", ".join(m.get("name", m["id"]) for m, _k in slot)
         submitted = {
             m.get("name", m["id"]): [
-                w for w in WINDOWS if _marker(m["id"], k, w).exists()
-            ] or (
-                "ledger" if submission_state.submitted_run_exists(
-                    m["id"], kickoff=m["opening_time"], lobby_id=lobby["id"],
-                ) else "none"
-            )
+                w for w in WINDOWS
+                if submission_state.marker_with_lineups_exists(
+                    m["id"], k, w, state_dir=STATE_DIR,
+                )
+            ]
+            or _non_blocking_submission_status(m, k, lobby["id"])
             for m, k in slot
         }
         _log(f"next slot: {names}  kickoff {next_kickoff.isoformat()}  "
@@ -161,14 +161,16 @@ def _process_match(
     # Pick the tightest un-fired window we've reached. Marking every window at or
     # above the one we fire collapses a missed earlier mark into a single submit.
     window = next((w for w in sorted(WINDOWS) if mins <= w
-                   and not _marker(sp_match["id"], kickoff, w).exists()), None)
+                   and not submission_state.marker_with_lineups_exists(
+                       sp_match["id"], kickoff, w, state_dir=STATE_DIR,
+                   )), None)
     if window is None:
-        _log(f"{head} in {mins:.1f} min — windows already submitted")
+        _log(f"{head} in {mins:.1f} min — lineup-backed window already submitted")
         return
-    if submission_state.submitted_run_exists(
+    if submission_state.submitted_run_with_lineups_exists(
         sp_match["id"], kickoff=sp_match["opening_time"], lobby_id=lobby["id"],
     ):
-        _log(f"{head} in {mins:.1f} min — submitted ledger run exists; skip")
+        _log(f"{head} in {mins:.1f} min — submitted lineup-backed ledger run exists; skip")
         return
 
     _log(f"FIRING {window}-min window for {head} (kickoff in {mins:.1f} min)")
@@ -211,6 +213,7 @@ def _process_match(
         window_min=window, minutes_before=mins,
     )
     run_id = run_ids[0]
+    lineups_available = _result_has_lineups(result)
 
     # Mark this window and every wider one so a delayed start can't re-fire them.
     for w in WINDOWS:
@@ -221,6 +224,8 @@ def _process_match(
                 metadata={
                     "ledger_run_id": run_id,
                     "evidence_hash": getattr(result, "evidence_hash", None),
+                    "evidence_path": getattr(result, "evidence_path", None),
+                    "lineups_available": lineups_available,
                 },
                 state_dir=STATE_DIR,
             )
@@ -232,6 +237,28 @@ def _process_match(
          f"(landed={landed}/{len(outcome['payload'])}) — {summary}")
     if outcome["failed"]:
         _log(f"  WARN {outcome['failed']} rejected: {outcome['errors'][:2]}")
+
+
+def _result_has_lineups(result) -> bool:
+    evidence_json = getattr(result, "evidence_json", None) or {}
+    return submission_state.evidence_has_lineups(
+        getattr(result, "evidence_path", None)
+    ) or submission_state.evidence_lineups_available(
+        (evidence_json.get("match") or {}).get("lineups")
+    )
+
+
+def _non_blocking_submission_status(match: dict, kickoff: datetime, lobby_id: str):
+    if submission_state.submitted_run_with_lineups_exists(
+        match["id"], kickoff=match["opening_time"], lobby_id=lobby_id,
+    ):
+        return "ledger-with-lineups"
+    has_marker = any(_marker(match["id"], kickoff, w).exists() for w in WINDOWS)
+    if has_marker or submission_state.submitted_run_exists(
+        match["id"], kickoff=match["opening_time"], lobby_id=lobby_id,
+    ):
+        return "submitted-no-lineups"
+    return "none"
 
 
 def _write_audit(head, kickoff, window, mins, outcome, by_src, result, run_id) -> None:
@@ -252,6 +279,7 @@ def _write_audit(head, kickoff, window, mins, outcome, by_src, result, run_id) -
         "by_source": by_src,
         "evidence_path": getattr(result, "evidence_path", None),
         "evidence_hash": getattr(result, "evidence_hash", None),
+        "lineups_available": _result_has_lineups(result),
         "llm_pricing_audit_path": getattr(result, "llm_pricing_audit_path", None),
         "llm_pricing_report_path": getattr(result, "llm_pricing_report_path", None),
         "llm_pricing_briefing": getattr(result, "llm_pricing_briefing", None),

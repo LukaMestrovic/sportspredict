@@ -77,8 +77,16 @@ def _status(_args) -> None:
     sp, event, lobby, match, kickoff = _next_match()
     mins = (kickoff - datetime.now(timezone.utc)).total_seconds() / 60.0
     marker = submission_state.marker_path(match["id"], kickoff, CRON_WINDOW)
+    marker_with_lineups = submission_state.marker_with_lineups_exists(
+        match["id"], kickoff, CRON_WINDOW,
+    )
     ledger_submitted = submission_state.submitted_run_exists(
         match["id"], kickoff=match["opening_time"], lobby_id=lobby["id"],
+    )
+    ledger_submitted_with_lineups = (
+        submission_state.submitted_run_with_lineups_exists(
+            match["id"], kickoff=match["opening_time"], lobby_id=lobby["id"],
+        )
     )
     latest = _latest_submitted_payload(match["id"], lobby["id"])
     verification = None
@@ -91,7 +99,9 @@ def _status(_args) -> None:
     print(f"MINUTES_TO_KICKOFF={mins:.1f}")
     print(f"MARKER_PATH={_host_path(marker)}")
     print(f"MARKER_EXISTS={str(marker.exists()).lower()}")
+    print(f"MARKER_WITH_LINEUPS={str(marker_with_lineups).lower()}")
     print(f"LEDGER_SUBMITTED={str(ledger_submitted).lower()}")
+    print(f"LEDGER_SUBMITTED_WITH_LINEUPS={str(ledger_submitted_with_lineups).lower()}")
     if latest:
         print(f"LEDGER_RUN_ID={latest['run_id']}")
         print(f"LEDGER_EVIDENCE_PATH={_host_path(latest['evidence_path'])}")
@@ -220,12 +230,15 @@ def _submit(args) -> None:
             )
 
         run_id = run_ids[0]
+        submitted_with_lineups = bool(session.get("lineups_available")) or _result_has_lineups(result)
         marker = submission_state.write_marker(
             session["match"]["id"], kickoff, CRON_WINDOW,
             source="manual-chatgpt",
             metadata={
                 "ledger_run_id": run_id,
                 "evidence_hash": result.evidence_hash,
+                "evidence_path": result.evidence_path,
+                "lineups_available": submitted_with_lineups,
                 "platform_verification": verification,
             },
         )
@@ -246,7 +259,8 @@ def _submit(args) -> None:
         )
         _print_predictions(result)
         print(f"CRON_MARKER_PATH={_host_path(marker)}")
-        print("CRON_BLOCKED=true")
+        print(f"CRON_MARKER_WITH_LINEUPS={str(submitted_with_lineups).lower()}")
+        print(f"CRON_BLOCKED={str(submitted_with_lineups).lower()}")
 
 
 def _next_match():
@@ -268,12 +282,16 @@ def _next_match():
 
 def _refuse_if_already_done(match: dict, kickoff: datetime, lobby_id: str) -> None:
     marker = submission_state.marker_path(match["id"], kickoff, CRON_WINDOW)
-    if marker.exists():
-        raise SystemExit(f"submission marker already exists: {_host_path(marker)}")
-    if submission_state.submitted_run_exists(
+    if submission_state.marker_with_lineups_exists(
+        match["id"], kickoff, CRON_WINDOW,
+    ):
+        raise SystemExit(
+            f"lineup-backed submission marker already exists: {_host_path(marker)}"
+        )
+    if submission_state.submitted_run_with_lineups_exists(
         match["id"], kickoff=match["opening_time"], lobby_id=lobby_id,
     ):
-        raise SystemExit("submitted ledger run already exists")
+        raise SystemExit("submitted lineup-backed ledger run already exists")
 
 
 def _confirmed_lineups(lineups: list[dict] | None) -> bool:
@@ -452,6 +470,15 @@ def _print_predictions(result: MatchResult) -> None:
             f"- {row['probability_int']:>2}%  {row['market_id']}  "
             f"{row['question']}{suffix}"
         )
+
+
+def _result_has_lineups(result: MatchResult) -> bool:
+    evidence_json = getattr(result, "evidence_json", None) or {}
+    return submission_state.evidence_has_lineups(
+        getattr(result, "evidence_path", None)
+    ) or submission_state.evidence_lineups_available(
+        (evidence_json.get("match") or {}).get("lineups")
+    )
 
 
 def _parse_kickoff(opening_time: str) -> datetime:

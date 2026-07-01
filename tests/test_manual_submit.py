@@ -40,9 +40,12 @@ class ManualSubmitTests(unittest.TestCase):
 
         patched["submit"].assert_called_once()
         patched["marker"].assert_called_once()
+        marker_kwargs = patched["marker"].call_args.kwargs
+        self.assertFalse(marker_kwargs["metadata"]["lineups_available"])
         self.assertIn("PREDICTIONS_JSON=", out.getvalue())
         self.assertIn("PREDICTIONS:", out.getvalue())
         self.assertIn("Will Home win?", out.getvalue())
+        self.assertIn("CRON_BLOCKED=false", out.getvalue())
 
     def test_marker_not_written_when_platform_verification_missing(self):
         session_path, response_path = self._files()
@@ -112,6 +115,25 @@ class ManualSubmitTests(unittest.TestCase):
         session = json.loads(Path(session_line.split("=", 1)[1]).read_text())
         self.assertFalse(session["lineups_available"])
         self.assertIn("unavailable", session["lineup_warning"])
+
+    def test_existing_no_lineup_submission_does_not_block_manual(self):
+        match = {"id": "match", "opening_time": "2099-06-22T17:00:00Z"}
+        kickoff = manual_submit._parse_kickoff(match["opening_time"])
+        with patch.object(manual_submit.submission_state,
+                          "marker_with_lineups_exists", return_value=False), \
+             patch.object(manual_submit.submission_state,
+                          "submitted_run_with_lineups_exists", return_value=False):
+            manual_submit._refuse_if_already_done(match, kickoff, "lobby")
+
+    def test_existing_lineup_submission_blocks_manual(self):
+        match = {"id": "match", "opening_time": "2099-06-22T17:00:00Z"}
+        kickoff = manual_submit._parse_kickoff(match["opening_time"])
+        with patch.object(manual_submit.submission_state,
+                          "marker_with_lineups_exists", return_value=True), \
+             patch.object(manual_submit.submission_state,
+                          "submitted_run_with_lineups_exists", return_value=False):
+            with self.assertRaises(SystemExit):
+                manual_submit._refuse_if_already_done(match, kickoff, "lobby")
 
     def _files(self):
         evidence_path = self.root / "evidence.json"
