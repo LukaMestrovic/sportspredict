@@ -432,6 +432,20 @@ class ContextEvidenceTests(unittest.TestCase):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
         self.assertEqual(evidence["schema_version"], 17)
+        self.assertEqual(
+            list(evidence),
+            [
+                "schema_version",
+                "created_at",
+                "match",
+                "team_form",
+                "player_form",
+                "referee_profile",
+                "injuries",
+                "question_evidence",
+                "evidence_hash",
+            ],
+        )
         self.assertEqual(evidence["team_form"]["home"]["gf_avg"], 1.7)
         self.assertEqual(evidence["player_form"]["home"][0]["name"], "Striker One")
         self.assertEqual(evidence["referee_profile"]["yellows_per_game"], 4.0)
@@ -536,6 +550,10 @@ class ContextEvidenceTests(unittest.TestCase):
         self.assertLess(text.index('"market_id"'), text.index('"question"'))
         self.assertLess(text.index('"question"'), text.index('"contract_scope"'))
         self.assertLess(text.index('"contract_scope"'), text.index('"direct_odds"'))
+        self.assertLess(text.index('"match"'), text.index('"team_form"'))
+        self.assertLess(text.index('"team_form"'), text.index('"player_form"'))
+        self.assertLess(text.index('"player_form"'), text.index('"question_evidence"'))
+        self.assertLess(text.index('"question_evidence"'), text.index('"evidence_hash"'))
 
 
 class SimulatorModelTests(unittest.TestCase):

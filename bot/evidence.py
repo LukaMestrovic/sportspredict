@@ -143,7 +143,9 @@ def write_evidence(evidence: dict, *, directory: Path = EVIDENCE_DIR) -> Path:
     kickoff = str(match.get("kickoff") or "unknown").replace(":", "").replace("-", "")
     slug = _slug(f"{match.get('home') or 'home'}_vs_{match.get('away') or 'away'}")
     path = directory / f"{kickoff}_{slug}_{evidence['evidence_hash'][:10]}_evidence.json"
-    path.write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n")
+    path.write_text(
+        json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=False) + "\n"
+    )
     return path
 
 
