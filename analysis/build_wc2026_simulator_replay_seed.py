@@ -19,7 +19,9 @@ try:
         _resolve_csv,
         family_from_contract,
     )
-except ModuleNotFoundError:  # Direct execution: python analysis/build_*.py
+except ModuleNotFoundError as exc:  # Direct execution: python analysis/build_*.py
+    if exc.name != "analysis":
+        raise
     from build_simulator_family_benchmarks import (  # type: ignore[no-redef]
         DEFAULT_SOURCE_ROOT,
         _read_csv,
