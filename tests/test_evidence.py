@@ -1,7 +1,9 @@
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-from bot.evidence import _compact_simulator_estimate, build_match_evidence
+from bot.evidence import _compact_simulator_estimate, build_match_evidence, write_evidence
 from bot.simulator import model_estimate_kind
 from bot.pipeline import MatchResult
 from bot.pricing import PriceCtx
@@ -60,6 +62,13 @@ class EvidenceTests(unittest.TestCase):
         evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
         q = evidence["question_evidence"][0]
+        self.assertEqual(
+            list(q)[:6],
+            [
+                "intent", "market_id", "question", "contract_scope",
+                "direct_market_spec", "direct_odds",
+            ],
+        )
         self.assertEqual(q["market_id"], "win")
         self.assertGreaterEqual(len(q["direct_odds"]), 2)
         sources = {obs["source"] for obs in q["direct_odds"]}
@@ -224,8 +233,12 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(estimates.call_args.kwargs["intents"], result.intents)
         q = evidence["question_evidence"][0]
-        self.assertEqual(evidence["schema_version"], 14)
+        self.assertEqual(evidence["schema_version"], 15)
         self.assertEqual(q["simulator_estimate"], {"probability_pct": 24.1})
+        self.assertLess(
+            list(q).index("direct_odds"),
+            list(q).index("simulator_estimate"),
+        )
         self.assertNotIn("simulator_model_estimates", q)
         self.assertNotIn("audit_requirement", q)
 
@@ -288,7 +301,7 @@ class EvidenceTests(unittest.TestCase):
             )
 
         question = bundle["question_evidence"][0]
-        self.assertEqual(bundle["schema_version"], 14)
+        self.assertEqual(bundle["schema_version"], 15)
         self.assertEqual(question["direct_market_spec"]["bet_id"], 14)
         self.assertEqual(len(question["direct_odds"]), 1)
         self.assertIn("regulation first-team-to-score proxy",
@@ -317,7 +330,7 @@ class ContextEvidenceTests(unittest.TestCase):
         with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
-        self.assertEqual(evidence["schema_version"], 14)
+        self.assertEqual(evidence["schema_version"], 15)
         self.assertEqual(evidence["team_form"]["home"]["gf_avg"], 1.7)
         self.assertEqual(evidence["player_form"]["home"][0]["name"], "Striker One")
         self.assertEqual(evidence["referee_profile"]["yellows_per_game"], 4.0)
@@ -328,13 +341,19 @@ class ContextEvidenceTests(unittest.TestCase):
         ):
             self.assertNotIn(redundant, evidence)
 
-    def test_player_market_gets_that_players_exact_row(self):
+    def test_player_market_gets_guidance_instead_of_repeated_form_row(self):
         result = _result({
             "scorer": {"market": "player_goal_scorer", "subject": "player",
                        "player": "Cyle Larin", "comparator": "yes",
                        "threshold": None, "period": "match"},
         }, question="Will Cyle Larin score a goal?")
         result.match_context = {
+            "player_form": {
+                "home": [{"name": "Cyle Larin", "minutes": 162, "goals": 2,
+                          "goals_per90": 1.11}],
+                "away": [{"name": "Jonathan David", "minutes": 241, "goals": 3,
+                          "goals_per90": 1.12}],
+            },
             "player_index": {
                 "Cyle Larin": {"name": "Cyle Larin", "minutes": 162, "goals": 2,
                                "goals_per90": 1.11},
@@ -348,9 +367,26 @@ class ContextEvidenceTests(unittest.TestCase):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
         q = evidence["question_evidence"][0]
-        # The attached row is Larin's, never David's.
-        self.assertEqual(q["player_form"]["name"], "Cyle Larin")
-        self.assertEqual(q["player_form"]["goals"], 2)
+        self.assertNotIn("player_form", q)
+        self.assertEqual(evidence["player_form"]["home"][0]["name"], "Cyle Larin")
+        self.assertIn("Cyle Larin", q["adjustment_guidance"])
+        self.assertIn("goals_per90", q["adjustment_guidance"])
+        self.assertIn("direct_odds probability_pct", q["adjustment_guidance"])
+
+    def test_player_shots_market_guidance_uses_sot_metrics(self):
+        result = _result({
+            "sot": {"market": "player_shots_on_target", "subject": "player",
+                    "player": "Cyle Larin", "comparator": "gte",
+                    "threshold": 1, "period": "match"},
+        }, question="Will Cyle Larin have at least 1 shot on target?")
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+
+        with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
+            evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+        guidance = evidence["question_evidence"][0]["adjustment_guidance"]
+        self.assertIn("sot_per90", guidance)
+        self.assertIn("shots_per90", guidance)
 
     def test_non_player_market_has_no_player_form_key(self):
         result = _result({
@@ -364,6 +400,7 @@ class ContextEvidenceTests(unittest.TestCase):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
         self.assertNotIn("player_form", evidence["question_evidence"][0])
+        self.assertNotIn("adjustment_guidance", evidence["question_evidence"][0])
 
     def test_missing_context_yields_empty_blocks(self):
         result = _result({
@@ -379,6 +416,25 @@ class ContextEvidenceTests(unittest.TestCase):
         self.assertEqual(evidence["player_form"], {})
         self.assertEqual(evidence["referee_profile"], {})
         self.assertEqual(evidence["injuries"], {})
+
+    def test_write_evidence_preserves_question_evidence_key_order(self):
+        result = _result({
+            "win": {"market": "match_winner", "subject": "home",
+                    "comparator": "win", "threshold": None, "period": "match"},
+        })
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+
+        with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
+            evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write_evidence(evidence, directory=Path(tmp))
+            text = path.read_text()
+
+        self.assertLess(text.index('"intent"'), text.index('"market_id"'))
+        self.assertLess(text.index('"market_id"'), text.index('"question"'))
+        self.assertLess(text.index('"question"'), text.index('"contract_scope"'))
+        self.assertLess(text.index('"contract_scope"'), text.index('"direct_odds"'))
 
 
 class SimulatorModelTests(unittest.TestCase):

@@ -19,7 +19,6 @@ from . import oddsapi as oapi
 from . import predictor as afpred
 from .matcher import match_intent, match_intent_oddsapi
 from .pricing import PriceCtx
-from .teams import player_matches
 
 
 EVIDENCE_DIR = config.ROOT / "logs" / "llm_pricing_runs"
@@ -80,7 +79,6 @@ def build_match_evidence(
         simulator_benchmark.overlay(simulator_by_market, live_benchmark)
 
     context = getattr(result, "match_context", None) or {}
-    player_index = context.get("player_index") or {}
 
     question_evidence = []
     for market in result.markets:
@@ -89,26 +87,24 @@ def build_match_evidence(
         intent = result.intents.get(mid)
         direct = direct_by_market[mid]
         item = {
+            "intent": intent,
             "market_id": mid,
             "question": question,
-            "intent": intent,
             "contract_scope": _contract_scope(intent),
             "direct_market_spec": spec_by_market[mid],
-            "direct_odds": [_compact_direct_odd(obs) for obs in direct],
         }
+        item["direct_odds"] = [_compact_direct_odd(obs) for obs in direct]
         if not direct and mid in simulator_by_market:
             item["simulator_estimate"] = _compact_simulator_estimate(
                 simulator_by_market[mid]
             )
-        # For a player-specific market, attach THAT player's exact form row so the
-        # model cannot read the wrong player's line from the match-level list.
-        player_form = _player_form_for(intent, player_index)
-        if player_form is not None:
-            item["player_form"] = player_form
+        guidance = _player_form_guidance(intent)
+        if guidance:
+            item["adjustment_guidance"] = guidance
         question_evidence.append(item)
 
     evidence = {
-        "schema_version": 14,
+        "schema_version": 15,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "match": _match_meta(result, lineups, minutes_before),
         "team_form": context.get("team_form") or {},
@@ -128,7 +124,7 @@ def write_evidence(evidence: dict, *, directory: Path = EVIDENCE_DIR) -> Path:
     kickoff = str(match.get("kickoff") or "unknown").replace(":", "").replace("-", "")
     slug = _slug(f"{match.get('home') or 'home'}_vs_{match.get('away') or 'away'}")
     path = directory / f"{kickoff}_{slug}_{evidence['evidence_hash'][:10]}_evidence.json"
-    path.write_text(json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    path.write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n")
     return path
 
 
@@ -159,21 +155,27 @@ def _match_meta(result, lineups, minutes_before: float | None) -> dict:
     }
 
 
-def _player_form_for(intent: dict | None, player_index: dict) -> dict | None:
-    """The form row for a player-specific market.
-
-    Returns ``None`` for non-player markets (so no key is added), ``{}`` for a
-    named player with no form sample, or the matched player's exact row. Matching
-    by name (via ``player_matches``) removes the wrong-row risk of leaving the
-    model to pick from the match-level list.
-    """
+def _player_form_guidance(intent: dict | None) -> str | None:
+    """Tell the pricing model how to use top-level player form for player markets."""
     player = (intent or {}).get("player")
     if not player or player == "None":
         return None
-    for row in player_index.values():
-        if player_matches(player, row.get("name", "")):
-            return row
-    return {}
+    market = (intent or {}).get("market")
+    if market == "player_goal_scorer":
+        metrics = "goals_per90, shots_per90, sot_per90, starts and minutes"
+    elif market == "player_shots_on_target":
+        metrics = "sot_per90, shots_per90, starts and minutes"
+    else:
+        metrics = "recent attacking involvement, starts and minutes"
+    return (
+        f"Use top-level player_form to locate {player} by name. Treat direct_odds "
+        "probability_pct values as the bookmaker spread when present; lean toward "
+        f"the high end only when the player's {metrics} plus lineup context are "
+        "strong for the target role, and lean toward the low end for weak recent involvement, "
+        "rotation or bench risk, limited minutes, or role uncertainty. When no "
+        "direct_odds exist, use simulator_estimate as context and apply the same "
+        "player-form adjustment."
+    )
 
 
 def _contract_scope(intent: dict | None) -> dict:
