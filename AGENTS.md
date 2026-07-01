@@ -77,6 +77,17 @@ git-ignored; keep it that way).
 - Treat `cache/` and `logs/` as retained runtime state. Never remove them during
   cleanup, tests, image builds, or deployment.
 
+## Deployment
+- When instructed to deploy, run `scripts/deploy.sh`. Do not hand-edit crontab or
+  run the working tree directly for production.
+- `scripts/deploy.sh` builds an immutable Docker image, writes
+  `cache/deployed/run.sh` pinned to that image, and installs cron to call that
+  deployed runner. Cron/manual submissions must use the deployed runner so later
+  working-tree edits cannot affect live submissions until the next deploy.
+- Cron/manual reruns are gated only by lineup-backed submissions. A prior
+  no-lineup submission may be updated later; once evidence includes confirmed
+  starting XIs, the marker/ledger state should stop both manual and API reruns.
+
 ## Keys / env
 `config.py` loads `.env`. Required: `SPORTSPREDICT_KEY`, `APIFOOTBALL_KEY`,
 `ODDS_API_KEY`, `OPENAI_API_KEY`. Mask keys in any terminal output you share.

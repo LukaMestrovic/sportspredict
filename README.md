@@ -156,8 +156,10 @@ contracts contribute two observations per match where appropriate. Final
 event/stat/player responses and the compact tournament snapshot live in
 bind-mounted `cache/`, so this stays current across short-lived containers
 without rebuilding the frozen image after every match. It then submits through
-the ledger and writes its audit. A file lock prevents overlapping ticks and a
-per-match marker prevents duplicate fires.
+the ledger and writes its audit. A file lock prevents overlapping ticks; the
+per-match marker/ledger gate prevents duplicate fires only after a
+lineup-backed submission exists, so an earlier no-lineup submission can still be
+updated once confirmed XIs arrive.
 
 A second cron tick runs settlement every five minutes. It accepts only explicit
 SportPredict `current_value` outcomes, refreshes the exact-contract tournament
