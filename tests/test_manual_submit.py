@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from bot.pipeline import Prediction
+from bot.pipeline import MatchResult, Prediction
 from scripts import manual_submit
 
 
@@ -54,6 +54,61 @@ class ManualSubmitTests(unittest.TestCase):
 
         patched["submit"].assert_called_once()
         patched["marker"].assert_not_called()
+
+    def test_prepare_continues_when_required_lineups_are_missing(self):
+        evidence_path = self.root / "evidence.json"
+        evidence_json = {
+            "evidence_hash": "hash",
+            "match": {"match_id": "match", "home": "Home", "away": "Away",
+                      "kickoff": "2099-06-22T17:00:00Z", "lineups": None},
+            "question_evidence": [{"market_id": "m", "direct_odds": []}],
+        }
+        evidence_path.write_text(json.dumps(evidence_json))
+        result = MatchResult(
+            sp_match={"id": "match", "name": "Home vs Away",
+                      "opening_time": "2099-06-22T17:00:00Z"},
+            fixture={"fixture": {"id": 42}},
+            home="Home",
+            away="Away",
+            markets=[{"id": "m", "question": "Will Home win?"}],
+            evidence_json=evidence_json,
+            evidence_path=str(evidence_path),
+            evidence_hash="hash",
+        )
+        sp = SimpleNamespace(markets=lambda _lobby, _match: result.markets)
+        kickoff = manual_submit._parse_kickoff("2099-06-22T17:00:00Z")
+
+        class _AF:
+            def __init__(self, *, refresh_odds=False):
+                pass
+
+            def find_fixture(self, *_args):
+                return {"fixture": {"id": 42}}
+
+        with patch.object(manual_submit, "MANUAL_DIR", self.root / "manual"), \
+             patch.object(manual_submit, "_nonblocking_lock", return_value=_no_lock()), \
+             patch.object(manual_submit, "_next_match",
+                          return_value=(sp, {"id": "event"}, {"id": "lobby"},
+                                        result.sp_match, kickoff)), \
+             patch.object(manual_submit, "_refuse_if_already_done"), \
+             patch.object(manual_submit, "APIFootball", _AF), \
+             patch.object(manual_submit, "OddsAPI", lambda **_kw: object()), \
+             patch.object(manual_submit.lineup_fetcher, "fetch_lineups",
+                          return_value=[]), \
+             patch.object(manual_submit, "run_match", return_value=result), \
+             redirect_stdout(StringIO()) as out:
+            manual_submit._prepare(SimpleNamespace(
+                next=True, fresh=True, require_lineups=True,
+            ))
+
+        self.assertIn("LINEUPS_AVAILABLE=false", out.getvalue())
+        session_line = next(
+            line for line in out.getvalue().splitlines()
+            if line.startswith("SESSION_PATH=")
+        )
+        session = json.loads(Path(session_line.split("=", 1)[1]).read_text())
+        self.assertFalse(session["lineups_available"])
+        self.assertIn("unavailable", session["lineup_warning"])
 
     def _files(self):
         evidence_path = self.root / "evidence.json"

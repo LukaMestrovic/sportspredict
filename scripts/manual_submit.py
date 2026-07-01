@@ -56,7 +56,7 @@ def main() -> None:
     prep.add_argument("--fresh", action="store_true", help="refresh odds and lineups")
     prep.add_argument(
         "--require-lineups", action="store_true",
-        help="fail unless both teams have confirmed starting XIs",
+        help="warn unless both teams have confirmed starting XIs",
     )
 
     submit = sub.add_parser("submit")
@@ -113,8 +113,14 @@ def _prepare(args) -> None:
         if not fixture:
             raise SystemExit("no API-Football fixture found")
         lineups = lineup_fetcher.fetch_lineups(af, fixture, refresh=args.fresh)
-        if args.require_lineups and not _confirmed_lineups(lineups):
-            raise SystemExit("confirmed lineups are missing; refusing manual prepare")
+        lineups_available = _confirmed_lineups(lineups)
+        lineup_warning = None
+        if args.require_lineups and not lineups_available:
+            lineup_warning = (
+                "confirmed API-Football/FIFA lineups are unavailable; "
+                "evidence will omit lineups and the manual GPT run must research "
+                "official/published lineup or team-news context on the web"
+            )
 
         oa = OddsAPI(refresh_odds=args.fresh)
         markets = sp.markets(lobby["id"], match["id"])
@@ -139,7 +145,7 @@ def _prepare(args) -> None:
 
         session = _session_payload(
             event, lobby, match, fixture, markets, result, minutes_before,
-            chatgpt_path, response_path,
+            chatgpt_path, response_path, lineups_available, lineup_warning,
         )
         session_path.write_text(
             json.dumps(session, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
@@ -153,6 +159,9 @@ def _prepare(args) -> None:
         print(f"MATCH_ID={match['id']}")
         print(f"KICKOFF={kickoff.isoformat()}")
         print(f"MINUTES_TO_KICKOFF={minutes_before:.1f}")
+        print(f"LINEUPS_AVAILABLE={str(lineups_available).lower()}")
+        if lineup_warning:
+            print(f"LINEUP_WARNING={lineup_warning}")
         print(f"SESSION_PATH={_container_path(session_path)}")
         print(f"SESSION_HOST_PATH={_host_path(session_path)}")
         print(f"EVIDENCE_PATH={_container_path(result.evidence_path)}")
@@ -308,6 +317,8 @@ def _session_payload(
     minutes_before: float,
     chatgpt_path: Path,
     response_path: Path,
+    lineups_available: bool,
+    lineup_warning: str | None,
 ) -> dict:
     return {
         "schema_version": 1,
@@ -319,6 +330,8 @@ def _session_payload(
         "home": result.home,
         "away": result.away,
         "minutes_before": round(minutes_before, 1),
+        "lineups_available": lineups_available,
+        "lineup_warning": lineup_warning,
         "cron_marker_window": CRON_WINDOW,
         "markets": markets,
         "intents": result.intents,
@@ -351,6 +364,14 @@ def _result_from_session(session: dict) -> MatchResult:
 
 
 def _chatgpt_request(evidence_json: dict, evidence_path: str) -> str:
+    lineups = (evidence_json.get("match") or {}).get("lineups")
+    lineup_note = (
+        "Confirmed provider lineups are present in `match.lineups`."
+        if lineups else
+        "Confirmed API-Football/FIFA lineups are not present in this evidence. "
+        "Use pre-kickoff web research for official lineups or team news where "
+        "available, and otherwise price with explicit lineup uncertainty."
+    )
     return (
         "# Manual SportPredict GPT-5.5 request\n\n"
         "Use GPT-5.5 with extra-high reasoning for your own research and "
@@ -358,6 +379,7 @@ def _chatgpt_request(evidence_json: dict, evidence_path: str) -> str:
         "specified by the pricing prompt.\n\n"
         f"- Evidence container path: `{_container_path(evidence_path)}`\n"
         f"- Evidence host path: `{_host_path(evidence_path)}`\n\n"
+        f"Lineup note: {lineup_note}\n\n"
         "## Manual instruction\n\n"
         "Use `prompts/llm_pricing_prompt.md` as the full task specification. "
         "Use the provided evidence JSON as MATCH EVIDENCE JSON.\n\n"
