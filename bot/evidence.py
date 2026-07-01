@@ -396,11 +396,14 @@ def summarize_lineups(lineups: list[dict] | None) -> dict | None:
         xi = [(pl.get("player") or {}).get("name") for pl in entry.get("startXI", [])]
         bench = [(pl.get("player") or {}).get("name")
                  for pl in entry.get("substitutes", [])]
-        out[team] = {
+        summary = {
             "formation": entry.get("formation"),
             "starting_xi": [name for name in xi if name],
             "bench": [name for name in bench if name],
         }
+        if entry.get("source"):
+            summary["source"] = entry["source"]
+        out[team] = summary
     return out
 
 

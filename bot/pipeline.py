@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from . import derive, evidence, ledger, match_context
+from . import derive, evidence, ledger, lineups as lineup_fetcher, match_context
 from .apifootball import APIFootball
 from .oddsapi import OddsAPI
 from .parser import parse_questions
@@ -110,11 +110,10 @@ def run_match(
             minutes_before = (
                 kickoff_dt - datetime.now(timezone.utc)
             ).total_seconds() / 60.0
-        if lineups is None:
-            try:
-                lineups = af.lineups(fixture["fixture"]["id"])
-            except Exception:
-                lineups = None
+        if not lineups:
+            lineups = lineup_fetcher.fetch_lineups(
+                af, fixture, refresh=llm_pricing_refresh,
+            )
         try:
             res.match_context = match_context.build(af, fixture, home, away, lineups)
         except Exception:

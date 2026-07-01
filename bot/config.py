@@ -27,6 +27,7 @@ ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
 
 SP_BASE = "https://api.sportspredict.com/api/v1"
 AF_BASE = "https://v3.football.api-sports.io"
+FIFA_BASE = "https://api.fifa.com/api/v3"
 ODDS_BASE = "https://api.the-odds-api.com/v4"
 ODDS_SPORT = "soccer_fifa_world_cup"
 # Regions to query on the (paid) Odds API. More regions = more books but more
@@ -39,6 +40,9 @@ ODDS_REGIONS = os.environ.get("ODDS_REGIONS", "eu,uk,us")
 # FIFA World Cup 2026 in API-Football.
 WC_LEAGUE_ID = 1
 WC_SEASON = 2026
+# FIFA's public match-centre API identifiers for the 2026 men's World Cup.
+FIFA_WC_COMPETITION_ID = "17"
+FIFA_WC_SEASON_ID = "285023"
 
 
 def _int_list(value: str) -> list[int]:

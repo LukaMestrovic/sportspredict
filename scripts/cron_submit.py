@@ -26,7 +26,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from bot import ledger, llm_pricing, simulator_benchmark
+from bot import ledger, lineups as lineup_fetcher, llm_pricing, simulator_benchmark
 from bot.apifootball import APIFootball
 from bot.config import ROOT
 from bot.oddsapi import OddsAPI
@@ -176,7 +176,7 @@ def _process_match(
     try:
         fixture = af.find_fixture(sp_match["opening_time"], sp_match.get("name"))
         if fixture:
-            lineups = af.lineups(fixture["fixture"]["id"])
+            lineups = lineup_fetcher.fetch_lineups(af, fixture, refresh=True)
     except Exception as exc:
         _log(f"  lineup fetch warning: {exc}")
     result = run_match(

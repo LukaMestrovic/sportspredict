@@ -96,6 +96,7 @@ class ProcessMatchTest(unittest.TestCase):
         self._orig = (
             cron_submit.APIFootball, cron_submit.OddsAPI, cron_submit.run_match,
             cron_submit.submit_with_ledger, cron_submit.simulator_benchmark.refresh,
+            cron_submit.lineup_fetcher.fetch_lineups,
         )
         cron_submit.simulator_benchmark.refresh = lambda *_a, **_k: {}
 
@@ -103,6 +104,7 @@ class ProcessMatchTest(unittest.TestCase):
         (
             cron_submit.APIFootball, cron_submit.OddsAPI, cron_submit.run_match,
             cron_submit.submit_with_ledger, cron_submit.simulator_benchmark.refresh,
+            cron_submit.lineup_fetcher.fetch_lineups,
         ) = self._orig
 
     def test_cron_fire_refreshes_odds_lineups_and_llm_pricing(self):
@@ -115,9 +117,10 @@ class ProcessMatchTest(unittest.TestCase):
             def find_fixture(self, opening_time, name):
                 return {"fixture": {"id": 42}}
 
-            def lineups(self, fixture_id):
-                seen["lineups_fixture_id"] = fixture_id
-                return [{"team": {"name": "A"}}]
+        def _lineups(af, fixture, *, refresh=False):
+            seen["lineups_fixture_id"] = fixture["fixture"]["id"]
+            seen["lineups_refresh"] = refresh
+            return [{"team": {"name": "A"}}]
 
         class _OA:
             def __init__(self, *, refresh_odds=False):
@@ -130,6 +133,7 @@ class ProcessMatchTest(unittest.TestCase):
         cron_submit.APIFootball = _AF
         cron_submit.OddsAPI = _OA
         cron_submit.run_match = _run_match
+        cron_submit.lineup_fetcher.fetch_lineups = _lineups
         sp = SimpleNamespace(markets=lambda lobby_id, match_id: [])
         kickoff = datetime.now(timezone.utc) + timedelta(minutes=30)
         cron_submit._process_match(
@@ -146,6 +150,7 @@ class ProcessMatchTest(unittest.TestCase):
         self.assertTrue(seen["af_refresh"])
         self.assertTrue(seen["oa_refresh"])
         self.assertEqual(seen["lineups_fixture_id"], 42)
+        self.assertTrue(seen["lineups_refresh"])
         self.assertTrue(seen["run_match_kwargs"]["llm_pricing_enabled"])
         self.assertTrue(seen["run_match_kwargs"]["llm_pricing_refresh"])
 
