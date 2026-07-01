@@ -4,11 +4,12 @@ provided MATCH EVIDENCE JSON plus pre-kickoff web research. Return final YES
 probabilities as integers 1-99. These are submitted directly.
 
 There are no hidden anchors. The evidence JSON contains deterministic context:
-de-vigged direct odds when an exact contract exists, simulator estimates when no
-exact direct market exists, form/injury/referee/venue/lineup context, parsed
-question intent, contract scope, and market-specific adjustment guidance. Your
-main job is to read each question's `adjustment_guidance`, research the exact
-levers it names, and make a concise audited judgement.
+de-vigged direct odds when an exact contract exists, calibrated fallback
+baselines/simulator estimates when no exact direct market exists,
+form/injury/referee/venue/lineup context, parsed question intent, contract
+scope, and market-specific adjustment guidance. Your main job is to read each
+question's `adjustment_guidance`, research the exact levers it names, and make a
+concise audited judgement.
 
 Auditability is mandatory. We cannot inspect private chain-of-thought, so each
 market must include a public audit: odds used, online odds found, non-odds
@@ -30,7 +31,8 @@ CONTRACT SCOPE IS STRICT
 PER-QUESTION WORKFLOW
 1. Read the whole question object in `question_evidence`: `market_id`,
    `question`, `intent`, `contract_scope`, `direct_market_spec`, `direct_odds`,
-   `simulator_estimate`, and `adjustment_guidance`.
+   `simulator_estimate.calibrated_baseline`, `simulator_estimate`, and
+   `adjustment_guidance`.
 2. Treat the question-level `adjustment_guidance` and, when present,
    `simulator_estimate.adjustment_guidance` as the primary instruction for what
    to research and which evidence should move this exact market. Do not rely on
@@ -39,11 +41,19 @@ PER-QUESTION WORKFLOW
    primary price spread. Give more weight to liquid, independent books with
    matching scope. Move within or just outside the spread only when the
    adjustment guidance plus confirmed research gives a clear reason.
-4. If no direct odds exist, start from `simulator_estimate.probability_pct`.
-   Read its `basis`, `conditioning`, `empirical_rates`, `contract_comparison`,
-   and adjustment guidance. Use relevant empirical scopes by size and contract
-   fit: knockout and WC2026 scopes matter more for knockout/heat/hydration/sub
-   markets, but tiny samples must not swamp stronger evidence.
+4. If no direct odds exist, start from
+   `simulator_estimate.calibrated_baseline.probability_pct` when that object is
+   present; otherwise start from `simulator_estimate.probability_pct`. The
+   calibrated baseline is deterministic and already compares exact-contract
+   unseen Brier for the simulator, empirical-rate baseline, and 50/50 baseline
+   with a sample-size guard. If its source is `empirical_rate` or `always_50`,
+   do not describe the simulator as the base price; treat simulator probability
+   as downweighted context unless match-specific evidence clearly justifies
+   moving back toward it. Read `basis`, `conditioning`, `empirical_rates`,
+   `contract_comparison`, and adjustment guidance. Use relevant empirical scopes
+   by size and contract fit: knockout and WC2026 scopes matter more for
+   knockout/heat/hydration/sub markets, but tiny samples must not swamp stronger
+   evidence.
 5. Search online only for information that can affect this market. Convert every
    online price you use into probability and state the method. Keep stale,
    wrong-scope, affiliate/tipster, or post-kickoff information out of the price.
@@ -124,15 +134,16 @@ The evidence JSON may include:
   `direct_odds` is the de-vigged bookmaker probability spread for this contract,
   with provenance (`source`, `bookmaker`, `market_key`, `contract`,
   `probability_pct`, `devig_method`, optional `contract_note`), not raw odds.
-  `simulator_estimate` is the deterministic fallback/base-rate estimate for
-  markets without exact direct odds: `contract_key` is the normalized contract
-  priced; `probability_pct` is the simulator's YES probability before your
-  final adjustment; `basis` explains the mapping/input basis; `conditioning`
-  lists key match inputs already applied; `empirical_rates` gives observed YES
-  rates and sample sizes for the same contract; `contract_comparison` is a
-  Brier/reliability check against baselines. `adjustment_guidance` tells you
-  which match evidence and web research should move this specific market up or
-  down.
+  `simulator_estimate` is the deterministic fallback context for markets
+  without exact direct odds: `contract_key` is the normalized contract priced;
+  `probability_pct` is the raw simulator YES probability; `calibrated_baseline`
+  is the required no-direct starting point when present and may choose the
+  simulator, empirical rate, or 50/50 depending on exact-contract Brier;
+  `basis` explains the mapping/input basis; `conditioning` lists key match
+  inputs already applied; `empirical_rates` gives observed YES rates and sample
+  sizes for the same contract; `contract_comparison` is a Brier/reliability
+  check against baselines. `adjustment_guidance` tells you which match evidence
+  and web research should move this specific market up or down.
 
 When any provided context materially moves a market, cite it in
 `non_odds_factors_used` with source "provided evidence". If a relevant block is
@@ -147,7 +158,9 @@ COHERENCE
   likely component without explanation; `A OR B` must avoid double-counting
   correlated events.
 - If no direct or online odds exist, do not invent a round number. Use the
-  simulator estimate and its guidance. If the simulator is also absent, build a
+  calibrated baseline when present, then the simulator estimate and its
+  guidance. If the calibrated baseline is empirical or 50/50, explain why the
+  raw simulator was downweighted. If the simulator is also absent, build a
   transparent base-rate estimate from provided team/referee/player context and
   explain the calculation.
 

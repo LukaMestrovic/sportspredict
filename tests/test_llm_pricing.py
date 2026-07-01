@@ -69,6 +69,7 @@ class LLMFinalPricingTests(unittest.TestCase):
 
         self.assertIn("simulator estimate: 23.47%", report)
         self.assertIn("any_player_threshold:goals:>:1:reg", report)
+        self.assertIn("calibrated baseline: 23.47% from simulator", report)
         self.assertIn("contract Brier sim=0.168899 emp=0.17 50=0.25", report)
 
     def test_missing_audit_field_skips_market(self):
@@ -137,6 +138,17 @@ def _evidence(with_context=False, with_simulator=False):
             "family": "any_player_threshold",
             "contract_key": "any_player_threshold:goals:>:1:reg",
             "probability_pct": 23.47,
+            "calibrated_baseline": {
+                "source": "simulator",
+                "probability_pct": 23.47,
+                "scope": "wc2026",
+                "comparison_n": 2277,
+                "brier": {
+                    "simulator": 0.168899,
+                    "empirical_rate": 0.17,
+                    "always_50": 0.25,
+                },
+            },
             "contract_comparison": {
                 "wc2026": {
                     "signal": "inconclusive", "n_observations": 2277,

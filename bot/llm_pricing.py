@@ -58,7 +58,8 @@ SportPredict market from the supplied evidence JSON plus web research. Return
 only JSON with a market entry for every market_id. Include probability_int 1-99
 and a complete audit: provided_odds_used, online_odds_found,
 non_odds_factors_used, ignored_or_downweighted_evidence, reasoning_summary, and
-sources. Do not mention hidden reasoning or chain-of-thought."""
+sources. When no direct odds exist, use simulator_estimate.calibrated_baseline
+as the base when present. Do not mention hidden reasoning or chain-of-thought."""
 
 
 def _load_prompt() -> str:
@@ -370,8 +371,31 @@ def _markdown_report(
             legacy_estimates = qe.get("simulator_model_estimates") or []
             est = legacy_estimates[0] if legacy_estimates else None
         if est:
+            baseline = est.get("calibrated_baseline") or {}
+            if baseline:
+                brier = baseline.get("brier") or {}
+                details = []
+                if baseline.get("scope"):
+                    details.append(f"scope={baseline.get('scope')}")
+                if baseline.get("comparison_n") is not None:
+                    details.append(f"obs={baseline.get('comparison_n')}")
+                if brier:
+                    details.append(
+                        f"Brier sim={brier.get('simulator')} "
+                        f"emp={brier.get('empirical_rate')} "
+                        f"50={brier.get('always_50')}"
+                    )
+                suffix = f" ({'; '.join(details)})" if details else ""
+                lines.append(
+                    f"- calibrated baseline: {baseline.get('probability_pct')}% "
+                    f"from {baseline.get('source')}{suffix}"
+                )
             history = est.get("historical_evidence") or {}
+            preferred_scope = baseline.get("scope") if baseline else None
             comparison = (
+                (est.get("contract_comparison") or {}).get(preferred_scope)
+                if preferred_scope else None
+            ) or (
                 (est.get("contract_comparison") or {}).get("wc2026")
                 or (history.get("contract_performance") or {}).get("wc2026")
                 or (est.get("contract_comparison") or {}).get("all_history")

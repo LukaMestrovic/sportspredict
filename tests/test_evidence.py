@@ -217,8 +217,71 @@ class EvidenceTests(unittest.TestCase):
             set(compact["contract_comparison"]),
             {"all_history", "all_history_knockout", "wc2026", "wc2026_knockout"},
         )
+        self.assertEqual(compact["calibrated_baseline"]["source"], "simulator")
+        self.assertEqual(compact["calibrated_baseline"]["scope"], "wc2026")
+        self.assertEqual(compact["calibrated_baseline"]["probability_pct"], 42.1)
         for redundant in ("source", "model", "note", "historical_evidence", "probability"):
             self.assertNotIn(redundant, compact)
+
+    def test_calibrated_baseline_prefers_empirical_when_exact_brier_is_lower(self):
+        compact = _compact_simulator_estimate({
+            "probability": 0.5545,
+            "probability_pct": 55.45,
+            "historical_evidence": {
+                "empirical_rate": {
+                    "all_history": {
+                        "available": True, "rate": 0.525478, "observations": 314,
+                    },
+                    "all_history_knockout": {
+                        "available": True, "rate": 0.488372, "observations": 86,
+                    },
+                    "wc2026_knockout": {
+                        "available": True, "rate": 0.625, "observations": 8,
+                    },
+                },
+                "contract_performance": {
+                    "all_history": {
+                        "available": True,
+                        "comparison_signal": "inconclusive",
+                        "observations": 250,
+                        "brier": {
+                            "simulator": 0.252083,
+                            "empirical_rate": 0.243272,
+                            "always_50": 0.25,
+                        },
+                    },
+                    "all_history_knockout": {
+                        "available": True,
+                        "comparison_signal": "empirical_rate_better",
+                        "observations": 70,
+                        "brier": {
+                            "simulator": 0.254286,
+                            "empirical_rate": 0.228454,
+                            "always_50": 0.25,
+                        },
+                    },
+                    "wc2026_knockout": {
+                        "available": True,
+                        "comparison_signal": "inconclusive_small_sample",
+                        "observations": 8,
+                        "brier": {
+                            "simulator": 0.3,
+                            "empirical_rate": 0.2,
+                            "always_50": 0.25,
+                        },
+                    },
+                },
+            },
+        }, stage="knockout")
+
+        baseline = compact["calibrated_baseline"]
+        self.assertEqual(baseline["source"], "empirical_rate")
+        self.assertEqual(baseline["scope"], "all_history_knockout")
+        self.assertEqual(baseline["probability_pct"], 48.84)
+        self.assertEqual(baseline["rate_n"], 86)
+        self.assertEqual(baseline["comparison_n"], 70)
+        self.assertEqual(baseline["simulator_probability_pct"], 55.45)
+        self.assertIn("Smaller current-tournament scope was ignored", baseline["reason"])
 
     def test_unmapped_question_omits_broad_related_odds(self):
         result = _result({
@@ -355,7 +418,7 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(estimates.call_args.kwargs["intents"], result.intents)
         q = evidence["question_evidence"][0]
-        self.assertEqual(evidence["schema_version"], 17)
+        self.assertEqual(evidence["schema_version"], 18)
         self.assertEqual(q["simulator_estimate"], {"probability_pct": 24.1})
         self.assertLess(
             list(q).index("direct_odds"),
@@ -423,7 +486,7 @@ class EvidenceTests(unittest.TestCase):
             )
 
         question = bundle["question_evidence"][0]
-        self.assertEqual(bundle["schema_version"], 17)
+        self.assertEqual(bundle["schema_version"], 18)
         self.assertEqual(question["direct_market_spec"]["bet_id"], 14)
         self.assertEqual(len(question["direct_odds"]), 1)
         self.assertIn("regulation first-team-to-score proxy",
@@ -507,7 +570,7 @@ class ContextEvidenceTests(unittest.TestCase):
         with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
-        self.assertEqual(evidence["schema_version"], 17)
+        self.assertEqual(evidence["schema_version"], 18)
         self.assertEqual(
             list(evidence),
             [

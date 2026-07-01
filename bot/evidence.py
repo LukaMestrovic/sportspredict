@@ -29,6 +29,9 @@ from .pricing import PriceCtx
 
 
 EVIDENCE_DIR = config.ROOT / "logs" / "llm_pricing_runs"
+MIN_BASELINE_COMPARISON_OBSERVATIONS = 30
+
+
 def build_match_evidence(
     result,
     ctx: PriceCtx,
@@ -51,6 +54,7 @@ def build_match_evidence(
     # without an exact direct contract (plus the retained model-sensitive
     # penalty/shot-on-target targets). It preserves direct-odds priority: a
     # liquid exact price is never displaced by simulator context.
+    stage = _fixture_stage(result) or ctx.stage
     simulator_by_market = simulator.simulator_estimates(
         result.markets,
         ctx,
@@ -58,7 +62,7 @@ def build_match_evidence(
         intents=result.intents,
         kickoff=result.sp_match.get("opening_time"),
         referee=_fixture_referee(result),
-        stage=_fixture_stage(result),
+        stage=stage,
         lineups=lineups,
     )
     if simulator_by_market:
@@ -101,7 +105,7 @@ def build_match_evidence(
         item["direct_odds"] = [_compact_direct_odd(obs) for obs in direct]
         if not direct and mid in simulator_by_market:
             item["simulator_estimate"] = _compact_simulator_estimate(
-                simulator_by_market[mid]
+                simulator_by_market[mid], stage=stage,
             )
         guidance = _adjustment_guidance(intent, question, result.home, result.away)
         if guidance:
@@ -109,7 +113,7 @@ def build_match_evidence(
         question_evidence.append(item)
 
     evidence = {
-        "schema_version": 17,
+        "schema_version": 18,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "match": _match_meta(result, lineups, minutes_before),
         "team_form": context.get("team_form") or {},
@@ -398,7 +402,7 @@ def _compact_direct_odd(observation: dict) -> dict:
     return compact
 
 
-def _compact_simulator_estimate(estimate: dict) -> dict:
+def _compact_simulator_estimate(estimate: dict, *, stage: str | None = None) -> dict:
     """Project the verbose internal simulator report into LLM decision inputs."""
     probability_pct = estimate.get("probability_pct")
     if probability_pct is None and estimate.get("probability") is not None:
@@ -488,7 +492,169 @@ def _compact_simulator_estimate(estimate: dict) -> dict:
     )
     if contract_comparisons:
         compact["contract_comparison"] = contract_comparisons
+    calibrated = _calibrated_baseline(compact, stage=stage)
+    if calibrated:
+        compact["calibrated_baseline"] = calibrated
     return compact
+
+
+def _calibrated_baseline(compact: dict, *, stage: str | None = None) -> dict | None:
+    """Select the no-direct-odds baseline from exact-contract calibration."""
+    comparisons = compact.get("contract_comparison") or {}
+    if not isinstance(comparisons, dict) or not comparisons:
+        return None
+
+    skipped_small_sample = False
+    for scope in _baseline_scope_order(stage):
+        row = comparisons.get(scope)
+        if not isinstance(row, dict):
+            continue
+        n_observations = _safe_int(row.get("n_observations"))
+        if (
+            n_observations is not None
+            and n_observations < MIN_BASELINE_COMPARISON_OBSERVATIONS
+        ):
+            skipped_small_sample = True
+            continue
+        candidates = _baseline_candidates(compact, row, scope)
+        if not candidates:
+            continue
+        best = min(candidates, key=lambda candidate: candidate["brier"])
+        return _baseline_payload(
+            best, compact, row, scope, n_observations,
+            skipped_small_sample=skipped_small_sample,
+        )
+
+    probability_pct = _safe_float(compact.get("probability_pct"))
+    if probability_pct is None:
+        return None
+    reason = (
+        "No exact-contract calibration scope had enough observations; start from "
+        "the simulator fallback and keep empirical snippets as small-sample context."
+    )
+    return {
+        "source": "simulator",
+        "probability_pct": round(probability_pct, 2),
+        "reason": reason,
+    }
+
+
+def _baseline_scope_order(stage: str | None) -> tuple[str, ...]:
+    if stage == "knockout":
+        return ("wc2026_knockout", "all_history_knockout", "wc2026", "all_history")
+    return ("wc2026", "all_history", "wc2026_knockout", "all_history_knockout")
+
+
+def _baseline_candidates(compact: dict, comparison: dict, scope: str) -> list[dict]:
+    brier = comparison.get("brier") or {}
+    if not isinstance(brier, dict):
+        return []
+    candidates = []
+    simulator_probability = _safe_float(compact.get("probability_pct"))
+    simulator_brier = _safe_float(brier.get("simulator"))
+    if simulator_probability is not None and simulator_brier is not None:
+        candidates.append({
+            "source": "simulator",
+            "probability_pct": simulator_probability,
+            "brier": simulator_brier,
+        })
+
+    empirical_row = (compact.get("empirical_rates") or {}).get(scope) or {}
+    empirical_rate = _safe_float(empirical_row.get("rate"))
+    empirical_brier = _safe_float(brier.get("empirical_rate"))
+    if empirical_rate is not None and empirical_brier is not None:
+        candidates.append({
+            "source": "empirical_rate",
+            "probability_pct": empirical_rate * 100.0,
+            "brier": empirical_brier,
+            "rate_n": _safe_int(empirical_row.get("n")),
+            "population": empirical_row.get("population"),
+        })
+
+    fifty_brier = _safe_float(brier.get("always_50"))
+    if fifty_brier is not None:
+        candidates.append({
+            "source": "always_50",
+            "probability_pct": 50.0,
+            "brier": fifty_brier,
+        })
+    return candidates
+
+
+def _baseline_payload(
+    selected: dict,
+    compact: dict,
+    comparison: dict,
+    scope: str,
+    n_observations: int | None,
+    *,
+    skipped_small_sample: bool,
+) -> dict:
+    brier = {
+        key: value
+        for key in ("simulator", "empirical_rate", "always_50")
+        if (value := _safe_float((comparison.get("brier") or {}).get(key))) is not None
+    }
+    payload = {
+        "source": selected["source"],
+        "probability_pct": round(float(selected["probability_pct"]), 2),
+        "scope": scope,
+        "comparison_n": n_observations,
+        "signal": comparison.get("signal"),
+        "brier": brier,
+        "reason": _baseline_reason(selected["source"], scope, brier, skipped_small_sample),
+    }
+    if selected.get("rate_n") is not None:
+        payload["rate_n"] = selected["rate_n"]
+    if selected.get("population"):
+        payload["population"] = selected["population"]
+    simulator_probability = _safe_float(compact.get("probability_pct"))
+    if simulator_probability is not None and selected["source"] != "simulator":
+        payload["simulator_probability_pct"] = round(simulator_probability, 2)
+    return {key: value for key, value in payload.items() if value is not None}
+
+
+def _baseline_reason(
+    source: str,
+    scope: str,
+    brier: dict,
+    skipped_small_sample: bool,
+) -> str:
+    labels = {
+        "simulator": "simulator",
+        "empirical_rate": "empirical rate",
+        "always_50": "50/50 baseline",
+    }
+    pieces = [
+        f"Exact-contract {scope} calibration has the lowest Brier for "
+        f"{labels.get(source, source)}."
+    ]
+    if skipped_small_sample:
+        pieces.append("Smaller current-tournament scope was ignored by sample-size guard.")
+    if brier:
+        bits = ", ".join(
+            f"{key}={value}" for key, value in brier.items()
+        )
+        pieces.append(f"Brier comparison: {bits}.")
+    return " ".join(pieces)
+
+
+def _safe_float(value) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_int(value) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _population_description(scope: str, row: dict) -> str:
