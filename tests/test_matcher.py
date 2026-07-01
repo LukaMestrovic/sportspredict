@@ -152,9 +152,9 @@ class AsianHandicapDevigTests(unittest.TestCase):
     def _book(self):
         return {"name": "b", "bets": [{"id": 4, "values": [
             {"value": "Home -1.5", "odd": "3.00"},
-            {"value": "Away +1.5", "odd": "1.40"},
+            {"value": "Away -1.5", "odd": "1.40"},
             {"value": "Home -0.5", "odd": "2.00"},   # other ladder lines: ignored
-            {"value": "Away +0.5", "odd": "1.80"},
+            {"value": "Away -0.5", "odd": "1.80"},
         ]}]}
 
     def test_devig_isolates_the_requested_pair(self):
@@ -163,6 +163,31 @@ class AsianHandicapDevigTests(unittest.TestCase):
         self.assertIsNotNone(out)
         # fair Home -1.5 = (1/3.0)/(1/3.0 + 1/1.4) ~ 0.318, not blended with -0.5.
         self.assertAlmostEqual(out["probability"], 0.3186, places=3)
+
+    def test_devig_ignores_opposite_handicap_row(self):
+        book = {"name": "b", "bets": [{"id": 4, "values": [
+            {"value": "Home -1.5", "odd": "2.00"},
+            {"value": "Away -1.5", "odd": "1.73"},
+            {"value": "Home +1.5", "odd": "1.01"},
+            {"value": "Away +1.5", "odd": "13.00"},
+        ]}]}
+        spec = {"type": "ah", "bet_id": 4, "side": "Home", "line": 1.5, "label": "x"}
+        out = afpred.predict([book], spec)
+        self.assertIsNotNone(out)
+        # Regression: do not pair Home -1.5 with Away +1.5, which would be ~87%.
+        self.assertAlmostEqual(out["probability"], 0.464, places=3)
+
+    def test_away_win_margin_uses_positive_home_handicap_row(self):
+        book = {"name": "b", "bets": [{"id": 4, "values": [
+            {"value": "Home +1.5", "odd": "1.18"},
+            {"value": "Away +1.5", "odd": "4.50"},
+            {"value": "Home -1.5", "odd": "4.00"},
+            {"value": "Away -1.5", "odd": "1.22"},
+        ]}]}
+        spec = {"type": "ah", "bet_id": 4, "side": "Away", "line": 1.5, "label": "x"}
+        obs = afpred.observations([book], spec)
+        self.assertEqual(obs[0]["contract"], "Away +1.5")
+        self.assertAlmostEqual(obs[0]["probability"], 0.2077, places=3)
 
     def test_missing_pair_returns_no_price(self):
         spec = {"type": "ah", "bet_id": 4, "side": "Home", "line": 2.5, "label": "x"}

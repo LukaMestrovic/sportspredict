@@ -74,31 +74,44 @@ def _devig_ou(values: list[dict], side: str, line: float) -> float | None:
     return fair_over if side == "Over" else 1 - fair_over
 
 
-def _devig_ah_pair(values: list[dict], side: str, line: float) -> float | None:
-    """De-vig one Asian-Handicap pair ``{side -line, opp +line}``.
+def _api_ah_contract(side: str, line: float) -> tuple[str, str]:
+    """Return API-Football's target and complement labels for a win-margin AH.
 
-    Bet 4 interleaves every handicap line in one value list, so we isolate the
-    single coherent two-way contract (e.g. ``Home -1.5`` vs ``Away +1.5`` for
-    "win by 2+") instead of normalizing the whole ladder like ``_devig_select``.
-    The -line side has no push, so the pair partitions the outcome space.
+    API-Football bet 4 labels both sides with the same signed home-handicap
+    row. ``Home -1.5`` pairs with ``Away -1.5``; the opposite row is
+    ``Home +1.5`` / ``Away +1.5``. For an away win by N+, the target therefore
+    lives on the positive home-handicap row.
     """
     opp = "Away" if side == "Home" else "Home"
-    want_fav = f"{side} -{line:g}"
-    want_dog = f"{opp} +{line:g}"
-    fav = dog = None
+    signed_line = -line if side == "Home" else line
+    row = f"{signed_line:+g}"
+    return f"{side} {row}", f"{opp} {row}"
+
+
+def _devig_ah_pair(values: list[dict], side: str, line: float) -> float | None:
+    """De-vig one API-Football Asian-Handicap row.
+
+    Bet 4 interleaves every handicap line in one value list, so we isolate the
+    single coherent two-way contract (e.g. ``Home -1.5`` vs ``Away -1.5`` for
+    home "win by 2+") instead of normalizing the whole ladder like
+    ``_devig_select``.
+    The -line side has no push, so the pair partitions the outcome space.
+    """
+    target_label, other_label = _api_ah_contract(side, line)
+    target = other = None
     for v in values:
         txt = v.get("value", "").strip()
         try:
             imp = 1.0 / float(v["odd"])
         except (KeyError, ValueError, ZeroDivisionError):
             continue
-        if txt.lower() == want_fav.lower():
-            fav = imp
-        elif txt.lower() == want_dog.lower():
-            dog = imp
-    if fav is None or dog is None or (fav + dog) <= 0:
+        if txt.lower() == target_label.lower():
+            target = imp
+        elif txt.lower() == other_label.lower():
+            other = imp
+    if target is None or other is None or (target + other) <= 0:
         return None
-    return fav / (fav + dog)
+    return target / (target + other)
 
 
 def _single_side_probability(odd) -> float | None:
@@ -242,13 +255,12 @@ def _raw_ou(values: list[dict], line: float) -> list[dict]:
 
 
 def _raw_ah_pair(values: list[dict], side: str, line: float) -> list[dict]:
-    opp = "Away" if side == "Home" else "Home"
-    fav, dog = f"{side} -{line:g}", f"{opp} +{line:g}"
+    target, other = _api_ah_contract(side, line)
     return [
         {"name": v.get("value"), "decimal_odds": _float_or_none(v.get("odd")),
-         "is_target": v.get("value", "").strip().lower() == fav.lower()}
+         "is_target": v.get("value", "").strip().lower() == target.lower()}
         for v in values
-        if v.get("value", "").strip().lower() in (fav.lower(), dog.lower())
+        if v.get("value", "").strip().lower() in (target.lower(), other.lower())
     ]
 
 
@@ -286,7 +298,8 @@ def _contract_label(spec: dict) -> str:
     if spec["type"] == "ou":
         return f"{spec.get('side')} {spec.get('line')}"
     if spec["type"] == "ah":
-        return f"{spec.get('side')} -{spec.get('line'):g}"
+        target, _ = _api_ah_contract(spec.get("side"), spec.get("line"))
+        return target
     if spec["type"] == "player_yes":
         return f"{spec.get('player')} Yes"
     if spec["type"] == "player_threshold":

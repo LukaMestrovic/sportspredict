@@ -292,7 +292,8 @@ def match_intent(
             return None
         if n < 1:
             return None
-        # "win by N+" is the push-free Asian Handicap at -(N-0.5) on that team.
+        # "win by N+" is the push-free AH at N-0.5; predictor.py converts this
+        # team-relative threshold into API-Football's signed home-handicap row.
         return {"type": "ah", "bet_id": 4,
                 "side": "Home" if subject == "home" else "Away", "line": n - 0.5,
                 "label": f"{subject} win by {n}+"}
