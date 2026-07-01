@@ -376,7 +376,7 @@ class KnockoutWordingTests(unittest.TestCase):
             )
 
     def test_no_market_families_route_to_none_without_a_half_period(self):
-        # Hydration breaks are at 22'/67' — never a 45' half boundary.
+        # Hydration breaks are at 22'/70' boundaries — never a 45' half boundary.
         for q in (
             "Will a goal be scored before the first hydration break?",
             "Will a card be shown after the second hydration break, including "

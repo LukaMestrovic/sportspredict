@@ -396,16 +396,16 @@
           "available": true,
           "matches": 4173,
           "observations": 4173,
-          "rate": 0.731368,
-          "yes_events": 3052
+          "rate": 0.701174,
+          "yes_events": 2926
         },
         "all_history_knockout": {
           "available": true,
           "matches": 343,
           "observations": 343,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.813411,
-          "yes_events": 279
+          "rate": 0.77551,
+          "yes_events": 266
         },
         "wc2026": {
           "available": true,
@@ -2887,23 +2887,23 @@
           "available": true,
           "matches": 4173,
           "observations": 4173,
-          "rate": 0.57225,
-          "yes_events": 2387
+          "rate": 0.536305,
+          "yes_events": 2238
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 284,
-          "observations": 284,
+          "matches": 343,
+          "observations": 343,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.588028,
-          "yes_events": 167
+          "rate": 0.548105,
+          "yes_events": 188
         },
         "knockout_history": {
           "available": true,
           "matches": 343,
           "observations": 343,
-          "rate": 0.580175,
-          "yes_events": 199
+          "rate": 0.548105,
+          "yes_events": 188
         },
         "wc2026": {
           "available": false,
@@ -2955,23 +2955,23 @@
           "available": true,
           "matches": 4173,
           "observations": 4173,
-          "rate": 0.569854,
-          "yes_events": 2378
+          "rate": 0.533669,
+          "yes_events": 2227
         },
         "all_history_knockout": {
           "available": true,
           "matches": 343,
           "observations": 343,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.553936,
-          "yes_events": 190
+          "rate": 0.521866,
+          "yes_events": 179
         },
         "knockout_history": {
           "available": true,
           "matches": 343,
           "observations": 343,
-          "rate": 0.553936,
-          "yes_events": 190
+          "rate": 0.521866,
+          "yes_events": 179
         },
         "wc2026": {
           "available": true,

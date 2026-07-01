@@ -1,7 +1,7 @@
 contract_key,market,market_name,n_all,matches_all,yes_events,empirical_rate
 both_teams_card:reg,both_teams_card,Both teams receive a card — regulation,343,343,254,0.7405247813411079
 btts_and_total:reg,btts_and_total_3plus,BTTS and 3+ goals — regulation,429,429,128,0.29836829836829837
-card_window:cards:after_second_hydration:et:>=:1,card_after_second_hydration,Card after second hydration break,343,343,279,0.8134110787172012
+card_window:cards:after_second_hydration:et:>=:1,card_after_second_hydration,Card after second hydration break,343,343,266,0.7755102040816326
 card_window:cards:first_half:reg:>=:1,card_first_half,A card is shown — 1H,343,343,254,0.7405247813411079
 compare:shots_on_target:2H:reg,team_more_sot_2h,Team has more SoT — 2H,172,86,66,0.38372093023255816
 compound:first_goal_and_other_team_scores_2h,first_goal_and_other_scores_2h,First goal AND other team scores — 2H,686,343,130,0.18950437317784258
@@ -20,7 +20,7 @@ count:shots_on_target:team:full:>=:7:reg,team_sot_full_7plus,Team 7+ SoT — ful
 count:shots_on_target:team:full:>=:8:reg,team_sot_full_8plus,Team 8+ SoT — full match,172,86,9,0.05232558139534884
 first_goal:2H:team,first_goal_2h,Team scores first — 2H,686,343,263,0.38338192419825073
 first_goal:full:team,first_goal,Team scores first,686,343,299,0.4358600583090379
-goal_window:after_second_hydration:reg,goal_after_second_hydration_reg,Goal after second hydration break — regulation,343,343,190,0.5539358600583091
+goal_window:after_second_hydration:reg,goal_after_second_hydration_reg,Goal after second hydration break — regulation,343,343,179,0.521865889212828
 goal_window:before_first_hydration:reg,goal_before_first_hydration,Goal before first hydration break,343,343,119,0.3469387755102041
 goal_window:stoppage:1H,goal_h1_stoppage,Goal in 1H stoppage time,343,343,18,0.052478134110787174
 goal_window:stoppage:2H,goal_h2_stoppage,Goal in 2H stoppage time,343,343,41,0.119533527696793

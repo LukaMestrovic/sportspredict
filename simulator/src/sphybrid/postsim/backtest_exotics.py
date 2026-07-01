@@ -30,6 +30,7 @@ from ..rates.team_ratings import fit_team_ratings
 from ..rates.train import train_rate_models
 from .fit_shares import fit_shares, write_shares
 from .contracts import contract_key
+from .markets import FIRST_HYDRATION_MINUTE, SECOND_HYDRATION_MINUTE
 
 EVENT_TABLE = "data/processed/exotic_event_table.parquet"
 HISTORY_TABLE = "data/processed/history_stat_table.parquet"
@@ -445,11 +446,19 @@ def build_question_table(
             is_goal = event["event_type"] == "goals"
             _add_case(records, row, "goal_before_first_hydration",
                       "Will a goal be scored before the first hydration break?",
-                      (is_goal & (event.phase == "1H") & (event.minute <= 22)).any())
+                      (
+                          is_goal
+                          & (event.phase == "1H")
+                          & (event.minute <= FIRST_HYDRATION_MINUTE)
+                      ).any())
             _add_case(records, row, "goal_after_second_hydration_reg",
                       "Will a goal be scored after the second hydration break in regulation "
                       "(90 minutes + stoppage time)?",
-                      (is_goal & (event.phase == "2H") & (event.minute > 67)).any())
+                      (
+                          is_goal
+                          & (event.phase == "2H")
+                          & (event.minute > SECOND_HYDRATION_MINUTE)
+                      ).any())
             _add_case(records, row, "goal_h1_stoppage",
                       "Will a goal be scored in first-half stoppage time?",
                       (is_goal & (event.phase == "1H") & (event.extra > 0)).any())
@@ -459,7 +468,11 @@ def build_question_table(
             is_card = event.event_type.isin(["yellow_cards", "red_cards"])
             _add_case(records, row, "card_after_second_hydration",
                       "Will a card be shown after the second hydration break, including any extra time?",
-                      (is_card & event.phase.isin(["2H", "ET"]) & (event.minute > 67)).any())
+                      (
+                          is_card
+                          & event.phase.isin(["2H", "ET"])
+                          & (event.minute > SECOND_HYDRATION_MINUTE)
+                      ).any())
             if row.stage == "knockout":
                 _add_case(records, row, "red_card", "Will a red card be shown in the match?",
                           (event.event_type == "red_cards").any())

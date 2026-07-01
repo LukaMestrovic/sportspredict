@@ -30,7 +30,7 @@ class _AF:
             _fixture(4, "2026-06-29T21:00:00Z", status="NS", round_name="Round of 32"),
         ]
         self.events = {
-            1: [_event("Goal", 70), _event("Card", 42, detail="Red Card")],
+            1: [_event("Goal", 71), _event("Card", 42, detail="Red Card")],
             2: [
                 _event("Goal", 105),
                 _event("Card", 112, detail="Red Card"),
@@ -83,6 +83,20 @@ class WC2026EvidenceTests(unittest.TestCase):
 
     def test_regulation_late_goal_excludes_extra_time(self):
         af = _AF()
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot = wc2026_evidence.refresh(
+                af, "2026-06-30T01:00:00Z",
+                {"goal_window:after_second_hydration:reg"},
+                path=Path(directory) / "wc.json",
+            )
+        rate = snapshot["contracts"]["goal_window:after_second_hydration:reg"]["wc2026"]
+        self.assertEqual(rate["yes_events"], 1)
+        self.assertEqual(rate["rate"], 0.5)
+
+    def test_second_hydration_boundary_starts_after_minute_70(self):
+        af = _AF()
+        af.events[1] = [_event("Goal", 70)]
+        af.events[2] = [_event("Goal", 71)]
         with tempfile.TemporaryDirectory() as directory:
             snapshot = wc2026_evidence.refresh(
                 af, "2026-06-30T01:00:00Z",

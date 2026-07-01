@@ -264,7 +264,7 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
 
     # Time-window / match-state questions with no single pre-match contract: the
     # web-grounded LLM layer prices them from the simulator fallback. A hydration
-    # break is NOT a half (the breaks are at 22' and 67'), so these stay
+    # break is NOT a half (the boundaries are 22' and 70'), so these stay
     # market="none", period="match" — never a 1H/2H line.
     if ("hydration break" in lower
             or "stoppage time" in lower or "added time" in lower

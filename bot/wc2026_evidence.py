@@ -26,6 +26,8 @@ CORE_CONTRACTS = {
     "goal_window:after_second_hydration:reg",
     "red_card:match",
 }
+FIRST_HYDRATION_MINUTE = 22
+SECOND_HYDRATION_MINUTE = 70
 
 
 def known_contract_keys(path: Path = ARTIFACT_PATH) -> set[str]:
@@ -407,11 +409,11 @@ def _event_label(key: str, facts: dict) -> bool | None:
     substitutions = facts["substitutions"]
 
     if key == "goal_window:after_second_hydration:et":
-        return any(event["minute"] > 67 for event in goals)
+        return any(event["minute"] > SECOND_HYDRATION_MINUTE for event in goals)
     if key == "goal_window:after_second_hydration:reg":
-        return any(67 < event["minute"] <= 90 for event in goals)
+        return any(SECOND_HYDRATION_MINUTE < event["minute"] <= 90 for event in goals)
     if key == "goal_window:before_first_hydration:reg":
-        return any(event["minute"] <= 22 for event in goals)
+        return any(event["minute"] <= FIRST_HYDRATION_MINUTE for event in goals)
     if key == "goal_window:stoppage:1H":
         return any(event["minute"] <= 45 and event["extra"] > 0 for event in goals)
     if key == "goal_window:stoppage:2H":
@@ -445,7 +447,10 @@ def _event_label(key: str, facts: dict) -> bool | None:
         if scope == "reg":
             selected = [event for event in selected if event["minute"] <= 90]
         if window == "after_second_hydration":
-            selected = [event for event in selected if event["minute"] > 67]
+            selected = [
+                event for event in selected
+                if event["minute"] > SECOND_HYDRATION_MINUTE
+            ]
         else:
             selected = [event for event in selected if event["minute"] <= 45]
         return _compare(len(selected), comparator, float(raw_threshold))

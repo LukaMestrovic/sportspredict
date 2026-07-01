@@ -31,6 +31,7 @@ from sportspredict.model import simulate
 
 from ..rates import make_rate_model
 from ..rates.ingest_apifootball import Canonicalizer, _cache_path
+from .markets import FIRST_HYDRATION_MINUTE, SECOND_HYDRATION_MINUTE
 from .timeline import GoalTimeline, card_timeline
 from .timing import TimingModel
 
@@ -101,8 +102,10 @@ def _labels(table: pd.DataFrame, canon: Canonicalizer) -> pd.DataFrame:
             "first_home": int(first == "home"), "first_away": int(first == "away"),
             "any_goal": int(bool(goals)),
             "early15": int(any(m <= 15 for m, _ in goals)),
-            "goal_before_hydration": int(any(m <= 22 for m, _ in goals)),
-            "goal_after_second_hydration": int(any(m > 67 for m in all_goal_times)),
+            "goal_before_hydration": int(any(m <= FIRST_HYDRATION_MINUTE for m, _ in goals)),
+            "goal_after_second_hydration": int(
+                any(m > SECOND_HYDRATION_MINUTE for m in all_goal_times)
+            ),
             "goal_h1_stoppage": int(any(
                 is_goal(e) and int((e.get("time") or {}).get("elapsed") or 0) == 45
                 and int((e.get("time") or {}).get("extra") or 0) > 0
@@ -116,7 +119,7 @@ def _labels(table: pd.DataFrame, canon: Canonicalizer) -> pd.DataFrame:
             "card_after_second_hydration": int(any(
                 e.get("type") == "Card"
                 and (int((e.get("time") or {}).get("elapsed") or 0)
-                     + int((e.get("time") or {}).get("extra") or 0)) > 67
+                     + int((e.get("time") or {}).get("extra") or 0)) > SECOND_HYDRATION_MINUTE
                 for e in events
             )),
             "substitution_before_halftime": int(any(
@@ -183,11 +186,17 @@ def evaluate(settings: Settings, *, elo_csv: str, n_sims: int, limit: int | None
         ph.append(float(tl.first_scorer_is(0).mean()))
         pa.append(float(tl.first_scorer_is(1).mean()))
         pe.append(float(tl.any_goal_in_window(0, 15).mean()))
-        p_hydration.append(float(tl.any(tl.select(through=22, phases={"1H"})).mean()))
-        p_late.append(float(tl.any(tl.select(after=67, phases={"2H", "ET"})).mean()))
+        p_hydration.append(float(
+            tl.any(tl.select(through=FIRST_HYDRATION_MINUTE, phases={"1H"})).mean()
+        ))
+        p_late.append(float(
+            tl.any(tl.select(after=SECOND_HYDRATION_MINUTE, phases={"2H", "ET"})).mean()
+        ))
         p_h1_stop.append(float(tl.any(tl.select(stoppage="1H")).mean()))
         p_h2_stop.append(float(tl.any(tl.select(stoppage="2H")).mean()))
-        p_late_card.append(float(cards.any(cards.select(after=67, phases={"2H", "ET"})).mean()))
+        p_late_card.append(float(
+            cards.any(cards.select(after=SECOND_HYDRATION_MINUTE, phases={"2H", "ET"})).mean()
+        ))
         p_early_sub.append(timing.rate("substitution_before_halftime", r["stage"], 0.10))
     ph, pa, pe = np.array(ph), np.array(pa), np.array(pe)
     yh = labels["first_home"].to_numpy(float)

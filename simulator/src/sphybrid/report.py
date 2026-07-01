@@ -27,6 +27,7 @@ from .postsim import (
     STAT_WINDOW,
     SUBSTITUTE_SCORE,
     SUBSTITUTION_BEFORE_HALF,
+    SECOND_HYDRATION_MINUTE,
     TOTAL_SHOTS_THRESHOLD,
     WIN_MARGIN,
     parse_extended,
@@ -88,7 +89,7 @@ def _explanation(market: str, params: dict, notes: str | None) -> str:
             scope = "including extra time" if params.get("include_et") else "regulation only"
             return (
                 "Estimated from learned goal counts and historical goal clocks strictly after "
-                f"minute 67 ({scope})."
+                f"minute {SECOND_HYDRATION_MINUTE:.0f} ({scope})."
             )
         if params.get("window") == "stoppage":
             return (
@@ -229,7 +230,7 @@ def _market_adjustment_guidance(market: str, params: dict, question: str) -> str
         if window == "after_second_hydration":
             if params.get("include_et"):
                 return (
-                    "This contract includes regulation after minute 67 plus any extra time. "
+                    "This contract includes regulation after minute 70 plus any extra time. "
                     "Explicitly use the de-vigged regulation-draw probability: a higher draw probability "
                     "raises extra-time exposure and therefore the chance of a later goal. Also "
                     "raise for higher goal totals, attacking benches and likely late chasing; "
