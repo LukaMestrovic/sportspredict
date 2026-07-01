@@ -543,6 +543,39 @@ class ContextEvidenceTests(unittest.TestCase):
         self.assertIn("sot_per90", guidance)
         self.assertIn("shots_per90", guidance)
 
+    def test_team_shots_on_target_market_gets_stat_odds_search_guidance(self):
+        result = _result({
+            "sot": {"market": "team_shots_on_target", "subject": "home",
+                    "player": None, "comparator": "gte",
+                    "threshold": 6, "period": "match"},
+        }, question="Will Home have 6 or more shots on target?")
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+
+        with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
+            evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+        guidance = evidence["question_evidence"][0]["adjustment_guidance"]
+        self.assertIn("Home shots on target", guidance)
+        self.assertIn("line 5.5", guidance)
+        self.assertIn("Team Total", guidance)
+        self.assertIn("de-vig", guidance)
+
+    def test_penalty_red_compound_gets_component_odds_guidance(self):
+        result = _result({
+            "compound": {"market": "none", "subject": "match", "player": None,
+                         "comparator": "yes", "threshold": None, "period": "match"},
+        }, question="Will a penalty kick be awarded OR a red card be shown?")
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+
+        with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
+            evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+        guidance = evidence["question_evidence"][0]["adjustment_guidance"]
+        self.assertIn("component odds", guidance)
+        self.assertIn("penalty awarded", guidance)
+        self.assertIn("red card shown", guidance)
+        self.assertIn("combine as a union", guidance)
+
     def test_non_player_market_has_no_player_form_key(self):
         result = _result({
             "win": {"market": "match_winner", "subject": "home", "player": None,

@@ -101,7 +101,7 @@ def build_match_evidence(
             item["simulator_estimate"] = _compact_simulator_estimate(
                 simulator_by_market[mid]
             )
-        guidance = _player_form_guidance(intent)
+        guidance = _adjustment_guidance(intent, question, result.home, result.away)
         if guidance:
             item["adjustment_guidance"] = guidance
         question_evidence.append(item)
@@ -177,6 +177,23 @@ def _match_meta(result, lineups, minutes_before: float | None) -> dict:
     }
 
 
+def _adjustment_guidance(
+    intent: dict | None, question: str, home: str, away: str
+) -> str | None:
+    """Market-specific research checklist for the pricing model."""
+    parts = []
+    player_guidance = _player_form_guidance(intent)
+    if player_guidance:
+        parts.append(player_guidance)
+    stat_guidance = _stat_market_guidance(intent, question, home, away)
+    if stat_guidance:
+        parts.append(stat_guidance)
+    compound_guidance = _compound_market_guidance(question)
+    if compound_guidance:
+        parts.append(compound_guidance)
+    return "\n\n".join(parts) if parts else None
+
+
 def _player_form_guidance(intent: dict | None) -> str | None:
     """Tell the pricing model how to use top-level player form for player markets."""
     player = (intent or {}).get("player")
@@ -197,6 +214,55 @@ def _player_form_guidance(intent: dict | None) -> str | None:
         "rotation or bench risk, limited minutes, or role uncertainty. When no "
         "direct_odds exist, use simulator_estimate as context and apply the same "
         "player-form adjustment."
+    )
+
+
+def _stat_market_guidance(
+    intent: dict | None, question: str, home: str, away: str
+) -> str | None:
+    """Push the LLM toward exact online stat markets when providers lack them."""
+    intent = intent or {}
+    market = intent.get("market")
+    lower = question.lower()
+    if market not in ("team_shots_on_target", "total_shots_on_target") and (
+        "shot on target" not in lower and "shots on target" not in lower
+    ):
+        return None
+
+    side = intent.get("subject")
+    team = home if side == "home" else away if side == "away" else None
+    threshold = intent.get("threshold")
+    line_hint = None
+    try:
+        if intent.get("comparator") == "gte" and threshold is not None:
+            line_hint = f"{float(threshold) - 0.5:g}"
+        elif intent.get("comparator") == "lte" and threshold is not None:
+            line_hint = f"{float(threshold) + 0.5:g}"
+    except (TypeError, ValueError):
+        line_hint = None
+    target = f"{team} shots on target" if team else "match/team shots on target"
+    line_clause = f" at line {line_hint}" if line_hint else ""
+    return (
+        f"Before relying on the simulator for this SOT stat market, search for "
+        f"direct online odds for {target}{line_clause}: phrases such as "
+        "\"team total shots on target\", \"shots on goal\", \"Team Total\", "
+        "\"alternative team total\", and \"statistics\" pages. On bookmaker "
+        "statistics pages, if the enclosing event is labelled shots on target, "
+        "generic row headers like Total, Total Goals, or Team Total refer to the "
+        "stat count, not football goals. Use an exact over/under pair when found "
+        "and de-vig the two sides from the same book."
+    )
+
+
+def _compound_market_guidance(question: str) -> str | None:
+    lower = question.lower()
+    if "penalty kick" not in lower or "red card" not in lower:
+        return None
+    return (
+        "For this penalty/red-card OR compound, search for direct component odds "
+        "for penalty awarded and red card shown before relying on the simulator. "
+        "Use same-source prices when possible, convert each component probability, "
+        "combine as a union, and note any positive correlation adjustment."
     )
 
 

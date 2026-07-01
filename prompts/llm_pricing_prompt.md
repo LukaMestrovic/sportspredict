@@ -63,6 +63,17 @@ Use high-quality sources before lower-quality commentary. Useful places to look:
   discarding it; de-vig all quoted outcomes including draw/tie, label the
   yellow-card/all-card scope difference, and downweight only modestly unless
   red-card risk materially changes the comparison.
+- Stat thresholds and comparisons: for shots on target, shots, fouls, offsides,
+  saves, goal kicks, throw-ins, tackles, and similar count markets, also search
+  bookmaker "statistics" pages and terms like Team Total, alternative team
+  total, shots on goal, cards/fouls/shots 1x2, and handicap result. If the
+  enclosing event is labelled for a stat, generic rows such as Total, Total
+  Goals, or Team Total refer to that stat count, not football goals. Exact
+  stat over/under pairs should be de-vigged and used as direct odds.
+- Compound rare events: when the question is an OR/AND of two bookable events
+  such as penalty awarded OR red card shown, search for the component prices and
+  compose them transparently instead of stopping after no single combined line
+  is found.
 - Lineups/injuries/minutes: confirmed FIFA/team lineups, federation reports,
   Reuters/AP/BBC/ESPN, FotMob, SofaScore, Transfermarkt injury notes, trusted
   local reporters. Corroborate predicted lineups before moving far from odds.
