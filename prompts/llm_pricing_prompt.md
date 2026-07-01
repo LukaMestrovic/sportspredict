@@ -90,10 +90,14 @@ The evidence JSON may include:
   with provenance (`source`, `bookmaker`, `market_key`, `contract`,
   `probability_pct`, `devig_method`, optional `contract_note`), not raw odds.
   `simulator_estimate` is the deterministic fallback/base-rate estimate for
-  markets without exact direct odds; it may contain `contract_key`,
-  `probability_pct`, `basis`, `conditioning`, `empirical_rates`, and
-  `contract_comparison`. `adjustment_guidance` tells you which match evidence
-  and web research should move this specific market up or down.
+  markets without exact direct odds: `contract_key` is the normalized contract
+  priced; `probability_pct` is the simulator's YES probability before your
+  final adjustment; `basis` explains the mapping/input basis; `conditioning`
+  lists key match inputs already applied; `empirical_rates` gives observed YES
+  rates and sample sizes for the same contract; `contract_comparison` is a
+  Brier/reliability check against baselines. `adjustment_guidance` tells you
+  which match evidence and web research should move this specific market up or
+  down.
 
 When any provided context materially moves a market, cite it in
 `non_odds_factors_used` with source "provided evidence". If a relevant block is
