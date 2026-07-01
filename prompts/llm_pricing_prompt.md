@@ -31,8 +31,8 @@ CONTRACT SCOPE IS STRICT
 PER-QUESTION WORKFLOW
 1. Read the whole question object in `question_evidence`: `market_id`,
    `question`, `intent`, `contract_scope`, `direct_market_spec`, `direct_odds`,
-   `simulator_estimate.calibrated_baseline`, `simulator_estimate`, and
-   `adjustment_guidance`.
+   `online_odds_candidates`, `simulator_estimate.calibrated_baseline`,
+   `simulator_estimate`, and `adjustment_guidance`.
 2. Treat the question-level `adjustment_guidance` and, when present,
    `simulator_estimate.adjustment_guidance` as the primary instruction for what
    to research and which evidence should move this exact market. Do not rely on
@@ -41,7 +41,14 @@ PER-QUESTION WORKFLOW
    primary price spread. Give more weight to liquid, independent books with
    matching scope. Move within or just outside the spread only when the
    adjustment guidance plus confirmed research gives a clear reason.
-4. If no direct odds exist, start from
+4. If `online_odds_candidates` exists, these are deterministic public bookmaker
+   prices already found from web pages during evidence collection. Treat exact
+   candidates as direct online odds, include them in your `online_odds_found`
+   audit with the quoted price and de-vig method, and use them before simulator
+   or empirical context unless you explicitly identify a stale/wrong-scope
+   reason. Do not report "Online odds found: none" for a market that has exact
+   `online_odds_candidates`.
+5. If no direct or online odds exist, start from
    `simulator_estimate.calibrated_baseline.probability_pct` when that object is
    present; otherwise start from `simulator_estimate.probability_pct`. The
    calibrated baseline is deterministic and already compares exact-contract
@@ -54,7 +61,7 @@ PER-QUESTION WORKFLOW
    by size and contract fit: knockout and WC2026 scopes matter more for
    knockout/heat/hydration/sub markets, but tiny samples must not swamp stronger
    evidence.
-5. Search online only for information that can affect this market. Convert every
+6. Search online only for information that can affect this market. Convert every
    online price you use into probability and state the method. Keep stale,
    wrong-scope, affiliate/tipster, or post-kickoff information out of the price.
 
@@ -79,7 +86,11 @@ Use high-quality sources before lower-quality commentary. Useful places to look:
   total, shots on goal, cards/fouls/shots 1x2, and handicap result. If the
   enclosing event is labelled for a stat, generic rows such as Total, Total
   Goals, or Team Total refer to that stat count, not football goals. Exact
-  stat over/under pairs should be de-vigged and used as direct odds.
+  stat over/under pairs should be de-vigged and used as direct odds. For WC2026
+  shots-on-target markets, specifically check BetOlimp World Cup 2026
+  Statistics pages whose event titles look like "USA (shots on target) -
+  Bosnia and Herzegovina (shots on target)"; rows under Team Total such as
+  "USA (shots on target) (5.5) under/over" are exact team SOT totals.
 - Player involvement props: for score-or-assist, player assists, player shots
   on target, and player ladder contracts, search bookmaker player-prop and
   bet-builder tabs before falling back to form. Exact "to score or assist",
@@ -134,6 +145,9 @@ The evidence JSON may include:
   `direct_odds` is the de-vigged bookmaker probability spread for this contract,
   with provenance (`source`, `bookmaker`, `market_key`, `contract`,
   `probability_pct`, `devig_method`, optional `contract_note`), not raw odds.
+  `online_odds_candidates` contains pre-collected public bookmaker odds from
+  cached web pages. When present, exact candidates should be carried into your
+  `online_odds_found` audit and weighed like direct online prices.
   `simulator_estimate` is the deterministic fallback context for markets
   without exact direct odds: `contract_key` is the normalized contract priced;
   `probability_pct` is the raw simulator YES probability; `calibrated_baseline`

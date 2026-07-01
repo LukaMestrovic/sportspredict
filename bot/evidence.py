@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
-from . import config, simulator, simulator_benchmark, wc2026_evidence
+from . import config, public_odds, simulator, simulator_benchmark, wc2026_evidence
 from . import oddsapi as oapi
 from . import predictor as afpred
 from .matcher import (
@@ -103,6 +103,9 @@ def build_match_evidence(
             "direct_market_spec": spec_by_market[mid],
         }
         item["direct_odds"] = [_compact_direct_odd(obs) for obs in direct]
+        online = [] if direct else public_odds.online_odds(intent, result.home, result.away)
+        if online:
+            item["online_odds_candidates"] = online
         if not direct and mid in simulator_by_market:
             item["simulator_estimate"] = _compact_simulator_estimate(
                 simulator_by_market[mid], stage=stage,
@@ -113,7 +116,7 @@ def build_match_evidence(
         question_evidence.append(item)
 
     evidence = {
-        "schema_version": 18,
+        "schema_version": 19,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "match": _match_meta(result, lineups, minutes_before),
         "team_form": context.get("team_form") or {},
@@ -287,7 +290,10 @@ def _stat_market_guidance(
         "\"most shots on target\", and \"statistics\" pages. On bookmaker "
         "statistics pages, if the enclosing event is labelled shots on target, "
         "generic row headers like Total, Total Goals, or Team Total refer to the "
-        "stat count, not football goals. Use an exact over/under pair when found "
+        "stat count, not football goals. For WC2026, explicitly check BetOlimp "
+        "World Cup 2026 Statistics pages whose titles look like "
+        f"\"{home} (shots on target) - {away} (shots on target)\". "
+        "Use an exact over/under pair when found "
         "and de-vig the two sides from the same book; use 1x2/most-SOT markets "
         "as strong proxies for comparison questions when the period and statistic match."
     )

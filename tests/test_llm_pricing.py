@@ -81,6 +81,41 @@ class LLMFinalPricingTests(unittest.TestCase):
         self.assertEqual(result.skip_reasons["m1"],
                          "LLM pricing missing audit field: online_odds_found")
 
+    def test_precollected_online_odds_candidate_must_be_used(self):
+        llm_pricing._ask = lambda evidence, **_kw: {
+            "briefing": "b", "sources": [], "markets": [_audit("m1", 57)],
+        }
+        result = llm_pricing.price_match(
+            _result(), _evidence(with_online_candidate=True),
+            None, 30.0, force=True,
+        )
+
+        self.assertEqual(result.predictions, [])
+        self.assertEqual(
+            result.skip_reasons["m1"],
+            "LLM pricing ignored pre-collected online odds candidates",
+        )
+
+    def test_precollected_online_odds_candidate_in_online_audit_is_accepted(self):
+        audit = _audit("m1", 57)
+        audit["online_odds_found"] = [{
+            "source": "BetOlimp",
+            "url": "https://betolimp.co.za/sot",
+            "quoted_price_or_odds": "USA (shots on target) (5.5) over 2.08",
+            "converted_probability_pct": 44.68,
+            "conversion_method": "same-book over/under de-vig",
+            "how_used": "direct online price",
+        }]
+        llm_pricing._ask = lambda evidence, **_kw: {
+            "briefing": "b", "sources": [], "markets": [audit],
+        }
+        result = llm_pricing.price_match(
+            _result(), _evidence(with_online_candidate=True),
+            None, 30.0, force=True,
+        )
+
+        self.assertEqual(len(result.predictions), 1)
+
     def test_leak_guard_refuses_after_kickoff(self):
         calls = []
         llm_pricing._ask = (
@@ -127,12 +162,20 @@ def _result():
     )
 
 
-def _evidence(with_context=False, with_simulator=False):
+def _evidence(with_context=False, with_simulator=False, with_online_candidate=False):
     question = {
         "market_id": "m1",
         "direct_odds": [{"probability": 0.55}],
         "related_odds": [],
     }
+    if with_online_candidate:
+        question["online_odds_candidates"] = [{
+            "source": "public-web",
+            "bookmaker": "BetOlimp",
+            "url": "https://betolimp.co.za/sot",
+            "contract": "USA (shots on target) (5.5) over",
+            "probability_pct": 44.68,
+        }]
     if with_simulator:
         question["simulator_estimate"] = {
             "family": "any_player_threshold",

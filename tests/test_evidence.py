@@ -418,7 +418,7 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(estimates.call_args.kwargs["intents"], result.intents)
         q = evidence["question_evidence"][0]
-        self.assertEqual(evidence["schema_version"], 18)
+        self.assertEqual(evidence["schema_version"], 19)
         self.assertEqual(q["simulator_estimate"], {"probability_pct": 24.1})
         self.assertLess(
             list(q).index("direct_odds"),
@@ -486,7 +486,7 @@ class EvidenceTests(unittest.TestCase):
             )
 
         question = bundle["question_evidence"][0]
-        self.assertEqual(bundle["schema_version"], 18)
+        self.assertEqual(bundle["schema_version"], 19)
         self.assertEqual(question["direct_market_spec"]["bet_id"], 14)
         self.assertEqual(len(question["direct_odds"]), 1)
         self.assertIn("regulation first-team-to-score proxy",
@@ -570,7 +570,7 @@ class ContextEvidenceTests(unittest.TestCase):
         with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
-        self.assertEqual(evidence["schema_version"], 18)
+        self.assertEqual(evidence["schema_version"], 19)
         self.assertEqual(
             list(evidence),
             [
@@ -657,7 +657,30 @@ class ContextEvidenceTests(unittest.TestCase):
         self.assertIn("Home shots on target", guidance)
         self.assertIn("line 5.5", guidance)
         self.assertIn("Team Total", guidance)
+        self.assertIn("BetOlimp", guidance)
         self.assertIn("de-vig", guidance)
+
+    def test_team_shots_on_target_market_embeds_public_odds_candidates(self):
+        candidate = {
+            "source": "public-web",
+            "bookmaker": "BetOlimp",
+            "url": "https://betolimp.co.za/sot",
+            "contract": "Home (shots on target) (5.5) over",
+            "probability_pct": 44.68,
+        }
+        result = _result({
+            "sot": {"market": "team_shots_on_target", "subject": "home",
+                    "player": None, "comparator": "gte",
+                    "threshold": 6, "period": "match"},
+        }, question="Will Home have 6 or more shots on target?")
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+
+        with patch("bot.evidence.simulator.simulator_estimates", return_value={}), \
+                patch("bot.evidence.public_odds.online_odds", return_value=[candidate]):
+            evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+        question = evidence["question_evidence"][0]
+        self.assertEqual(question["online_odds_candidates"], [candidate])
 
     def test_second_half_sot_market_gets_period_specific_stat_guidance(self):
         result = _result({

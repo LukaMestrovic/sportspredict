@@ -222,12 +222,12 @@ def apply_pricing_response(
         if not audit:
             _skip(result, market, "LLM pricing omitted market audit")
             continue
-        validated = validate_market_audit(audit)
+        q_evidence = evidence_by_market.get(mid, {})
+        validated = validate_market_audit(audit, q_evidence)
         if not validated[0]:
             _skip(result, market, validated[1])
             continue
         probability_int = validated[2]
-        q_evidence = evidence_by_market.get(mid, {})
         direct = q_evidence.get("direct_odds") or []
         pred = Prediction(
             market_id=mid,
@@ -257,7 +257,9 @@ def apply_pricing_response(
     return result
 
 
-def validate_market_audit(audit: dict) -> tuple[bool, str, int]:
+def validate_market_audit(
+    audit: dict, question_evidence: dict | None = None
+) -> tuple[bool, str, int]:
     raw_p = audit.get("probability_int")
     if not isinstance(raw_p, (int, float)):
         return False, "LLM pricing missing numeric probability_int", 0
@@ -270,7 +272,32 @@ def validate_market_audit(audit: dict) -> tuple[bool, str, int]:
             return False, "LLM pricing missing reasoning summary", 0
         if field != "reasoning_summary" and not isinstance(value, list):
             return False, f"LLM pricing audit field must be a list: {field}", 0
+    candidates = (question_evidence or {}).get("online_odds_candidates") or []
+    if candidates and not _audit_uses_online_candidate(audit, candidates):
+        return (
+            False,
+            "LLM pricing ignored pre-collected online odds candidates",
+            0,
+        )
     return True, "", probability_int
+
+
+def _audit_uses_online_candidate(audit: dict, candidates: list[dict]) -> bool:
+    online = audit.get("online_odds_found") or []
+    if not online:
+        return False
+    text = json.dumps(online, ensure_ascii=False).lower()
+    for candidate in candidates:
+        bookmaker = str(candidate.get("bookmaker") or "").lower()
+        url = str(candidate.get("url") or "").lower()
+        contract = str(candidate.get("contract") or "").lower()
+        if bookmaker and bookmaker in text:
+            return True
+        if url and url in text:
+            return True
+        if contract and contract in text:
+            return True
+    return False
 
 
 def write_audit_bundle(
@@ -366,6 +393,11 @@ def _markdown_report(
             lines.append("- audit note: no direct or online odds were used; related evidence follows.")
         if qe.get("direct_odds"):
             lines.append(f"- provided direct odds available: {len(qe['direct_odds'])}")
+        if qe.get("online_odds_candidates"):
+            lines.append(
+                f"- pre-collected online odds candidates: "
+                f"{len(qe['online_odds_candidates'])}"
+            )
         est = qe.get("simulator_estimate")
         if est is None:
             legacy_estimates = qe.get("simulator_model_estimates") or []
