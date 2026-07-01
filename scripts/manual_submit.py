@@ -244,6 +244,7 @@ def _submit(args) -> None:
             "PLATFORM_VERIFICATION="
             + json.dumps(verification, sort_keys=True)
         )
+        _print_predictions(result)
         print(f"CRON_MARKER_PATH={_host_path(marker)}")
         print("CRON_BLOCKED=true")
 
@@ -430,6 +431,27 @@ def _latest_submitted_payload(match_id: str, lobby_id: str) -> dict | None:
             for q in questions
         ],
     }
+
+
+def _print_predictions(result: MatchResult) -> None:
+    rows = [
+        {
+            "market_id": p.market_id,
+            "probability_int": p.probability_int,
+            "question": p.question,
+            "reasoning_summary": p.llm_reasoning_summary,
+        }
+        for p in result.predictions
+    ]
+    print("PREDICTIONS_JSON=" + json.dumps(rows, ensure_ascii=False, sort_keys=True))
+    print("PREDICTIONS:")
+    for row in rows:
+        reason = row["reasoning_summary"] or ""
+        suffix = f" — {reason}" if reason else ""
+        print(
+            f"- {row['probability_int']:>2}%  {row['market_id']}  "
+            f"{row['question']}{suffix}"
+        )
 
 
 def _parse_kickoff(opening_time: str) -> datetime:

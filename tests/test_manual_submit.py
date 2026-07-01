@@ -31,7 +31,7 @@ class ManualSubmitTests(unittest.TestCase):
         outcome = {"submitted": 1, "updated": 0, "unchanged": 0, "failed": 0,
                    "platform_verification": verification}
         with self._patched_submit(outcome) as patched:
-            with redirect_stdout(StringIO()):
+            with redirect_stdout(StringIO()) as out:
                 manual_submit._submit(SimpleNamespace(
                     session=str(session_path),
                     response=str(response_path),
@@ -40,6 +40,9 @@ class ManualSubmitTests(unittest.TestCase):
 
         patched["submit"].assert_called_once()
         patched["marker"].assert_called_once()
+        self.assertIn("PREDICTIONS_JSON=", out.getvalue())
+        self.assertIn("PREDICTIONS:", out.getvalue())
+        self.assertIn("Will Home win?", out.getvalue())
 
     def test_marker_not_written_when_platform_verification_missing(self):
         session_path, response_path = self._files()

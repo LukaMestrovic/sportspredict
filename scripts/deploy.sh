@@ -75,7 +75,7 @@ echo ">> smoke-test image (--status, no submit) ..."
 set -a; . ./.env; set +a
 export LLM_PRICING_MODEL="${LLM_PRICING_MODEL:-gpt-5.5}"
 export LLM_PRICING_REASONING_EFFORT="${LLM_PRICING_REASONING_EFFORT:-high}"
-docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+docker run -i --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -e SPORTSPREDICT_KEY -e APIFOOTBALL_KEY -e ODDS_API_KEY -e OPENAI_API_KEY \
   -e LLM_PRICING_MODEL -e LLM_PRICING_REASONING_EFFORT \
   -e SPLLM_HOST_ROOT="$ROOT" \
@@ -112,7 +112,7 @@ export LLM_PRICING_MODEL="\${LLM_PRICING_MODEL:-gpt-5.5}"
 export LLM_PRICING_REASONING_EFFORT="\${LLM_PRICING_REASONING_EFFORT:-high}"
 
 mkdir -p "\$ROOT/cache" "\$ROOT/logs"
-exec docker run --rm --user "\$(id -u):\$(id -g)" -e HOME=/tmp \\
+exec docker run -i --rm --user "\$(id -u):\$(id -g)" -e HOME=/tmp \\
   -e SPORTSPREDICT_KEY -e APIFOOTBALL_KEY -e ODDS_API_KEY -e OPENAI_API_KEY \\
   -e PARSER_MODEL -e ODDS_REGIONS -e LLM_PRICING_ENABLED -e LLM_PRICING_MODEL \\
   -e LLM_PRICING_REASONING_EFFORT -e SPLLM_HOST_ROOT="\$ROOT" \\
