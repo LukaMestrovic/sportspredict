@@ -108,7 +108,7 @@ def build_match_evidence(
         question_evidence.append(item)
 
     evidence = {
-        "schema_version": 12,
+        "schema_version": 13,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "match": _match_meta(result, lineups, minutes_before),
         "team_form": context.get("team_form") or {},
@@ -214,7 +214,6 @@ def _compact_simulator_estimate(estimate: dict) -> dict:
         probability_pct = round(float(estimate["probability"]) * 100.0, 2)
     compact = {
         key: value for key, value in (
-            ("family", estimate.get("family")),
             ("contract_key", estimate.get("contract_key")),
             ("probability_pct", probability_pct),
             ("basis", estimate.get("explanation")),
@@ -231,63 +230,67 @@ def _compact_simulator_estimate(estimate: dict) -> dict:
 
     history = estimate.get("historical_evidence") or {}
     empirical_rates = {}
-    for scope, row in (history.get("empirical_rate") or {}).items():
+    empirical_source = history.get("empirical_rate") or {}
+    for scope in ("all_history", "all_history_knockout", "wc2026", "wc2026_knockout"):
+        if not empirical_source:
+            break
+        row = empirical_source.get(scope)
         if not row or not row.get("available") or row.get("rate") is None:
+            empirical_rates[scope] = {
+                "n": 0,
+                "rate": None,
+                "population": _population_description(scope, row or {}),
+            }
             continue
         observations = row.get("observations") or row.get("matches")
-        rate = {"rate_pct": round(float(row["rate"]) * 100.0, 2)}
+        rate = {
+            "rate": round(float(row["rate"]), 6),
+            "population": _population_description(scope, row),
+        }
         if observations is not None:
             rate["n"] = int(observations)
-        if row.get("matches") is not None and row.get("matches") != observations:
-            rate["matches"] = int(row["matches"])
-        if row.get("data_through"):
-            rate["through"] = row["data_through"]
-        if row.get("population"):
-            rate["population"] = row["population"]
-        if row.get("complete") is False:
-            rate["complete"] = False
         empirical_rates[scope] = rate
     if empirical_rates:
         compact["empirical_rates"] = empirical_rates
 
     def compact_contract_comparisons(source: dict) -> dict:
         comparisons = {}
-        for scope, row in source.items():
-            if scope in {"family", "live_refresh"} or not isinstance(row, dict):
+        if not source:
+            return comparisons
+        for scope in ("all_history", "all_history_knockout", "wc2026", "wc2026_knockout"):
+            row = source.get(scope)
+            if not isinstance(row, dict):
+                comparisons[scope] = {
+                    "basis": _comparison_basis_description(scope),
+                    "brier": None,
+                    "n_observations": 0,
+                    "signal": "unavailable_no_observations",
+                }
                 continue
             if not row.get("available"):
+                comparisons[scope] = {
+                    "basis": _comparison_basis_description(scope),
+                    "brier": None,
+                    "n_observations": 0,
+                    "signal": "unavailable_no_observations",
+                }
                 continue
-            sample = (row.get("sample_size") or {}).get("level")
-            coverage = row.get("coverage") or {}
             comparison = {
+                "basis": _comparison_basis_description(scope),
                 "signal": row.get("comparison_signal"),
-                "sample": sample,
-                "basis": (
-                    "exhaustive_exact_contract_on_all_labelable_wc2026_matches"
-                    if scope == "wc2026" else "rolling_origin_unseen_matches"
+                "n_observations": (
+                    row.get("observations")
+                    or (row.get("coverage") or {}).get("comparable_observations")
+                    or row.get("questions")
+                    or row.get("matches")
                 ),
             }
-            if scope == "wc2026":
-                comparison.update({
-                    "labelable_matches": coverage.get("labelable_matches"),
-                    "comparable_matches": coverage.get("comparable_matches"),
-                    "simulator_observations": coverage.get("simulator_observations"),
-                    "comparable_observations": coverage.get("comparable_observations"),
-                })
-                comparison["observation_unit"] = row.get("observation_unit")
-            else:
-                comparison.update({
-                    "matches": row.get("matches"),
-                    "questions": row.get("questions"),
-                })
-            # Do not expose unstable point estimates from explicitly tiny samples.
-            if sample != "too_small":
-                brier = row.get("brier") or {}
-                comparison["brier"] = {
-                    key: brier.get(key)
-                    for key in ("simulator", "empirical_rate", "always_50")
-                    if brier.get(key) is not None
-                }
+            brier = row.get("brier") or {}
+            comparison["brier"] = {
+                key: brier.get(key)
+                for key in ("simulator", "empirical_rate", "always_50")
+                if brier.get(key) is not None
+            }
             comparisons[scope] = {
                 key: value for key, value in comparison.items() if value is not None
             }
@@ -299,6 +302,48 @@ def _compact_simulator_estimate(estimate: dict) -> dict:
     if contract_comparisons:
         compact["contract_comparison"] = contract_comparisons
     return compact
+
+
+def _population_description(scope: str, row: dict) -> str:
+    if scope == "all_history":
+        return "All historical labelable observations for this exact contract."
+    if scope == "all_history_knockout":
+        return (
+            "Historical labelable observations for this exact contract, restricted "
+            "to knockout-stage matches."
+        )
+    if scope == "wc2026":
+        return (
+            "Settled WC2026 labelable observations for this exact contract before "
+            "the target kickoff."
+        )
+    if scope == "wc2026_knockout":
+        return (
+            "Settled WC2026 knockout-stage labelable observations for this exact "
+            "contract before the target kickoff."
+        )
+    return str(row.get("population") or "Labelable observations for this exact contract.")
+
+
+def _comparison_basis_description(scope: str) -> str:
+    if scope == "all_history":
+        return "Rolling-origin unseen historical observations for this exact contract."
+    if scope == "all_history_knockout":
+        return (
+            "Rolling-origin unseen historical knockout-stage observations for this "
+            "exact contract."
+        )
+    if scope == "wc2026":
+        return (
+            "Frozen pre-2026 simulator on every settled WC2026 labelable observation "
+            "for this exact contract."
+        )
+    if scope == "wc2026_knockout":
+        return (
+            "Frozen pre-2026 simulator on every settled WC2026 knockout-stage "
+            "labelable observation for this exact contract."
+        )
+    return "Comparable unseen observations for this exact contract."
 
 
 def _fixture_referee(result) -> str | None:

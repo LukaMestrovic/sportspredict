@@ -79,6 +79,7 @@ def load_comparison_rows(source_root: Path, contract_keys: set[str]) -> list[dic
             "family": family_from_contract(key),
             "contract_key": key,
             "match_id": row["match_id"],
+            "stage": row.get("stage"),
             "fold_year": year,
             "tournament": row.get("tournament"),
             "match_date": row.get("match_date"),
@@ -213,6 +214,83 @@ def family_performance(rows: list[dict], *, scope: str) -> dict[str, dict]:
     return result
 
 
+def _performance_summary(rows: list[dict], *, scope: str) -> dict:
+    """Score simulator vs 50/50 and prior empirical-rate on identical rows."""
+    comparable = [row for row in rows if row["p_empirical"] is not None]
+    if not comparable:
+        return {
+            "available": False,
+            "reason": "No comparable unseen rows with an empirical-rate baseline.",
+        }
+    model_losses = [(row["p_model"] - row["outcome"]) ** 2 for row in comparable]
+    empirical_losses = [(row["p_empirical"] - row["outcome"]) ** 2 for row in comparable]
+    model_brier = sum(model_losses) / len(model_losses)
+    empirical_brier = sum(empirical_losses) / len(empirical_losses)
+    differences = [
+        (row["match_id"], model_loss - empirical_loss)
+        for row, model_loss, empirical_loss in zip(
+            comparable, model_losses, empirical_losses, strict=True,
+        )
+    ]
+    ci = _clustered_ci(differences)
+    matches = len({row["match_id"] for row in comparable})
+    assessment = _sample_assessment(matches)
+    if assessment["level"] == "too_small":
+        signal = "inconclusive_small_sample"
+    elif ci and ci[1] < 0:
+        signal = "simulator_better"
+    elif ci and ci[0] > 0:
+        signal = "empirical_rate_better"
+    else:
+        signal = "inconclusive"
+    return {
+        "available": True,
+        "scope": scope,
+        "observations": len(comparable),
+        "matches": matches,
+        "brier": {
+            "simulator": round(model_brier, 6),
+            "empirical_rate": round(empirical_brier, 6),
+            "always_50": 0.25,
+        },
+        "comparison_signal": signal,
+        "sample_size": {
+            **assessment,
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+        },
+        "simulator_minus_empirical_rate_95pct_ci": ci,
+    }
+
+
+def contract_performance(rows: list[dict], *, scope: str) -> dict[str, dict]:
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for row in rows:
+        grouped[row["contract_key"]].append(row)
+    return {
+        key: _performance_summary(contract_rows, scope=scope)
+        for key, contract_rows in sorted(grouped.items())
+    }
+
+
+def knockout_empirical_rates(rows: list[dict]) -> dict[str, dict]:
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for row in rows:
+        if row.get("stage") == "knockout":
+            grouped[row["contract_key"]].append(row)
+    result = {}
+    for key, contract_rows in sorted(grouped.items()):
+        yes = sum(float(row["outcome"]) for row in contract_rows)
+        result[key] = {
+            "available": True,
+            "rate": round(yes / len(contract_rows), 6),
+            "observations": len(contract_rows),
+            "matches": len({row["match_id"] for row in contract_rows}),
+            "yes_events": int(yes),
+            "population": "historical_knockout_labelable_observations",
+        }
+    return result
+
+
 def build_family_benchmarks(source_root: Path, artifact: dict) -> dict[str, dict]:
     rows = load_comparison_rows(source_root, set(artifact.get("contracts", {})))
     all_history = family_performance(rows, scope="rolling_origin_all_history")
@@ -260,6 +338,26 @@ def build_family_benchmarks(source_root: Path, artifact: dict) -> dict[str, dict
     }
 
 
+def enrich_contract_benchmarks(source_root: Path, artifact: dict) -> None:
+    rows = load_comparison_rows(source_root, set(artifact.get("contracts", {})))
+    all_contracts = contract_performance(rows, scope="rolling_origin_all_history")
+    knockout_contracts = contract_performance(
+        [row for row in rows if row.get("stage") == "knockout"],
+        scope="rolling_origin_all_history_knockout",
+    )
+    knockout_rates = knockout_empirical_rates(rows)
+    for key, record in (artifact.get("contracts") or {}).items():
+        if key in knockout_rates:
+            record.setdefault("empirical_rate", {})[
+                "all_history_knockout"
+            ] = knockout_rates[key]
+        performance = record.setdefault("contract_performance", {})
+        if key in all_contracts and all_contracts[key].get("available"):
+            performance["all_history"] = all_contracts[key]
+        if key in knockout_contracts and knockout_contracts[key].get("available"):
+            performance["all_history_knockout"] = knockout_contracts[key]
+
+
 def _main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-root", type=Path, default=Path("../sportspredict-hybrid"))
@@ -277,6 +375,7 @@ def _main() -> int:
         "with simulator artifacts and empirical rates frozen before 2026."
     )
     artifact["families"] = build_family_benchmarks(args.source_root, artifact)
+    enrich_contract_benchmarks(args.source_root, artifact)
     args.artifact.write_text(json.dumps(artifact, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     print(f"[family-benchmarks] families={len(artifact['families'])} -> {args.artifact}")
     return 0

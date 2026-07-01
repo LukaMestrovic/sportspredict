@@ -360,7 +360,7 @@ def _markdown_report(result, evidence: dict, evidence_path: Path | None, respons
                     f"emp={comparison['brier'].get('empirical_rate')} "
                     f"50={comparison['brier'].get('always_50')} "
                     f"signal={comparison.get('signal')} "
-                    f"(obs={comparison.get('comparable_observations')})"
+                    f"(obs={comparison.get('n_observations')})"
                 )
             else:
                 legacy = (history.get("model_performance") or {}).get("all_history") or {}

@@ -26,8 +26,8 @@ REPLAY_DIR = config.ROOT / "cache" / "wc2026_simulator_contract_replay"
 ARTIFACT_PATH = (
     config.ROOT / "simulator" / "data" / "processed" / "simulation_evidence.json"
 )
-SCHEMA_VERSION = 3
-REPLAY_VERSION = 2
+SCHEMA_VERSION = 4
+REPLAY_VERSION = 3
 
 
 def _now() -> str:
@@ -78,17 +78,47 @@ def _replay_path(fixture_id: int) -> Path:
     return REPLAY_DIR / f"{fixture_id}.json"
 
 
-def _load_replay(fixture_id: int, catalog_hash: str) -> dict | None:
+def _refresh_replay_baselines(replay: dict, contracts: dict[str, dict]) -> dict:
+    """Keep cached simulator probabilities while refreshing cheap baselines.
+
+    Replaying a WC fixture is the expensive part: it starts the simulator bridge
+    and prices every supported contract. Empirical baseline metadata is cheap
+    and may change when the compact evidence artifact is rebuilt, so refresh it
+    in-place instead of invalidating otherwise usable replay files.
+    """
+    fixture_stage = replay.get("stage")
+    for row in replay.get("rows") or []:
+        if fixture_stage and not row.get("stage"):
+            row["stage"] = fixture_stage
+        baseline = contracts.get(str(row.get("contract_key"))) or {}
+        row["p_empirical"] = baseline.get("p_empirical")
+        row["empirical_training_observations"] = baseline.get(
+            "empirical_training_observations"
+        )
+    return replay
+
+
+def _load_replay(
+    fixture_id: int,
+    catalog_hash: str,
+    contracts: dict[str, dict],
+) -> tuple[dict | None, bool]:
     try:
         replay = json.loads(_replay_path(fixture_id).read_text())
     except (OSError, json.JSONDecodeError):
-        return None
-    if (
+        return None, False
+    if replay.get("replay_version") not in {2, REPLAY_VERSION}:
+        return None, False
+    dirty = (
         replay.get("replay_version") != REPLAY_VERSION
         or replay.get("catalog_hash") != catalog_hash
-    ):
-        return None
-    return replay
+    )
+    _refresh_replay_baselines(replay, contracts)
+    if dirty:
+        replay["replay_version"] = REPLAY_VERSION
+        replay["catalog_hash"] = catalog_hash
+        replay["baseline_refreshed_at"] = _now()
+    return replay, dirty
 
 
 def _write_replay(fixture_id: int, replay: dict) -> None:
@@ -163,6 +193,7 @@ def _replay_fixture(
         rows.append({
             "fixture_id": fixture_id,
             "kickoff": covered["kickoff"],
+            "stage": covered["stage"],
             "family": str(estimate.get("family") or "unknown"),
             "contract_key": meta["contract_key"],
             "observation_index": meta["observation_index"],
@@ -239,6 +270,11 @@ def _sample_size(matches: int) -> dict:
 
 
 def _summary(rows: list[dict], *, scope: str, contracts: int) -> dict:
+    if not rows:
+        return {
+            "available": False,
+            "reason": "No labelable settled WC2026 observations for this scope.",
+        }
     all_matches = len({row["fixture_id"] for row in rows})
     comparable = [row for row in rows if row.get("p_empirical") is not None]
     scored = comparable or rows
@@ -314,6 +350,30 @@ def _summaries(rows: list[dict], group_key: str, scope: str) -> dict[str, dict]:
     return result
 
 
+def _contract_summaries(rows: list[dict]) -> dict[str, dict]:
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for row in rows:
+        grouped[str(row["contract_key"])].append(row)
+    result = {}
+    for key, contract_rows in sorted(grouped.items()):
+        scopes = {
+            "wc2026": _summary(
+                contract_rows, scope="wc2026_exhaustive_exact_contract", contracts=1,
+            ),
+            "wc2026_knockout": _summary(
+                [row for row in contract_rows if row.get("stage") == "knockout"],
+                scope="wc2026_knockout_exhaustive_exact_contract",
+                contracts=1,
+            ),
+        }
+        for summary in scopes.values():
+            if summary.get("available"):
+                summary["contract_key"] = key
+                summary["observation_unit"] = observation_unit(key)
+        result[key] = scopes
+    return result
+
+
 def refresh(af, target_kickoff: str | None = None, *, path: Path = SNAPSHOT_PATH) -> dict:
     """Replay new final fixtures and atomically rebuild exhaustive comparisons."""
     artifact = _artifact()
@@ -328,11 +388,13 @@ def refresh(af, target_kickoff: str | None = None, *, path: Path = SNAPSHOT_PATH
     replay_failures = []
     for fixture in covered:
         fixture_id = int(fixture["fixture_id"])
-        replay = _load_replay(fixture_id, catalog_hash)
+        replay, replay_dirty = _load_replay(fixture_id, catalog_hash, contracts)
         if replay is None:
             replay = _replay_fixture(fixture, contracts, catalog_hash)
             _write_replay(fixture_id, replay)
             newly_replayed += 1
+        elif replay_dirty:
+            _write_replay(fixture_id, replay)
         rows.extend(replay.get("rows") or [])
         if replay.get("error") or replay.get("mismatches"):
             replay_failures.append({
@@ -360,9 +422,7 @@ def refresh(af, target_kickoff: str | None = None, *, path: Path = SNAPSHOT_PATH
         "families": _summaries(
             rows, "family", "wc2026_exhaustive_family_contracts",
         ),
-        "contracts": _summaries(
-            rows, "contract_key", "wc2026_exhaustive_exact_contract",
-        ),
+        "contracts": _contract_summaries(rows),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -382,7 +442,7 @@ def load(path: Path = SNAPSHOT_PATH) -> dict:
 
 
 def overlay(estimates: dict[str, dict], snapshot: dict) -> dict[str, dict]:
-    """Attach exact-contract and family exhaustive WC2026 performance."""
+    """Attach exact-contract exhaustive WC2026 performance."""
     families = snapshot.get("families") or {}
     contracts = snapshot.get("contracts") or {}
     for estimate in estimates.values():
@@ -396,6 +456,8 @@ def overlay(estimates: dict[str, dict], snapshot: dict) -> dict[str, dict]:
         key = estimate.get("contract_key")
         contract_performance = history.setdefault("contract_performance", {})
         if key in contracts:
-            contract_performance["wc2026"] = copy.deepcopy(contracts[key])
+            for scope, row in (contracts.get(key) or {}).items():
+                if row.get("available"):
+                    contract_performance[scope] = copy.deepcopy(row)
         estimate["historical_evidence"] = history
     return estimates

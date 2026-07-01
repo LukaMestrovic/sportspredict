@@ -87,8 +87,14 @@ class EvidenceTests(unittest.TestCase):
                 "model_performance": {"all_history": {"brier": 0.16}},
                 "empirical_rate": {
                     "all_history": {"available": True, "rate": 0.418, "observations": 3000},
+                    "all_history_knockout": {
+                        "available": True, "rate": 0.391, "observations": 300,
+                    },
                     "wc2026": {"available": True, "rate": 0.44, "matches": 77,
                                "data_through": "2026-06-30"},
+                    "wc2026_knockout": {
+                        "available": True, "rate": 0.5, "observations": 8,
+                    },
                 },
                 "family_performance": {
                     "family": "goal_window",
@@ -113,6 +119,18 @@ class EvidenceTests(unittest.TestCase):
                     },
                 },
                 "contract_performance": {
+                    "all_history": {
+                        "available": True, "comparison_signal": "simulator_better",
+                        "observations": 3000,
+                        "brier": {"simulator": 0.17, "empirical_rate": 0.19,
+                                  "always_50": 0.25},
+                    },
+                    "all_history_knockout": {
+                        "available": True, "comparison_signal": "inconclusive",
+                        "observations": 300,
+                        "brier": {"simulator": 0.2, "empirical_rate": 0.21,
+                                  "always_50": 0.25},
+                    },
                     "wc2026": {
                         "available": True, "comparison_signal": "simulator_better",
                         "matches": 77, "observations": 154,
@@ -126,25 +144,48 @@ class EvidenceTests(unittest.TestCase):
                         "brier": {"simulator": 0.18, "empirical_rate": 0.21,
                                   "always_50": 0.25},
                     },
+                    "wc2026_knockout": {
+                        "available": True, "comparison_signal": "inconclusive_small_sample",
+                        "observations": 8,
+                        "brier": {"simulator": 0.22, "empirical_rate": 0.24,
+                                  "always_50": 0.25},
+                    },
                 },
             },
         })
 
+        self.assertNotIn("family", compact)
         self.assertEqual(compact["probability_pct"], 42.1)
         self.assertEqual(compact["empirical_rates"]["all_history"], {
-            "rate_pct": 41.8, "n": 3000,
+            "rate": 0.418, "n": 3000,
+            "population": "All historical labelable observations for this exact contract.",
         })
+        self.assertEqual(compact["empirical_rates"]["all_history_knockout"]["n"], 300)
+        self.assertEqual(compact["empirical_rates"]["wc2026_knockout"]["rate"], 0.5)
         self.assertNotIn("family_comparison", compact)
+        self.assertEqual(compact["contract_comparison"]["all_history"], {
+            "basis": "Rolling-origin unseen historical observations for this exact contract.",
+            "signal": "simulator_better",
+            "n_observations": 3000,
+            "brier": {
+                "simulator": 0.17, "empirical_rate": 0.19, "always_50": 0.25,
+            },
+        })
         self.assertEqual(compact["contract_comparison"]["wc2026"], {
-            "signal": "simulator_better", "sample": "moderate",
-            "basis": "exhaustive_exact_contract_on_all_labelable_wc2026_matches",
-            "labelable_matches": 77, "comparable_matches": 77,
-            "simulator_observations": 154, "comparable_observations": 154,
-            "observation_unit": "team",
+            "signal": "simulator_better",
+            "basis": (
+                "Frozen pre-2026 simulator on every settled WC2026 labelable "
+                "observation for this exact contract."
+            ),
+            "n_observations": 154,
             "brier": {
                 "simulator": 0.18, "empirical_rate": 0.21, "always_50": 0.25,
             },
         })
+        self.assertEqual(
+            set(compact["contract_comparison"]),
+            {"all_history", "all_history_knockout", "wc2026", "wc2026_knockout"},
+        )
         for redundant in ("source", "model", "note", "historical_evidence", "probability"):
             self.assertNotIn(redundant, compact)
 
@@ -182,7 +223,7 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(estimates.call_args.kwargs["intents"], result.intents)
         q = evidence["question_evidence"][0]
-        self.assertEqual(evidence["schema_version"], 12)
+        self.assertEqual(evidence["schema_version"], 13)
         self.assertEqual(q["simulator_estimate"], {"probability_pct": 24.1})
         self.assertNotIn("simulator_model_estimates", q)
         self.assertNotIn("audit_requirement", q)
@@ -246,7 +287,7 @@ class EvidenceTests(unittest.TestCase):
             )
 
         question = bundle["question_evidence"][0]
-        self.assertEqual(bundle["schema_version"], 12)
+        self.assertEqual(bundle["schema_version"], 13)
         self.assertEqual(question["direct_market_spec"]["bet_id"], 14)
         self.assertEqual(len(question["direct_odds"]), 1)
         self.assertIn("regulation first-team-to-score proxy",
@@ -275,7 +316,7 @@ class ContextEvidenceTests(unittest.TestCase):
         with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
-        self.assertEqual(evidence["schema_version"], 12)
+        self.assertEqual(evidence["schema_version"], 13)
         self.assertEqual(evidence["team_form"]["home"]["gf_avg"], 1.7)
         self.assertEqual(evidence["player_form"]["home"][0]["name"], "Striker One")
         self.assertEqual(evidence["referee_profile"]["yellows_per_game"], 4.0)

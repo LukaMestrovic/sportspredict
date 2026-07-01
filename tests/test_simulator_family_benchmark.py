@@ -104,7 +104,7 @@ class TournamentFamilyBenchmarkTests(unittest.TestCase):
                 )
 
         family = snapshot["families"]["count_threshold"]
-        contract = snapshot["contracts"][key]
+        contract = snapshot["contracts"][key]["wc2026"]
         self.assertEqual(contract["observations"], 2)
         self.assertEqual(contract["matches"], 1)
         self.assertEqual(contract["observation_unit"], "team")

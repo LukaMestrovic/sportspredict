@@ -2,6 +2,29 @@
   "contracts": {
     "any_player_threshold:goals:>:1:reg": {
       "contract_key": "any_player_threshold:goals:>:1:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.173443,
+            "simulator": 0.168899
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 2277,
+          "observations": 2277,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.007888,
+            -0.0012
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -50,6 +73,29 @@
     },
     "any_player_threshold:shots_on_target:>=:2:reg": {
       "contract_key": "any_player_threshold:shots_on_target:>=:2:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.166222,
+            "simulator": 0.165898
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 2267,
+          "observations": 2267,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.002817,
+            0.002168
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -94,6 +140,50 @@
     },
     "both_teams_card:reg": {
       "contract_key": "both_teams_card:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.210565,
+            "simulator": 0.209353
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 2936,
+          "observations": 2936,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.00409,
+            0.001667
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.200086,
+            "simulator": 0.198596
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 284,
+          "observations": 284,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.007309,
+            0.004328
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -101,6 +191,14 @@
           "observations": 4173,
           "rate": 0.705248,
           "yes_events": 2943
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 284,
+          "observations": 284,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.728873,
+          "yes_events": 207
         },
         "wc2026": {
           "available": true,
@@ -138,6 +236,7 @@
     },
     "btts:full:reg": {
       "contract_key": "btts:full:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -169,6 +268,29 @@
     },
     "btts_and_total:reg": {
       "contract_key": "btts_and_total:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.218103,
+            "simulator": 0.217923
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 2832,
+          "observations": 2832,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.002752,
+            0.002392
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -217,6 +339,50 @@
     },
     "card_window:cards:after_second_hydration:et:>=:1": {
       "contract_key": "card_window:cards:after_second_hydration:et:>=:1",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.199318,
+            "simulator": 0.197008
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 2936,
+          "observations": 2936,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.003767,
+            -0.000852
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.167932,
+            "simulator": 0.161776
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 284,
+          "observations": 284,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.01428,
+            0.001967
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -224,6 +390,14 @@
           "observations": 4173,
           "rate": 0.731368,
           "yes_events": 3052
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 284,
+          "observations": 284,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.799296,
+          "yes_events": 227
         },
         "wc2026": {
           "available": true,
@@ -265,6 +439,50 @@
     },
     "card_window:cards:first_half:reg:>=:1": {
       "contract_key": "card_window:cards:first_half:reg:>=:1",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.213663,
+            "simulator": 0.212684
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 2936,
+          "observations": 2936,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.002641,
+            0.000684
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.196341,
+            "simulator": 0.192512
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 284,
+          "observations": 284,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.010583,
+            0.002924
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -272,6 +490,14 @@
           "observations": 4173,
           "rate": 0.700695,
           "yes_events": 2924
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 284,
+          "observations": 284,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.735915,
+          "yes_events": 209
         },
         "wc2026": {
           "available": true,
@@ -309,6 +535,7 @@
     },
     "compare:cards:full:match": {
       "contract_key": "compare:cards:full:match",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -340,6 +567,7 @@
     },
     "compare:cards:full:reg": {
       "contract_key": "compare:cards:full:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -371,6 +599,7 @@
     },
     "compare:corners:1H:reg": {
       "contract_key": "compare:corners:1H:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -402,6 +631,7 @@
     },
     "compare:corners:2H:reg": {
       "contract_key": "compare:corners:2H:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -433,6 +663,7 @@
     },
     "compare:corners:full:reg": {
       "contract_key": "compare:corners:full:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -464,6 +695,7 @@
     },
     "compare:fouls:full:match": {
       "contract_key": "compare:fouls:full:match",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -495,6 +727,7 @@
     },
     "compare:fouls:full:reg": {
       "contract_key": "compare:fouls:full:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -526,6 +759,7 @@
     },
     "compare:goals:2H:reg": {
       "contract_key": "compare:goals:2H:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -557,6 +791,50 @@
     },
     "compare:shots_on_target:2H:reg": {
       "contract_key": "compare:shots_on_target:2H:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.241174,
+            "simulator": 0.212974
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 250,
+          "observations": 500,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.044444,
+            -0.011955
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.237002,
+            "simulator": 0.22073
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 70,
+          "observations": 140,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "Use only as a weak directional check; the tournament sample is still small.",
+            "level": "limited"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.042106,
+            0.009561
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -564,6 +842,14 @@
           "observations": 628,
           "rate": 0.404459,
           "yes_events": 254
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 70,
+          "observations": 140,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.385714,
+          "yes_events": 54
         },
         "wc2026": {
           "available": true,
@@ -600,6 +886,50 @@
     },
     "compound:first_goal_and_other_team_scores_2h": {
       "contract_key": "compound:first_goal_and_other_team_scores_2h",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.143418,
+            "simulator": 0.142834
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 2936,
+          "observations": 5872,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.001387,
+            0.000218
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.156715,
+            "simulator": 0.156284
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 284,
+          "observations": 568,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.003034,
+            0.00217
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -607,6 +937,14 @@
           "observations": 8346,
           "rate": 0.174215,
           "yes_events": 1454
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 284,
+          "observations": 568,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.193662,
+          "yes_events": 110
         },
         "wc2026": {
           "available": true,
@@ -648,6 +986,7 @@
     },
     "count:cards:match:2H:>=:2:reg": {
       "contract_key": "count:cards:match:2H:>=:2:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -679,6 +1018,7 @@
     },
     "count:cards:match:full:>=:4:reg": {
       "contract_key": "count:cards:match:full:>=:4:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -710,6 +1050,50 @@
     },
     "count:cards:team:2H:>=:1:reg": {
       "contract_key": "count:cards:team:2H:>=:1:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.223294,
+            "simulator": 0.221155
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 2936,
+          "observations": 5872,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.003864,
+            -0.000413
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.218115,
+            "simulator": 0.218904
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 284,
+          "observations": 568,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.004266,
+            0.005845
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -717,6 +1101,14 @@
           "observations": 8346,
           "rate": 0.670381,
           "yes_events": 5595
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 284,
+          "observations": 568,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.684859,
+          "yes_events": 389
         },
         "wc2026": {
           "available": true,
@@ -758,6 +1150,7 @@
     },
     "count:corners:match:2H:>=:5:reg": {
       "contract_key": "count:corners:match:2H:>=:5:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -789,6 +1182,7 @@
     },
     "count:corners:match:full:>=:9:match": {
       "contract_key": "count:corners:match:full:>=:9:match",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -820,6 +1214,7 @@
     },
     "count:corners:match:full:>=:9:reg": {
       "contract_key": "count:corners:match:full:>=:9:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -851,6 +1246,7 @@
     },
     "count:corners:team:1H:>=:1:reg": {
       "contract_key": "count:corners:team:1H:>=:1:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -882,6 +1278,7 @@
     },
     "count:corners:team:full:>=:3:reg": {
       "contract_key": "count:corners:team:full:>=:3:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -913,6 +1310,7 @@
     },
     "count:corners:team:full:>=:5:reg": {
       "contract_key": "count:corners:team:full:>=:5:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -944,6 +1342,7 @@
     },
     "count:goals:team:full:>=:1:match": {
       "contract_key": "count:goals:team:full:>=:1:match",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -975,6 +1374,7 @@
     },
     "count:goals:team:full:>=:1:reg": {
       "contract_key": "count:goals:team:full:>=:1:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -1006,6 +1406,7 @@
     },
     "count:goals:team:full:>=:3:reg": {
       "contract_key": "count:goals:team:full:>=:3:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -1037,6 +1438,7 @@
     },
     "count:offsides:team:full:>=:2:match": {
       "contract_key": "count:offsides:team:full:>=:2:match",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -1068,6 +1470,7 @@
     },
     "count:offsides:team:full:>=:2:reg": {
       "contract_key": "count:offsides:team:full:>=:2:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -1099,6 +1502,50 @@
     },
     "count:shots_on_target:each_team:1H:>=:1:reg": {
       "contract_key": "count:shots_on_target:each_team:1H:>=:1:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.240293,
+            "simulator": 0.254287
+          },
+          "comparison_signal": "empirical_rate_better",
+          "matches": 250,
+          "observations": 250,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            0.000778,
+            0.02721
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.254775,
+            "simulator": 0.250533
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 70,
+          "observations": 70,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "Use only as a weak directional check; the tournament sample is still small.",
+            "level": "limited"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.026278,
+            0.017795
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -1106,6 +1553,14 @@
           "observations": 314,
           "rate": 0.592357,
           "yes_events": 186
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 70,
+          "observations": 70,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.571429,
+          "yes_events": 40
         },
         "wc2026": {
           "available": true,
@@ -1142,6 +1597,50 @@
     },
     "count:shots_on_target:each_team:2H:>=:1:reg": {
       "contract_key": "count:shots_on_target:each_team:2H:>=:1:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.204831,
+            "simulator": 0.209779
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 250,
+          "observations": 250,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.006772,
+            0.016667
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.21504,
+            "simulator": 0.21289
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 70,
+          "observations": 70,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "Use only as a weak directional check; the tournament sample is still small.",
+            "level": "limited"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.026017,
+            0.021716
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -1149,6 +1648,14 @@
           "observations": 314,
           "rate": 0.707006,
           "yes_events": 222
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 70,
+          "observations": 70,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.685714,
+          "yes_events": 48
         },
         "wc2026": {
           "available": true,
@@ -1185,6 +1692,50 @@
     },
     "count:shots_on_target:match:2H:>=:4:reg": {
       "contract_key": "count:shots_on_target:match:2H:>=:4:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.232303,
+            "simulator": 0.245473
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 250,
+          "observations": 250,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.00194,
+            0.028279
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.256359,
+            "simulator": 0.252768
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 70,
+          "observations": 70,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "Use only as a weak directional check; the tournament sample is still small.",
+            "level": "limited"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.036232,
+            0.029052
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -1192,6 +1743,14 @@
           "observations": 314,
           "rate": 0.630573,
           "yes_events": 198
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 70,
+          "observations": 70,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.542857,
+          "yes_events": 38
         },
         "wc2026": {
           "available": true,
@@ -1228,6 +1787,29 @@
     },
     "count:shots_on_target:match:full:>=:8:reg": {
       "contract_key": "count:shots_on_target:match:full:>=:8:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.248323,
+            "simulator": 0.240451
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 2832,
+          "observations": 2832,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.011572,
+            -0.004173
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -1276,6 +1858,7 @@
     },
     "count:shots_on_target:team:2H:>=:1:reg": {
       "contract_key": "count:shots_on_target:team:2H:>=:1:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -1307,6 +1890,50 @@
     },
     "count:shots_on_target:team:2H:>=:2:reg": {
       "contract_key": "count:shots_on_target:team:2H:>=:2:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.238881,
+            "simulator": 0.232343
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 250,
+          "observations": 500,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.018571,
+            0.005495
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.245197,
+            "simulator": 0.234223
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 70,
+          "observations": 140,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "Use only as a weak directional check; the tournament sample is still small.",
+            "level": "limited"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.03193,
+            0.009983
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -1314,6 +1941,14 @@
           "observations": 628,
           "rate": 0.593949,
           "yes_events": 373
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 70,
+          "observations": 140,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.578571,
+          "yes_events": 81
         },
         "wc2026": {
           "available": true,
@@ -1350,6 +1985,29 @@
     },
     "count:shots_on_target:team:full:>=:2:reg": {
       "contract_key": "count:shots_on_target:team:full:>=:2:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.181289,
+            "simulator": 0.170753
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 2832,
+          "observations": 5664,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.013898,
+            -0.007173
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -1398,6 +2056,7 @@
     },
     "count:shots_on_target:team:full:>=:3:match": {
       "contract_key": "count:shots_on_target:team:full:>=:3:match",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -1429,6 +2088,29 @@
     },
     "count:shots_on_target:team:full:>=:3:reg": {
       "contract_key": "count:shots_on_target:team:full:>=:3:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.231839,
+            "simulator": 0.20172
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 2832,
+          "observations": 5664,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.034164,
+            -0.026075
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -1477,6 +2159,29 @@
     },
     "count:shots_on_target:team:full:>=:4:reg": {
       "contract_key": "count:shots_on_target:team:full:>=:4:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.247737,
+            "simulator": 0.205097
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 2832,
+          "observations": 5664,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.047068,
+            -0.038212
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -1525,6 +2230,7 @@
     },
     "count:shots_on_target:team:full:>=:5:match": {
       "contract_key": "count:shots_on_target:team:full:>=:5:match",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -1556,6 +2262,29 @@
     },
     "count:shots_on_target:team:full:>=:5:reg": {
       "contract_key": "count:shots_on_target:team:full:>=:5:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.224531,
+            "simulator": 0.184016
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 2832,
+          "observations": 5664,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.044922,
+            -0.036108
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -1604,6 +2333,7 @@
     },
     "count:shots_on_target:team:full:>=:6:match": {
       "contract_key": "count:shots_on_target:team:full:>=:6:match",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -1635,6 +2365,29 @@
     },
     "count:shots_on_target:team:full:>=:6:reg": {
       "contract_key": "count:shots_on_target:team:full:>=:6:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.183972,
+            "simulator": 0.151587
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 2832,
+          "observations": 5664,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.036332,
+            -0.028437
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -1683,6 +2436,29 @@
     },
     "count:shots_on_target:team:full:>=:7:reg": {
       "contract_key": "count:shots_on_target:team:full:>=:7:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.140656,
+            "simulator": 0.117151
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 2832,
+          "observations": 5664,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.026883,
+            -0.020126
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -1727,6 +2503,29 @@
     },
     "count:shots_on_target:team:full:>=:8:reg": {
       "contract_key": "count:shots_on_target:team:full:>=:8:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.101008,
+            "simulator": 0.085845
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 2832,
+          "observations": 5664,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.017936,
+            -0.01239
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -1771,6 +2570,50 @@
     },
     "first_goal:2H:team": {
       "contract_key": "first_goal:2H:team",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.235687,
+            "simulator": 0.213127
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 2936,
+          "observations": 5872,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.026541,
+            -0.01858
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.237536,
+            "simulator": 0.231121
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 284,
+          "observations": 568,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.015574,
+            0.002744
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -1778,6 +2621,14 @@
           "observations": 8346,
           "rate": 0.382459,
           "yes_events": 3192
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 284,
+          "observations": 568,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.389085,
+          "yes_events": 221
         },
         "wc2026": {
           "available": true,
@@ -1819,6 +2670,50 @@
     },
     "first_goal:full:team": {
       "contract_key": "first_goal:full:team",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.248181,
+            "simulator": 0.211316
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 2936,
+          "observations": 5872,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.041857,
+            -0.031874
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.246752,
+            "simulator": 0.229298
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 284,
+          "observations": 568,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.029199,
+            -0.005707
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -1826,6 +2721,14 @@
           "observations": 8346,
           "rate": 0.457824,
           "yes_events": 3821
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 284,
+          "observations": 568,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.440141,
+          "yes_events": 250
         },
         "wc2026": {
           "available": true,
@@ -1863,6 +2766,50 @@
     },
     "goal_window:after_second_hydration:et": {
       "contract_key": "goal_window:after_second_hydration:et",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.240025,
+            "simulator": 0.2421
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 284,
+          "observations": 284,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.005397,
+            0.009547
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.240025,
+            "simulator": 0.2421
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 284,
+          "observations": 284,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.005397,
+            0.009547
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -1870,6 +2817,14 @@
           "observations": 4173,
           "rate": 0.57225,
           "yes_events": 2387
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 284,
+          "observations": 284,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.588028,
+          "yes_events": 167
         },
         "knockout_history": {
           "available": true,
@@ -1900,6 +2855,29 @@
     },
     "goal_window:after_second_hydration:reg": {
       "contract_key": "goal_window:after_second_hydration:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.244979,
+            "simulator": 0.244425
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 2652,
+          "observations": 2652,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.002879,
+            0.00177
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -1951,6 +2929,50 @@
     },
     "goal_window:before_first_hydration:reg": {
       "contract_key": "goal_window:before_first_hydration:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.242053,
+            "simulator": 0.240947
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 2936,
+          "observations": 2936,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.003515,
+            0.001304
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.227404,
+            "simulator": 0.222516
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 284,
+          "observations": 284,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.012088,
+            0.002313
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -1958,6 +2980,14 @@
           "observations": 4173,
           "rate": 0.418404,
           "yes_events": 1746
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 284,
+          "observations": 284,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.338028,
+          "yes_events": 96
         },
         "wc2026": {
           "available": true,
@@ -1999,6 +3029,50 @@
     },
     "goal_window:stoppage:1H": {
       "contract_key": "goal_window:stoppage:1H",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.048304,
+            "simulator": 0.049695
+          },
+          "comparison_signal": "empirical_rate_better",
+          "matches": 2936,
+          "observations": 2936,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            0.000782,
+            0.001999
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.058432,
+            "simulator": 0.06059
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 284,
+          "observations": 284,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.000295,
+            0.004612
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -2006,6 +3080,14 @@
           "observations": 4173,
           "rate": 0.044812,
           "yes_events": 187
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 284,
+          "observations": 284,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.06338,
+          "yes_events": 18
         },
         "wc2026": {
           "available": true,
@@ -2043,6 +3125,50 @@
     },
     "goal_window:stoppage:2H": {
       "contract_key": "goal_window:stoppage:2H",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.089995,
+            "simulator": 0.093244
+          },
+          "comparison_signal": "empirical_rate_better",
+          "matches": 2936,
+          "observations": 2936,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            0.002364,
+            0.004135
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.107186,
+            "simulator": 0.107723
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 284,
+          "observations": 284,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.003505,
+            0.004577
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -2050,6 +3176,14 @@
           "observations": 4173,
           "rate": 0.1052,
           "yes_events": 439
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 284,
+          "observations": 284,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.123239,
+          "yes_events": 35
         },
         "wc2026": {
           "available": true,
@@ -2087,6 +3221,50 @@
     },
     "half_conditional:halftime_lead": {
       "contract_key": "half_conditional:halftime_lead",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.210868,
+            "simulator": 0.18273
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 3186,
+          "observations": 6372,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.031456,
+            -0.024821
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.197237,
+            "simulator": 0.186303
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 354,
+          "observations": 708,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.017422,
+            -0.004448
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -2094,6 +3272,14 @@
           "observations": 8974,
           "rate": 0.299978,
           "yes_events": 2692
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 354,
+          "observations": 708,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.268362,
+          "yes_events": 190
         },
         "wc2026": {
           "available": true,
@@ -2135,6 +3321,7 @@
     },
     "half_conditional:halftime_tied": {
       "contract_key": "half_conditional:halftime_tied",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -2166,6 +3353,50 @@
     },
     "half_conditional:more_goals_2h": {
       "contract_key": "half_conditional:more_goals_2h",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.244026,
+            "simulator": 0.244882
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 3186,
+          "observations": 3186,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.000228,
+            0.001939
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.245566,
+            "simulator": 0.244662
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 354,
+          "observations": 354,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.003843,
+            0.002034
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -2173,6 +3404,14 @@
           "observations": 4487,
           "rate": 0.431692,
           "yes_events": 1937
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 354,
+          "observations": 354,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.432203,
+          "yes_events": 153
         },
         "wc2026": {
           "available": true,
@@ -2214,6 +3453,7 @@
     },
     "half_conditional:team_goal_in_half": {
       "contract_key": "half_conditional:team_goal_in_half",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -2245,6 +3485,7 @@
     },
     "match_result:draw:reg": {
       "contract_key": "match_result:draw:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -2276,6 +3517,7 @@
     },
     "match_result:team:advance": {
       "contract_key": "match_result:team:advance",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -2307,6 +3549,7 @@
     },
     "match_result:team:reg": {
       "contract_key": "match_result:team:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -2338,6 +3581,29 @@
     },
     "penalty_awarded:reg": {
       "contract_key": "penalty_awarded:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.173598,
+            "simulator": 0.1746
+          },
+          "comparison_signal": "empirical_rate_better",
+          "matches": 2652,
+          "observations": 2652,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            0.000102,
+            0.001902
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -2386,10 +3652,62 @@
     },
     "penalty_or_red:match": {
       "contract_key": "penalty_or_red:match",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.207137,
+            "simulator": 0.217098
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 284,
+          "observations": 284,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.001224,
+            0.021144
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.207137,
+            "simulator": 0.217098
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 284,
+          "observations": 284,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.001224,
+            0.021144
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": false,
           "reason": "No exact historical labels for this contract."
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 284,
+          "observations": 284,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.31338,
+          "yes_events": 89
         },
         "wc2026": {
           "available": true,
@@ -2417,6 +3735,29 @@
     },
     "penalty_or_red:reg": {
       "contract_key": "penalty_or_red:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.215602,
+            "simulator": 0.216382
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 2652,
+          "observations": 2652,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.000203,
+            0.001763
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -2465,6 +3806,7 @@
     },
     "player_score:full:reg:player": {
       "contract_key": "player_score:full:reg:player",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -2496,6 +3838,7 @@
     },
     "player_score_or_assist:full:match:player": {
       "contract_key": "player_score_or_assist:full:match:player",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -2527,6 +3870,7 @@
     },
     "player_score_or_assist:full:reg:player": {
       "contract_key": "player_score_or_assist:full:reg:player",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -2558,6 +3902,7 @@
     },
     "player_stat:shots_on_target:2H:>=:1:reg:player": {
       "contract_key": "player_stat:shots_on_target:2H:>=:1:reg:player",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -2589,6 +3934,7 @@
     },
     "player_stat:shots_on_target:full:>=:1:match:player": {
       "contract_key": "player_stat:shots_on_target:full:>=:1:match:player",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -2620,6 +3966,7 @@
     },
     "player_stat:shots_on_target:full:>=:1:reg:player": {
       "contract_key": "player_stat:shots_on_target:full:>=:1:reg:player",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -2651,6 +3998,50 @@
     },
     "red_card:match": {
       "contract_key": "red_card:match",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.131686,
+            "simulator": 0.137126
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 284,
+          "observations": 284,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.001983,
+            0.012863
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.131686,
+            "simulator": 0.137126
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 284,
+          "observations": 284,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.001983,
+            0.012863
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -2658,6 +4049,14 @@
           "observations": 4173,
           "rate": 0.130601,
           "yes_events": 545
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 284,
+          "observations": 284,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.161972,
+          "yes_events": 46
         },
         "knockout_history": {
           "available": true,
@@ -2700,6 +4099,50 @@
     },
     "stat_window:corners:before_first_hydration:reg:>=:2": {
       "contract_key": "stat_window:corners:before_first_hydration:reg:>=:2",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.243272,
+            "simulator": 0.252083
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 250,
+          "observations": 250,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.002582,
+            0.020205
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.228454,
+            "simulator": 0.254286
+          },
+          "comparison_signal": "empirical_rate_better",
+          "matches": 70,
+          "observations": 70,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "Use only as a weak directional check; the tournament sample is still small.",
+            "level": "limited"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            0.007381,
+            0.044281
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -2707,6 +4150,14 @@
           "observations": 314,
           "rate": 0.525478,
           "yes_events": 165
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 70,
+          "observations": 70,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.471429,
+          "yes_events": 33
         },
         "wc2026": {
           "available": false,
@@ -2735,6 +4186,50 @@
     },
     "stat_window:offsides:before_first_hydration:reg:>=:1": {
       "contract_key": "stat_window:offsides:before_first_hydration:reg:>=:1",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.246953,
+            "simulator": 0.251761
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 250,
+          "observations": 250,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.00174,
+            0.011357
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.250902,
+            "simulator": 0.245857
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 70,
+          "observations": 70,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "Use only as a weak directional check; the tournament sample is still small.",
+            "level": "limited"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.020257,
+            0.010167
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -2742,6 +4237,14 @@
           "observations": 314,
           "rate": 0.493631,
           "yes_events": 155
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 70,
+          "observations": 70,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.557143,
+          "yes_events": 39
         },
         "wc2026": {
           "available": true,
@@ -2778,6 +4281,29 @@
     },
     "substitute_score:reg": {
       "contract_key": "substitute_score:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.235084,
+            "simulator": 0.24472
+          },
+          "comparison_signal": "empirical_rate_better",
+          "matches": 2277,
+          "observations": 2277,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            0.005099,
+            0.014172
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -2826,6 +4352,50 @@
     },
     "substitution_before_halftime:reg": {
       "contract_key": "substitution_before_halftime:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.157462,
+            "simulator": 0.155229
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 2936,
+          "observations": 2936,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.003371,
+            -0.001097
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.168781,
+            "simulator": 0.171502
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 284,
+          "observations": 284,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.003218,
+            0.008661
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -2833,6 +4403,14 @@
           "observations": 4173,
           "rate": 0.196981,
           "yes_events": 822
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 284,
+          "observations": 284,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.21831,
+          "yes_events": 62
         },
         "wc2026": {
           "available": true,
@@ -2870,6 +4448,7 @@
     },
     "total_goals:2H:>=:2:reg": {
       "contract_key": "total_goals:2H:>=:2:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -2901,6 +4480,7 @@
     },
     "total_goals:full:<=:2:match": {
       "contract_key": "total_goals:full:<=:2:match",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -2932,6 +4512,7 @@
     },
     "total_goals:full:<=:2:reg": {
       "contract_key": "total_goals:full:<=:2:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -2963,6 +4544,7 @@
     },
     "total_goals:full:>=:3:reg": {
       "contract_key": "total_goals:full:>=:3:reg",
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
@@ -2994,6 +4576,29 @@
     },
     "total_shots_threshold:shots_total:>=:20:reg": {
       "contract_key": "total_shots_threshold:shots_total:>=:20:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.222126,
+            "simulator": 0.243081
+          },
+          "comparison_signal": "empirical_rate_better",
+          "matches": 2277,
+          "observations": 2277,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            0.014015,
+            0.027894
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -3038,6 +4643,29 @@
     },
     "total_shots_threshold:shots_total:>=:22:reg": {
       "contract_key": "total_shots_threshold:shots_total:>=:22:reg",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.164483,
+            "simulator": 0.197715
+          },
+          "comparison_signal": "empirical_rate_better",
+          "matches": 2277,
+          "observations": 2277,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            0.026146,
+            0.040317
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -3082,6 +4710,50 @@
     },
     "win_margin:reg:2": {
       "contract_key": "win_margin:reg:2",
+      "contract_performance": {
+        "all_history": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.167236,
+            "simulator": 0.13764
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 3186,
+          "observations": 6372,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.033018,
+            -0.026173
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.1416,
+            "simulator": 0.131109
+          },
+          "comparison_signal": "simulator_better",
+          "matches": 354,
+          "observations": 708,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.016391,
+            -0.00459
+          ]
+        }
+      },
       "empirical_rate": {
         "all_history": {
           "available": true,
@@ -3089,6 +4761,14 @@
           "observations": 8974,
           "rate": 0.211834,
           "yes_events": 1901
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 354,
+          "observations": 708,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.168079,
+          "yes_events": 119
         },
         "wc2026": {
           "available": true,

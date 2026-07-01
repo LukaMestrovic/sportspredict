@@ -139,8 +139,7 @@ def _evidence(with_context=False, with_simulator=False):
             "probability_pct": 23.47,
             "contract_comparison": {
                 "wc2026": {
-                    "signal": "inconclusive", "matches": 2277, "sample": "large",
-                    "comparable_observations": 2277,
+                    "signal": "inconclusive", "n_observations": 2277,
                     "brier": {"simulator": 0.168899, "empirical_rate": 0.17,
                               "always_50": 0.25},
                 },
