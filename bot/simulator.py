@@ -21,6 +21,7 @@ parsers and returns genuinely unsupported templates separately.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import subprocess
@@ -66,10 +67,22 @@ def simulator_estimates(
         return {}
     root, python = runtime
 
-    payload = _payload(ctx, targets, kickoff=kickoff, referee=referee,
+    method_targets = _goal_method_targets(targets)
+    bridge_targets = list(targets)
+    if method_targets:
+        bridge_targets.append({
+            "market_id": "__goal_method_total_goals_ge1",
+            "question": "Will there be at least 1 goal in regulation?",
+        })
+
+    payload = _payload(ctx, bridge_targets, kickoff=kickoff, referee=referee,
                        stage=stage, lineups=lineups)
     raw = _run_bridge(payload, root, python)
-    return _reports_by_market(raw)
+    estimates = _reports_by_market(raw)
+    if method_targets:
+        estimates.update(_goal_method_estimates(method_targets, estimates))
+        estimates.pop("__goal_method_total_goals_ge1", None)
+    return estimates
 
 
 def _targets(
@@ -194,6 +207,112 @@ def _reports_by_market(raw: dict) -> dict[str, dict]:
                 "Learned-rate simulator context only; not a final anchor. The "
                 "pricing LLM must weigh it against its disclosed conditioning inputs, "
                 "lineups, tactics, game state, referee, and market freshness."
+            ),
+        }
+    return out
+
+
+GOAL_METHOD_PRIORS = {
+    "header": {
+        "contract_key": "goal_method:header:reg",
+        "question_label": "header goal scored in regulation",
+        "per_goal_probability": 0.179,
+        "match_rate": 104 / 314,
+        "goal_count": "131 / 730 regulation goals",
+    },
+    "outside_box": {
+        "contract_key": "goal_method:outside_box:reg",
+        "question_label": "outside-the-penalty-area goal scored in regulation",
+        "per_goal_probability": 0.122,
+        "match_rate": 76 / 314,
+        "goal_count": "89 / 730 regulation goals",
+    },
+}
+
+
+def _goal_method_targets(targets: list[dict]) -> dict[str, str]:
+    out = {}
+    for target in targets:
+        method = _goal_method(str(target.get("question") or ""))
+        if method:
+            out[str(target["market_id"])] = method
+    return out
+
+
+def _goal_method(question: str) -> str | None:
+    lower = question.lower()
+    if "header goal be scored" in lower:
+        return "header"
+    if "goal be scored from outside the penalty area" in lower:
+        return "outside_box"
+    return None
+
+
+def _goal_method_estimates(
+    method_targets: dict[str, str],
+    estimates: dict[str, dict],
+) -> dict[str, dict]:
+    total = estimates.get("__goal_method_total_goals_ge1") or {}
+    p_any_goal = _as_probability(total.get("probability"))
+    if p_any_goal is None:
+        return {}
+    # Treat the simulator's bookmaker-anchored P(any regulation goal) as the
+    # zero-count probability of a Poisson-like goal process. Then thinning by a
+    # per-goal method Bernoulli gives P(any method goal) = 1-exp(-lambda*p).
+    p_any_goal = min(max(p_any_goal, 0.000001), 0.999999)
+    goal_lambda = -math.log(1.0 - p_any_goal)
+    model = dict(total.get("model") or {})
+    model["post_simulation_layer"] = "statsbomb_goal_method_bernoulli"
+    out = {}
+    for market_id, method in method_targets.items():
+        prior = GOAL_METHOD_PRIORS[method]
+        per_goal = prior["per_goal_probability"]
+        probability = 1.0 - math.exp(-goal_lambda * per_goal)
+        out[market_id] = {
+            "source": "sportspredict-simulator-goal-method",
+            "family": "goal_method",
+            "contract_key": prior["contract_key"],
+            "probability": round(probability, 6),
+            "probability_pct": round(probability * 100.0, 2),
+            "explanation": (
+                "Goal-method post-simulation estimate: condition on the "
+                "bookmaker-anchored simulated probability of at least one "
+                f"regulation goal, then thin each simulated regulation goal with "
+                f"a StatsBomb-calibrated per-goal probability for {prior['question_label']}."
+            ),
+            "adjustment_guidance": (
+                "Use as a conservative fallback when no direct odds exist. The "
+                "method label comes from 314 StatsBomb open-data tournament "
+                "matches, not the full API-Football learned-rate history; keep "
+                "the goal-total odds anchor as the main driver."
+            ),
+            "historical_evidence": {
+                "empirical_rate": {
+                    "all_history": {
+                        "available": True,
+                        "rate": prior["match_rate"],
+                        "observations": 314,
+                        "population": (
+                            "StatsBomb open-data tournament matches with shot "
+                            "body-part/location labels retained for goal-method "
+                            "markets."
+                        ),
+                    }
+                }
+            },
+            "conditioning_inputs": {
+                "simulated_any_regulation_goal_probability": round(p_any_goal, 6),
+                "implied_regulation_goal_lambda": round(goal_lambda, 6),
+                "per_goal_method_probability": per_goal,
+                "statsbomb_goal_method_sample": prior["goal_count"],
+            },
+            "evidence_role": "model_context",
+            "model": model,
+            "note": (
+                "Goal-method model context only; not a final anchor. The pricing "
+                "LLM should still prefer exact/direct market odds when available "
+                "and treat the 314-match StatsBomb label source as a conservative "
+                "fallback."
             ),
         }
     return out
