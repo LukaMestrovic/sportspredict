@@ -194,11 +194,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 284,
-          "observations": 284,
+          "matches": 343,
+          "observations": 343,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.728873,
-          "yes_events": 207
+          "rate": 0.740525,
+          "yes_events": 254
         },
         "wc2026": {
           "available": true,
@@ -299,6 +299,14 @@
           "rate": 0.320848,
           "yes_events": 1302
         },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 429,
+          "observations": 429,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.298368,
+          "yes_events": 128
+        },
         "wc2026": {
           "available": true,
           "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
@@ -393,11 +401,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 284,
-          "observations": 284,
+          "matches": 343,
+          "observations": 343,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.799296,
-          "yes_events": 227
+          "rate": 0.813411,
+          "yes_events": 279
         },
         "wc2026": {
           "available": true,
@@ -493,11 +501,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 284,
-          "observations": 284,
+          "matches": 343,
+          "observations": 343,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.735915,
-          "yes_events": 209
+          "rate": 0.740525,
+          "yes_events": 254
         },
         "wc2026": {
           "available": true,
@@ -845,11 +853,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 70,
-          "observations": 140,
+          "matches": 86,
+          "observations": 172,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.385714,
-          "yes_events": 54
+          "rate": 0.383721,
+          "yes_events": 66
         },
         "wc2026": {
           "available": true,
@@ -940,11 +948,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 284,
-          "observations": 568,
+          "matches": 343,
+          "observations": 686,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.193662,
-          "yes_events": 110
+          "rate": 0.189504,
+          "yes_events": 130
         },
         "wc2026": {
           "available": true,
@@ -1104,11 +1112,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 284,
-          "observations": 568,
+          "matches": 343,
+          "observations": 686,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.684859,
-          "yes_events": 389
+          "rate": 0.69242,
+          "yes_events": 475
         },
         "wc2026": {
           "available": true,
@@ -1556,11 +1564,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 70,
-          "observations": 70,
+          "matches": 86,
+          "observations": 86,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.571429,
-          "yes_events": 40
+          "rate": 0.627907,
+          "yes_events": 54
         },
         "wc2026": {
           "available": true,
@@ -1651,11 +1659,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 70,
-          "observations": 70,
+          "matches": 86,
+          "observations": 86,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.685714,
-          "yes_events": 48
+          "rate": 0.697674,
+          "yes_events": 60
         },
         "wc2026": {
           "available": true,
@@ -1746,11 +1754,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 70,
-          "observations": 70,
+          "matches": 86,
+          "observations": 86,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.542857,
-          "yes_events": 38
+          "rate": 0.569767,
+          "yes_events": 49
         },
         "wc2026": {
           "available": true,
@@ -1817,6 +1825,14 @@
           "observations": 4058,
           "rate": 0.530064,
           "yes_events": 2151
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 86,
+          "observations": 86,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.395349,
+          "yes_events": 34
         },
         "wc2026": {
           "available": true,
@@ -1944,11 +1960,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 70,
-          "observations": 140,
+          "matches": 86,
+          "observations": 172,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.578571,
-          "yes_events": 81
+          "rate": 0.581395,
+          "yes_events": 100
         },
         "wc2026": {
           "available": true,
@@ -2015,6 +2031,14 @@
           "observations": 8116,
           "rate": 0.77415,
           "yes_events": 6283
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 86,
+          "observations": 172,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.848837,
+          "yes_events": 146
         },
         "wc2026": {
           "available": true,
@@ -2119,6 +2143,14 @@
           "rate": 0.635288,
           "yes_events": 5156
         },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 86,
+          "observations": 172,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.668605,
+          "yes_events": 115
+        },
         "wc2026": {
           "available": true,
           "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
@@ -2189,6 +2221,14 @@
           "observations": 8116,
           "rate": 0.481395,
           "yes_events": 3907
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 86,
+          "observations": 172,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.436047,
+          "yes_events": 75
         },
         "wc2026": {
           "available": true,
@@ -2293,6 +2333,14 @@
           "rate": 0.353376,
           "yes_events": 2868
         },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 86,
+          "observations": 172,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.244186,
+          "yes_events": 42
+        },
         "wc2026": {
           "available": true,
           "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
@@ -2396,6 +2444,14 @@
           "rate": 0.253696,
           "yes_events": 2059
         },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 86,
+          "observations": 172,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.139535,
+          "yes_events": 24
+        },
         "wc2026": {
           "available": true,
           "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
@@ -2467,6 +2523,14 @@
           "rate": 0.174347,
           "yes_events": 1415
         },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 86,
+          "observations": 172,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.093023,
+          "yes_events": 16
+        },
         "wc2026": {
           "available": true,
           "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
@@ -2533,6 +2597,14 @@
           "observations": 8116,
           "rate": 0.118038,
           "yes_events": 958
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 86,
+          "observations": 172,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.052326,
+          "yes_events": 9
         },
         "wc2026": {
           "available": true,
@@ -2624,11 +2696,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 284,
-          "observations": 568,
+          "matches": 343,
+          "observations": 686,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.389085,
-          "yes_events": 221
+          "rate": 0.383382,
+          "yes_events": 263
         },
         "wc2026": {
           "available": true,
@@ -2724,11 +2796,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 284,
-          "observations": 568,
+          "matches": 343,
+          "observations": 686,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.440141,
-          "yes_events": 250
+          "rate": 0.43586,
+          "yes_events": 299
         },
         "wc2026": {
           "available": true,
@@ -2886,6 +2958,14 @@
           "rate": 0.569854,
           "yes_events": 2378
         },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 343,
+          "observations": 343,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.553936,
+          "yes_events": 190
+        },
         "knockout_history": {
           "available": true,
           "matches": 343,
@@ -2983,11 +3063,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 284,
-          "observations": 284,
+          "matches": 343,
+          "observations": 343,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.338028,
-          "yes_events": 96
+          "rate": 0.346939,
+          "yes_events": 119
         },
         "wc2026": {
           "available": true,
@@ -3083,10 +3163,10 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 284,
-          "observations": 284,
+          "matches": 343,
+          "observations": 343,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.06338,
+          "rate": 0.052478,
           "yes_events": 18
         },
         "wc2026": {
@@ -3179,11 +3259,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 284,
-          "observations": 284,
+          "matches": 343,
+          "observations": 343,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.123239,
-          "yes_events": 35
+          "rate": 0.119534,
+          "yes_events": 41
         },
         "wc2026": {
           "available": true,
@@ -3275,11 +3355,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 354,
-          "observations": 708,
+          "matches": 429,
+          "observations": 858,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.268362,
-          "yes_events": 190
+          "rate": 0.265734,
+          "yes_events": 228
         },
         "wc2026": {
           "available": true,
@@ -3407,11 +3487,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 354,
-          "observations": 354,
+          "matches": 429,
+          "observations": 429,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.432203,
-          "yes_events": 153
+          "rate": 0.428904,
+          "yes_events": 184
         },
         "wc2026": {
           "available": true,
@@ -3586,12 +3666,12 @@
           "available": true,
           "brier": {
             "always_50": 0.25,
-            "empirical_rate": 0.173598,
-            "simulator": 0.1746
+            "empirical_rate": 0.173202,
+            "simulator": 0.173244
           },
-          "comparison_signal": "empirical_rate_better",
-          "matches": 2652,
-          "observations": 2652,
+          "comparison_signal": "inconclusive",
+          "matches": 2936,
+          "observations": 2936,
           "sample_size": {
             "basis": "unique unseen matches, with uncertainty clustered by match",
             "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
@@ -3599,8 +3679,29 @@
           },
           "scope": "rolling_origin_all_history",
           "simulator_minus_empirical_rate_95pct_ci": [
-            0.000102,
-            0.001902
+            -0.001099,
+            0.001184
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.155627,
+            "simulator": 0.160582
+          },
+          "comparison_signal": "empirical_rate_better",
+          "matches": 284,
+          "observations": 284,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            0.00054,
+            0.009369
           ]
         }
       },
@@ -3611,6 +3712,14 @@
           "observations": 4173,
           "rate": 0.222861,
           "yes_events": 930
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 343,
+          "observations": 343,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.212828,
+          "yes_events": 73
         },
         "wc2026": {
           "available": true,
@@ -3740,12 +3849,12 @@
           "available": true,
           "brier": {
             "always_50": 0.25,
-            "empirical_rate": 0.215602,
-            "simulator": 0.216382
+            "empirical_rate": 0.222723,
+            "simulator": 0.216451
           },
-          "comparison_signal": "inconclusive",
-          "matches": 2652,
-          "observations": 2652,
+          "comparison_signal": "simulator_better",
+          "matches": 2936,
+          "observations": 2936,
           "sample_size": {
             "basis": "unique unseen matches, with uncertainty clustered by match",
             "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
@@ -3753,8 +3862,29 @@
           },
           "scope": "rolling_origin_all_history",
           "simulator_minus_empirical_rate_95pct_ci": [
-            -0.000203,
-            0.001763
+            -0.00926,
+            -0.003284
+          ]
+        },
+        "all_history_knockout": {
+          "available": true,
+          "brier": {
+            "always_50": 0.25,
+            "empirical_rate": 0.209273,
+            "simulator": 0.217098
+          },
+          "comparison_signal": "inconclusive",
+          "matches": 284,
+          "observations": 284,
+          "sample_size": {
+            "basis": "unique unseen matches, with uncertainty clustered by match",
+            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
+            "level": "large"
+          },
+          "scope": "rolling_origin_all_history_knockout",
+          "simulator_minus_empirical_rate_95pct_ci": [
+            -0.000264,
+            0.015912
           ]
         }
       },
@@ -3765,6 +3895,14 @@
           "observations": 4173,
           "rate": 0.313923,
           "yes_events": 1310
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 343,
+          "observations": 343,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.314869,
+          "yes_events": 108
         },
         "wc2026": {
           "available": true,
@@ -4052,11 +4190,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 284,
-          "observations": 284,
+          "matches": 343,
+          "observations": 343,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.161972,
-          "yes_events": 46
+          "rate": 0.151603,
+          "yes_events": 52
         },
         "knockout_history": {
           "available": true,
@@ -4153,11 +4291,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 70,
-          "observations": 70,
+          "matches": 86,
+          "observations": 86,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.471429,
-          "yes_events": 33
+          "rate": 0.488372,
+          "yes_events": 42
         },
         "wc2026": {
           "available": false,
@@ -4240,11 +4378,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 70,
-          "observations": 70,
+          "matches": 86,
+          "observations": 86,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.557143,
-          "yes_events": 39
+          "rate": 0.534884,
+          "yes_events": 46
         },
         "wc2026": {
           "available": true,
@@ -4406,11 +4544,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 284,
-          "observations": 284,
+          "matches": 343,
+          "observations": 343,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.21831,
-          "yes_events": 62
+          "rate": 0.209913,
+          "yes_events": 72
         },
         "wc2026": {
           "available": true,
@@ -4764,11 +4902,11 @@
         },
         "all_history_knockout": {
           "available": true,
-          "matches": 354,
-          "observations": 708,
+          "matches": 429,
+          "observations": 858,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.168079,
-          "yes_events": 119
+          "rate": 0.160839,
+          "yes_events": 138
         },
         "wc2026": {
           "available": true,
@@ -5711,37 +5849,37 @@
         "available": true,
         "brier": {
           "always_50": 0.25,
-          "empirical_rate": 0.173598,
-          "simulator": 0.1746
+          "empirical_rate": 0.173202,
+          "simulator": 0.173244
         },
-        "comparison_signal": "empirical_rate_better",
+        "comparison_signal": "inconclusive",
         "contracts": 1,
         "coverage": {
-          "comparable_questions": 2652,
-          "family_questions": 2652,
+          "comparable_questions": 2936,
+          "family_questions": 2936,
           "fraction": 1.0
         },
         "data_through": "2026-06-20",
         "delta_brier": {
           "negative_favors_simulator": true,
-          "simulator_minus_always_50": -0.0754,
-          "simulator_minus_empirical_rate": 0.001002
+          "simulator_minus_always_50": -0.076756,
+          "simulator_minus_empirical_rate": 4.3e-05
         },
         "empirical_baseline": {
           "rate_range": [
             0.197531,
-            0.243478
+            0.297872
           ],
           "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
           "training_observations_range": [
-            162,
-            576
+            23,
+            545
           ]
         },
         "evaluation": "Predictions are scored only on later, unseen matches. The empirical-rate baseline uses the exact contract's YES rate estimated before each test fold.",
         "family": "penalty_awarded",
-        "matches": 2652,
-        "questions": 2652,
+        "matches": 2936,
+        "questions": 2936,
         "sample_size": {
           "basis": "unique unseen matches, with uncertainty clustered by match",
           "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
@@ -5749,8 +5887,8 @@
         },
         "scope": "rolling_origin_all_history",
         "simulator_minus_empirical_rate_95pct_ci": [
-          0.000102,
-          0.001902
+          -0.001099,
+          0.001184
         ],
         "test_folds": [
           2021,
@@ -5817,11 +5955,11 @@
         "available": true,
         "brier": {
           "always_50": 0.25,
-          "empirical_rate": 0.214783,
+          "empirical_rate": 0.222723,
           "simulator": 0.216451
         },
-        "comparison_signal": "empirical_rate_better",
-        "contracts": 2,
+        "comparison_signal": "simulator_better",
+        "contracts": 1,
         "coverage": {
           "comparable_questions": 2936,
           "family_questions": 2936,
@@ -5831,17 +5969,17 @@
         "delta_brier": {
           "negative_favors_simulator": true,
           "simulator_minus_always_50": -0.033549,
-          "simulator_minus_empirical_rate": 0.001668
+          "simulator_minus_empirical_rate": -0.006272
         },
         "empirical_baseline": {
           "rate_range": [
-            0.212121,
+            0.283951,
             0.478261
           ],
           "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
           "training_observations_range": [
             23,
-            576
+            545
           ]
         },
         "evaluation": "Predictions are scored only on later, unseen matches. The empirical-rate baseline uses the exact contract's YES rate estimated before each test fold.",
@@ -5855,8 +5993,8 @@
         },
         "scope": "rolling_origin_all_history",
         "simulator_minus_empirical_rate_95pct_ci": [
-          0.000266,
-          0.00307
+          -0.00926,
+          -0.003284
         ],
         "test_folds": [
           2021,
@@ -5872,21 +6010,21 @@
         "available": true,
         "brier": {
           "always_50": 0.25,
-          "empirical_rate": 0.182582,
-          "simulator": 0.18634
+          "empirical_rate": 0.191586,
+          "simulator": 0.194924
         },
         "comparison_signal": "inconclusive",
         "contracts": 1,
         "coverage": {
-          "comparable_questions": 31,
+          "comparable_questions": 32,
           "family_questions": 32,
-          "fraction": 0.96875
+          "fraction": 1.0
         },
         "data_through": null,
         "delta_brier": {
           "negative_favors_simulator": true,
-          "simulator_minus_always_50": -0.06366,
-          "simulator_minus_empirical_rate": 0.003757
+          "simulator_minus_always_50": -0.055076,
+          "simulator_minus_empirical_rate": 0.003338
         },
         "empirical_baseline": {
           "rate_range": [
@@ -5901,8 +6039,8 @@
         },
         "evaluation": "Frozen pre-2026 simulator predictions are scored on settled WC2026 questions. The empirical baseline uses the exact contract's YES rate estimated before the tournament.",
         "family": "penalty_or_red",
-        "matches": 31,
-        "questions": 31,
+        "matches": 32,
+        "questions": 32,
         "sample_size": {
           "basis": "unique unseen matches, with uncertainty clustered by match",
           "guidance": "Use only as a weak directional check; the tournament sample is still small.",
@@ -5910,8 +6048,8 @@
         },
         "scope": "wc2026_frozen_pre2026_simulator_replay",
         "simulator_minus_empirical_rate_95pct_ci": [
-          -0.003392,
-          0.010907
+          -0.003633,
+          0.010309
         ],
         "test_folds": [
           2026

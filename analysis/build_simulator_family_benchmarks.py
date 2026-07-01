@@ -21,6 +21,10 @@ LATE_GOAL_ET = "goal_window:after_second_hydration:et"
 LATE_GOAL_REG = "goal_window:after_second_hydration:reg"
 KEY_ALIASES = {
     "substitution_before_halftime:match": "substitution_before_halftime:reg",
+    # Older fold exports wrote these regulation-scoped questions as "match"
+    # only on knockout rows. The question text and labels are regulation-only.
+    "penalty_awarded:match": "penalty_awarded:reg",
+    "penalty_or_red:match": "penalty_or_red:reg",
 }
 FAMILY_ALIASES = {
     "compare": "team_vs_team_more",
@@ -313,6 +317,33 @@ def knockout_empirical_rates(rows: list[dict]) -> dict[str, dict]:
     return result
 
 
+def knockout_empirical_rates_export(source_root: Path) -> dict[str, dict]:
+    """Load all-history knockout empirical rates when the compact export exists."""
+    path = _resolve_csv(source_root / "exports" / "exotic_empirical_rates_knockout.csv")
+    if not path.is_file():
+        return {}
+    result = {}
+    for row in _read_csv(path):
+        key = _canonical_key(row["contract_key"])
+        observations = int(float(row["n_all"]))
+        if observations <= 0:
+            continue
+        rate = float(row["empirical_rate"])
+        yes_events = row.get("yes_events")
+        result[key] = {
+            "available": True,
+            "rate": round(rate, 6),
+            "observations": observations,
+            "matches": int(float(row.get("matches_all") or observations)),
+            "yes_events": (
+                int(float(yes_events)) if yes_events not in {None, ""}
+                else int(round(rate * observations))
+            ),
+            "population": "historical_knockout_labelable_observations",
+        }
+    return result
+
+
 def build_family_benchmarks(source_root: Path, artifact: dict) -> dict[str, dict]:
     rows = load_comparison_rows(source_root, set(artifact.get("contracts", {})))
     all_history = family_performance(rows, scope="rolling_origin_all_history")
@@ -367,7 +398,9 @@ def enrich_contract_benchmarks(source_root: Path, artifact: dict) -> None:
         [row for row in rows if row.get("stage") == "knockout"],
         scope="rolling_origin_all_history_knockout",
     )
-    knockout_rates = knockout_empirical_rates(rows)
+    knockout_rates = (
+        knockout_empirical_rates_export(source_root) or knockout_empirical_rates(rows)
+    )
     for key, record in (artifact.get("contracts") or {}).items():
         if key in knockout_rates:
             record.setdefault("empirical_rate", {})[

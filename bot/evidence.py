@@ -104,7 +104,7 @@ def build_match_evidence(
         question_evidence.append(item)
 
     evidence = {
-        "schema_version": 15,
+        "schema_version": 16,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "match": _match_meta(result, lineups, minutes_before),
         "team_form": context.get("team_form") or {},
@@ -262,12 +262,6 @@ def _compact_simulator_estimate(estimate: dict) -> dict:
         for scope in ("all_history", "all_history_knockout", "wc2026", "wc2026_knockout"):
             row = source.get(scope)
             if not isinstance(row, dict):
-                comparisons[scope] = {
-                    "basis": _comparison_basis_description(scope),
-                    "brier": None,
-                    "n_observations": 0,
-                    "signal": "unavailable_no_observations",
-                }
                 continue
             if not row.get("available"):
                 comparisons[scope] = {

@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from analysis.build_simulator_family_benchmarks import (
+    _canonical_key,
     family_from_contract,
     family_performance,
 )
@@ -21,6 +22,10 @@ class StaticFamilyBenchmarkTests(unittest.TestCase):
             family_from_contract("compare:corners:2H:reg"),
             "team_vs_team_more",
         )
+
+    def test_stale_knockout_penalty_keys_normalize_to_regulation(self):
+        self.assertEqual(_canonical_key("penalty_awarded:match"), "penalty_awarded:reg")
+        self.assertEqual(_canonical_key("penalty_or_red:match"), "penalty_or_red:reg")
 
     def test_family_comparison_scores_all_baselines_on_identical_unseen_rows(self):
         rows = [

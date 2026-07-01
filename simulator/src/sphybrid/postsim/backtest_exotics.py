@@ -350,10 +350,10 @@ def build_question_table(
                           f"{b if team == a else a} in the second half?", own > opp)
                 _add_case(records, row, "team_sot_2h_2plus",
                           f"Will {team} have 2 or more shots on target in the second half?", own >= 2)
-        # Full-match source stats and player totals can include extra time in knockout matches,
-        # while these best-of-32 questions explicitly target regulation.  Restrict the affected
-        # families to matches that cannot have extra time rather than silently mixing contracts.
-        if row.stage != "knockout":
+        # API-Football full-match stat totals can include extra time in knockout matches. StatsBomb
+        # is period-split, so its first- and second-half totals remain regulation-safe.
+        regulation_stats_ok = row.stage != "knockout" or row.source == "statsbomb"
+        if regulation_stats_ok:
             for threshold in range(2, 9):
                 for team, total in ((a, ah1 + ah2), (b, bh1 + bh2)):
                     market = f"team_sot_full_{threshold}plus"
@@ -377,10 +377,9 @@ def build_question_table(
         _add_case(records, row, "more_goals_2h",
                   "Will the second half have more total goals than the first half?",
                   home_h2 + away_h2 > home_h1 + away_h1)
-        if row.stage != "knockout":
-            _add_case(records, row, "btts_and_total_3plus",
-                      "Will both teams score AND the match have 3 or more total goals?",
-                      home_goals >= 1 and away_goals >= 1 and home_goals + away_goals >= 3)
+        _add_case(records, row, "btts_and_total_3plus",
+                  "Will both teams score AND the match have 3 or more total goals?",
+                  home_goals >= 1 and away_goals >= 1 and home_goals + away_goals >= 3)
         _add_case(records, row, "win_margin_2plus",
                   f"Will {a} win by 2 or more goals in regulation (90 minutes + stoppage time)?",
                   home_goals - away_goals >= 2)

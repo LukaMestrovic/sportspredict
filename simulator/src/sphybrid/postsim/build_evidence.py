@@ -230,6 +230,13 @@ def _main(argv: list[str] | None = None) -> int:
         oos = pd.concat((pd.read_csv(path) for path in oos_paths), ignore_index=True)
     else:
         oos = pd.read_csv(settings.path(args.oos_rows))
+    # Fold CSVs are reusable caches. Canonicalize old prepared-fold keys whose question text and
+    # labels were regulation-scoped even though the cached key said "match".
+    oos["contract_key"] = oos["contract_key"].replace({
+        "substitution_before_halftime:match": "substitution_before_halftime:reg",
+        "penalty_awarded:match": "penalty_awarded:reg",
+        "penalty_or_red:match": "penalty_or_red:reg",
+    })
     # The cached folds predate the exact-catalog audit. Keep only observed semantic contracts. The
     # observed regulation late-goal wording equals the cached include-ET price in group matches,
     # where ET is impossible; knockout rows are deliberately excluded.
@@ -241,16 +248,15 @@ def _main(argv: list[str] | None = None) -> int:
         late_reg["market_name"] = "Goal after second hydration break — regulation"
         oos = pd.concat([oos, late_reg], ignore_index=True)
     oos = oos[~oos.contract_key.isin({
-        late_et, "penalty_awarded:match", "penalty_or_red:match", "red_card:reg",
+        late_et, "red_card:reg",
     })].copy()
     empirical_path = settings.path(args.empirical_rows)
     empirical = (
         pd.read_parquet(empirical_path) if empirical_path.suffix == ".parquet"
         else pd.read_csv(empirical_path)
     )
-    # Fold CSVs are reusable caches. Canonicalize the one inherent half-scope key written by
-    # schema 1 so an old prepared fold does not split equivalent first-half evidence.
-    for frame in (oos, empirical, wc):
+    # Keep the same harmless half-scope canonicalization for aggregate empirical/WC rows.
+    for frame in (empirical, wc):
         frame["contract_key"] = frame["contract_key"].replace({
             "substitution_before_halftime:match": "substitution_before_halftime:reg",
         })

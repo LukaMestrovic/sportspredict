@@ -212,6 +212,23 @@ class EvidenceTests(unittest.TestCase):
         self.assertNotIn("related_odds", q)
         self.assertNotIn("deterministic_estimates", q)
 
+    def test_missing_comparison_scopes_are_omitted_not_zero_filled(self):
+        compact = _compact_simulator_estimate({
+            "probability": 0.42,
+            "historical_evidence": {
+                "contract_performance": {
+                    "all_history": {
+                        "available": True,
+                        "comparison_signal": "inconclusive",
+                        "observations": 100,
+                        "brier": {"simulator": 0.2, "always_50": 0.25},
+                    },
+                },
+            },
+        })
+
+        self.assertEqual(set(compact["contract_comparison"]), {"all_history"})
+
     def test_penalty_question_receives_simulator_context(self):
         result = _result({
             "pen": {"market": "none", "subject": "match",
@@ -233,7 +250,7 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(estimates.call_args.kwargs["intents"], result.intents)
         q = evidence["question_evidence"][0]
-        self.assertEqual(evidence["schema_version"], 15)
+        self.assertEqual(evidence["schema_version"], 16)
         self.assertEqual(q["simulator_estimate"], {"probability_pct": 24.1})
         self.assertLess(
             list(q).index("direct_odds"),
@@ -301,7 +318,7 @@ class EvidenceTests(unittest.TestCase):
             )
 
         question = bundle["question_evidence"][0]
-        self.assertEqual(bundle["schema_version"], 15)
+        self.assertEqual(bundle["schema_version"], 16)
         self.assertEqual(question["direct_market_spec"]["bet_id"], 14)
         self.assertEqual(len(question["direct_odds"]), 1)
         self.assertIn("regulation first-team-to-score proxy",
@@ -330,7 +347,7 @@ class ContextEvidenceTests(unittest.TestCase):
         with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
-        self.assertEqual(evidence["schema_version"], 15)
+        self.assertEqual(evidence["schema_version"], 16)
         self.assertEqual(evidence["team_form"]["home"]["gf_avg"], 1.7)
         self.assertEqual(evidence["player_form"]["home"][0]["name"], "Striker One")
         self.assertEqual(evidence["referee_profile"]["yellows_per_game"], 4.0)

@@ -8,6 +8,7 @@ The files are gzip-compressed, but the analysis scripts read either `.csv` or
 
 - `exports/oos_*/exotic_oos_rows.csv.gz`
 - `exports/oos_*/exotic_empirical_rates.csv.gz`
+- `exports/exotic_empirical_rates_knockout.csv`
 - `exports/wc2026_simulator_oos_rows.csv.gz`
 - `data/processed/sportspredict_question_catalog.csv.gz`
 

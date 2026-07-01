@@ -63,6 +63,65 @@ class SimulatorTrainingPipelineTests(unittest.TestCase):
         self.assertAlmostEqual(loaded.get("Example Forward", "shots_on_target"), 0.22)
         self.assertEqual(loaded.team("Example Forward"), "A")
 
+    def test_knockout_regulation_labels_use_only_safe_full_stat_sources(self):
+        import pandas as pd
+
+        from sphybrid.postsim.backtest_exotics import build_question_table
+
+        history = pd.DataFrame([
+            {
+                "match_id": 1,
+                "source": "statsbomb",
+                "match_date": "2022-12-09",
+                "home_team": "Home",
+                "away_team": "Away",
+                "tournament": "WC2022",
+                "stage": "knockout",
+                "home_goals_h1": 1,
+                "home_goals_h2": 0,
+                "away_goals_h1": 1,
+                "away_goals_h2": 1,
+                "home_shots_on_target_h1": 3,
+                "home_shots_on_target_h2": 3,
+                "away_shots_on_target_h1": 1,
+                "away_shots_on_target_h2": 1,
+            },
+            {
+                "match_id": 2,
+                "source": "apifootball",
+                "match_date": "2022-12-10",
+                "home_team": "Home",
+                "away_team": "Away",
+                "tournament": "WC2022",
+                "stage": "knockout",
+                "home_goals_h1": 1,
+                "home_goals_h2": 0,
+                "away_goals_h1": 1,
+                "away_goals_h2": 1,
+                "home_shots_on_target_h1": 6,
+                "home_shots_on_target_h2": 0,
+                "away_shots_on_target_h1": 2,
+                "away_shots_on_target_h2": 0,
+            },
+        ])
+        events = pd.DataFrame(columns=[
+            "source", "match_id", "event_type", "team_side", "phase",
+            "minute", "extra", "sequence",
+        ])
+        players = pd.DataFrame(columns=[
+            "match_id", "team_side", "reconciles_sot", "shots_total",
+            "shots_on", "goals", "substitute",
+        ])
+
+        questions = build_question_table(history, events, players)
+        full_stat = questions[
+            questions.contract_key.eq("count:shots_on_target:team:full:>=:6:reg")
+        ]
+        btts = questions[questions.contract_key.eq("btts_and_total:reg")]
+
+        self.assertEqual(set(full_stat.source.astype(str)), {"statsbomb"})
+        self.assertEqual(set(btts.source.astype(str)), {"statsbomb", "apifootball"})
+
 
 if __name__ == "__main__":
     unittest.main()
