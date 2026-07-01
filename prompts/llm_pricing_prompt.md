@@ -84,12 +84,16 @@ The evidence JSON may include:
 - `referee_profile`: competition referee card profile. Prefer it over scraped
   figures unless the sample is too small.
 - `injuries`: structured availability notes.
-- `question_evidence`: one object per market. `direct_odds` contains de-vigged
-  probabilities and provenance (`source`, `bookmaker`, `market_key`, `contract`,
+- `question_evidence`: one object per market, containing the exact question,
+  parsed intent, contract scope, price evidence, and market-specific guidance.
+  `direct_odds` is the de-vigged bookmaker probability spread for this contract,
+  with provenance (`source`, `bookmaker`, `market_key`, `contract`,
   `probability_pct`, `devig_method`, optional `contract_note`), not raw odds.
-  `simulator_estimate` may contain `contract_key`, `probability_pct`, `basis`,
-  `adjustment_guidance`, `conditioning`, `empirical_rates`, and
-  `contract_comparison`.
+  `simulator_estimate` is the deterministic fallback/base-rate estimate for
+  markets without exact direct odds; it may contain `contract_key`,
+  `probability_pct`, `basis`, `conditioning`, `empirical_rates`, and
+  `contract_comparison`. `adjustment_guidance` tells you which match evidence
+  and web research should move this specific market up or down.
 
 When any provided context materially moves a market, cite it in
 `non_odds_factors_used` with source "provided evidence". If a relevant block is
