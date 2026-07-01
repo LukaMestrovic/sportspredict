@@ -24,10 +24,18 @@ class DirectContractTests(unittest.TestCase):
         spec = self.match(market="match_winner", subject="away", comparator="win", period="2H")
         self.assertEqual((spec["bet_id"], spec["value"]), (3, "Away"))
 
-    def test_generic_card_comparison_rejects_yellow_only_contract(self):
+    def test_card_comparison_uses_yellow_card_proxy_for_full_match(self):
         full = self.match(market="team_cards", subject="home", comparator="more", period="match")
         half = self.match(market="cards_compare", subject="away", comparator="more", period="2H")
-        self.assertIsNone(full)
+        self.assertEqual(
+            (full["type"], full["bet_id"], full["value"]),
+            ("select", 158, "Home"),
+        )
+        self.assertEqual(
+            full["contract_proxy"],
+            "yellow_cards_1x2_for_all_cards_compare",
+        )
+        self.assertIn("yellow-card", full["proxy_note"])
         self.assertIsNone(half)
 
     def test_half_corner_comparison_uses_half_1x2(self):

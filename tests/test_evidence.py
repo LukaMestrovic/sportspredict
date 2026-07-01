@@ -43,6 +43,17 @@ def _af_first_goal_books():
     }]
 
 
+def _af_cards_compare_books():
+    return [{
+        "name": "Bet365",
+        "bets": [{"id": 158, "values": [
+            {"value": "Home", "odd": "5.63"},
+            {"value": "Draw", "odd": "3.72"},
+            {"value": "Away", "odd": "1.53"},
+        ]}],
+    }]
+
+
 class _OA:
     def __init__(self):
         self.requested = []
@@ -412,6 +423,35 @@ class EvidenceTests(unittest.TestCase):
             "time_scope": "full_match",
             "interpretation": "Full match: include extra time if played; exclude shootout events.",
         })
+
+    def test_cards_compare_uses_labeled_yellow_card_proxy(self):
+        result = _result({
+            "cards": {
+                "market": "team_cards", "subject": "away",
+                "comparator": "more", "threshold": None, "period": "match",
+                "time_scope": "regulation",
+            },
+        }, question="Will Away receive more cards than Home?")
+        ctx = PriceCtx("Home", "Away", _af_cards_compare_books(), None, None)
+
+        with patch("bot.evidence.simulator.simulator_estimates",
+                   return_value={"cards": {"probability_pct": 50.0}}):
+            bundle = build_match_evidence(
+                result, ctx, lineups=None, minutes_before=30,
+            )
+
+        question = bundle["question_evidence"][0]
+        self.assertEqual(question["direct_market_spec"]["bet_id"], 158)
+        self.assertEqual(
+            question["direct_market_spec"]["contract_proxy"],
+            "yellow_cards_1x2_for_all_cards_compare",
+        )
+        self.assertEqual(len(question["direct_odds"]), 1)
+        direct = question["direct_odds"][0]
+        self.assertEqual((direct["bookmaker"], direct["market_key"]), ("Bet365", "af_bet_158"))
+        self.assertAlmostEqual(direct["probability_pct"], 59.42, places=2)
+        self.assertIn("yellow-card/bookings", direct["contract_note"])
+        self.assertNotIn("simulator_estimate", question)
 
 
 class ContextEvidenceTests(unittest.TestCase):

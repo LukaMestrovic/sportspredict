@@ -57,10 +57,17 @@ _TEAM_SELECT = {
 # Team "more than opponent" 1x2 markets: subject picks Home/Away value
 _COMPARE = {
     "corners_compare": 55,   # Corners 1x2
+    "cards_compare": 158,    # Yellow Cards 1x2 (accepted proxy for all cards)
     "offsides_compare": 165, # Offsides 1x2
     "fouls_compare": 175,    # Fouls. 1x2
     "shots_on_target_compare": 176,  # ShotOnTarget 1x2
 }
+
+CARDS_COMPARE_PROXY = "yellow_cards_1x2_for_all_cards_compare"
+CARDS_COMPARE_PROXY_NOTE = (
+    "yellow-card/bookings team-most-cards 1x2 proxy for the all-cards "
+    "comparison; red cards are rare but can change SportPredict settlement"
+)
 
 # Player markets — sourced from the Odds API (API-Football rarely quotes them).
 _PLAYER_MARKETS = [
@@ -80,7 +87,6 @@ MARKET_KEYS = (
     + list(_MATCH_YESNO)
     + list(_TEAM_SELECT)
     + list(_COMPARE)
-    + ["cards_compare"]  # simulator-only: provider bet 158 is yellow cards, not all cards
     + _PLAYER_MARKETS
     + ["none"]
 )
@@ -144,10 +150,10 @@ def _normalize(market: str, subject: str, comp: str, period: str) -> str:
     """Repair common parser ambiguities before mapping to a bet."""
     if market in _TOTAL_TO_TEAM and subject in ("home", "away"):
         market = _TOTAL_TO_TEAM[market]
-    # Corner and card 1x2 contracts also exist for each half. The other
-    # comparisons are full-match only.
+    # Corner 1x2 contracts also exist for each half. The other comparisons are
+    # full-match only; cards_compare is a full-match yellow-card proxy.
     if (comp == "more" and market in _TEAM_TO_COMPARE
-            and (period == "match" or market in ("team_corners", "team_cards"))):
+            and (period == "match" or market == "team_corners")):
         market = _TEAM_TO_COMPARE[market]
     # Repair the inverse parser ambiguity: a numeric count is a team total, not
     # a 1x2 comparison.
@@ -322,9 +328,13 @@ def match_intent(
     if market in _COMPARE:
         if subject not in ("home", "away"):
             return None
-        return {"type": "select", "bet_id": _COMPARE[market],
+        spec = {"type": "select", "bet_id": _COMPARE[market],
                 "value": "Home" if subject == "home" else "Away",
                 "label": f"{market} {subject}"}
+        if market == "cards_compare":
+            spec["contract_proxy"] = CARDS_COMPARE_PROXY
+            spec["proxy_note"] = CARDS_COMPARE_PROXY_NOTE
+        return spec
 
     if market == "player_goal_scorer" and intent.get("player"):
         return {"type": "player_yes", "bet_id": 92,

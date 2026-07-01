@@ -56,6 +56,13 @@ Use high-quality sources before lower-quality commentary. Useful places to look:
 - Odds/prices: Pinnacle, Betfair Exchange, Bet365, DraftKings, FanDuel,
   Caesars, Unibet, OddsPortal/OddsChecker, Kalshi, Polymarket. Prefer exact
   contract markets; use related prices only as context and label them as such.
+- Card comparisons: for "more cards than" contracts, search specifically for
+  Team Most Cards, Bookings Match Bet, Cards 1x2, Yellow Cards Team Most, and
+  cards handicap markets. If SportPredict says cards but a book says yellow
+  cards/bookings, treat that as a strong near-direct proxy rather than
+  discarding it; de-vig all quoted outcomes including draw/tie, label the
+  yellow-card/all-card scope difference, and downweight only modestly unless
+  red-card risk materially changes the comparison.
 - Lineups/injuries/minutes: confirmed FIFA/team lineups, federation reports,
   Reuters/AP/BBC/ESPN, FotMob, SofaScore, Transfermarkt injury notes, trusted
   local reporters. Corroborate predicted lineups before moving far from odds.

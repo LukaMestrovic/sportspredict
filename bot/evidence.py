@@ -17,7 +17,12 @@ from typing import Iterable
 from . import config, simulator, simulator_benchmark, wc2026_evidence
 from . import oddsapi as oapi
 from . import predictor as afpred
-from .matcher import match_intent, match_intent_oddsapi
+from .matcher import (
+    CARDS_COMPARE_PROXY,
+    CARDS_COMPARE_PROXY_NOTE,
+    match_intent,
+    match_intent_oddsapi,
+)
 from .pricing import PriceCtx
 
 
@@ -36,11 +41,7 @@ def build_match_evidence(
         mid = market["id"]
         intent = result.intents.get(mid)
         direct, spec = _direct_odds(intent, ctx)
-        why = (
-            "regulation first-team-to-score proxy for the full-match contract; "
-            "extra-time-only difference accepted as immaterial"
-            if (spec or {}).get("scope_proxy") else "exact mapped contract"
-        )
+        why = _direct_contract_note(spec)
         direct_by_market[mid] = _tag_observations(direct, "direct", why)
         spec_by_market[mid] = spec
 
@@ -422,6 +423,20 @@ def _direct_odds(intent: dict | None, ctx: PriceCtx) -> tuple[list[dict], dict |
         books = ctx.oa.event_odds(ctx.oa_event["id"], [oa_spec["market"]])
         obs.extend(oapi.observations(books, oa_spec))
     return obs, af_spec or oa_spec
+
+
+def _direct_contract_note(spec: dict | None) -> str:
+    """Explain why a direct-odds contract should be used for the question."""
+    if not spec:
+        return "exact mapped contract"
+    if spec.get("scope_proxy"):
+        return (
+            "regulation first-team-to-score proxy for the full-match contract; "
+            "extra-time-only difference accepted as immaterial"
+        )
+    if spec.get("contract_proxy") == CARDS_COMPARE_PROXY:
+        return CARDS_COMPARE_PROXY_NOTE
+    return "exact mapped contract"
 
 
 def _tag_observations(observations: Iterable[dict], role: str, why: str) -> list[dict]:
