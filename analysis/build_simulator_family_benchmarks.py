@@ -1,20 +1,22 @@
 """Add leakage-safe family benchmarks to the shipped simulator evidence.
 
 The production runtime deliberately does not contain training data or tooling.
-This analysis helper reads rolling-origin exports from the sibling research
-workspace and enriches the compact artifact that is tracked in this repository.
+This analysis helper reads compact rolling-origin exports tracked in this
+repository and enriches the compact artifact that is tracked here.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import json
 import math
 from collections import defaultdict
 from pathlib import Path
 
 
+DEFAULT_SOURCE_ROOT = Path(__file__).resolve().parent / "data" / "simulator_benchmarks"
 LATE_GOAL_ET = "goal_window:after_second_hydration:et"
 LATE_GOAL_REG = "goal_window:after_second_hydration:reg"
 KEY_ALIASES = {
@@ -37,8 +39,28 @@ def _canonical_key(key: str) -> str:
     return KEY_ALIASES.get(key, key)
 
 
+def _resolve_csv(path: Path) -> Path:
+    if path.is_file():
+        return path
+    compressed = path.with_name(path.name + ".gz")
+    if compressed.is_file():
+        return compressed
+    return path
+
+
+def _csv_paths(root: Path, pattern: str) -> list[Path]:
+    return sorted({
+        *root.glob(pattern),
+        *root.glob(f"{pattern}.gz"),
+    })
+
+
 def _read_csv(path: Path) -> list[dict[str, str]]:
-    with path.open(newline="") as handle:
+    resolved = _resolve_csv(path)
+    if resolved.suffix == ".gz":
+        with gzip.open(resolved, "rt", newline="") as handle:
+            return list(csv.DictReader(handle))
+    with resolved.open(newline="") as handle:
         return list(csv.DictReader(handle))
 
 
@@ -58,7 +80,7 @@ def _fold_rates(source_root: Path, years: set[int]) -> dict[int, dict[str, dict]
 
 def load_comparison_rows(source_root: Path, contract_keys: set[str]) -> list[dict]:
     """Load OOS predictions and attach empirical rates learned before each fold."""
-    paths = sorted((source_root / "notebooks").glob("oos_*/exotic_oos_rows.csv"))
+    paths = _csv_paths(source_root / "notebooks", "oos_*/exotic_oos_rows.csv")
     raw_rows = [row for path in paths for row in _read_csv(path)]
     years = {int(row["fold_year"]) for row in raw_rows}
     rates = _fold_rates(source_root, years)
@@ -300,7 +322,7 @@ def build_family_benchmarks(source_root: Path, artifact: dict) -> dict[str, dict
     }
     wc2026_rows = []
     replay_path = source_root / "notebooks" / "wc2026_simulator_oos_rows.csv"
-    if replay_path.is_file():
+    if _resolve_csv(replay_path).is_file():
         for row in _read_csv(replay_path):
             key = _canonical_key(row["contract_key"])
             prior = prior_rates.get(key) or {}
@@ -360,7 +382,7 @@ def enrich_contract_benchmarks(source_root: Path, artifact: dict) -> None:
 
 def _main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source-root", type=Path, default=Path("../sportspredict-hybrid"))
+    parser.add_argument("--source-root", type=Path, default=DEFAULT_SOURCE_ROOT)
     parser.add_argument(
         "--artifact", type=Path,
         default=Path("simulator/data/processed/simulation_evidence.json"),

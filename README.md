@@ -285,16 +285,17 @@ scripts/
   settle_ledger.py       explicit-outcome settlement and Brier reporting
 tests/                   unit and bundled-runtime integration tests
 analysis/, notebooks/    optional post-mortem tools; never deployed
+analysis/data/           compact benchmark exports for artifact regeneration
 cache/                   retained runtime cache; git-ignored
 logs/                    retained evidence, audits, and ledger; git-ignored
 run.py                   manual predict/submit CLI
 validate.py              deterministic settled-fixture validation
 ```
 
-The tracked family benchmark artifact is regenerated from the separate research
-workspace without copying training data into production:
+The tracked family benchmark artifact is regenerated from compact rolling-origin
+exports under `analysis/data/simulator_benchmarks/`; no sibling checkout is
+required:
 
 ```bash
-.venv/bin/python analysis/build_simulator_family_benchmarks.py \
-  --source-root ../sportspredict-hybrid
+.venv/bin/python analysis/build_simulator_family_benchmarks.py
 ```

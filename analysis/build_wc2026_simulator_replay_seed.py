@@ -1,51 +1,62 @@
 """Build the compact deployed WC2026 simulator-replay seed.
 
-The input replay was produced with model artifacts fitted only through 2025.
-The deployed settlement job appends newly settled matches to this immutable
-seed, so tournament family comparisons remain current without retraining.
+The tracked input replay was produced with model artifacts fitted only through
+2025. The deployed settlement job appends newly settled matches to this
+immutable seed, so tournament family comparisons remain current without
+retraining.
 """
 
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 from pathlib import Path
 
-from analysis.build_simulator_family_benchmarks import family_from_contract
+try:
+    from analysis.build_simulator_family_benchmarks import (
+        DEFAULT_SOURCE_ROOT,
+        _read_csv,
+        _resolve_csv,
+        family_from_contract,
+    )
+except ModuleNotFoundError:  # Direct execution: python analysis/build_*.py
+    from build_simulator_family_benchmarks import (  # type: ignore[no-redef]
+        DEFAULT_SOURCE_ROOT,
+        _read_csv,
+        _resolve_csv,
+        family_from_contract,
+    )
 
 
 def build(replay_path: Path, artifact_path: Path, catalog_path: Path | None = None) -> dict:
     artifact = json.loads(artifact_path.read_text())
     contracts = artifact.get("contracts") or {}
     kickoffs = {}
-    if catalog_path and catalog_path.is_file():
-        with catalog_path.open(newline="") as handle:
-            kickoffs = {
-                row["match_id"]: row.get("kickoff")
-                for row in csv.DictReader(handle)
-            }
+    if catalog_path and _resolve_csv(catalog_path).is_file():
+        kickoffs = {
+            row["match_id"]: row.get("kickoff")
+            for row in _read_csv(catalog_path)
+        }
     rows = []
-    with replay_path.open(newline="") as handle:
-        for row in csv.DictReader(handle):
-            key = row["contract_key"]
-            empirical = (
-                ((contracts.get(key) or {}).get("empirical_rate") or {})
-                .get("all_history") or {}
-            )
-            rows.append({
-                "match_id": row["match_id"],
-                "kickoff": kickoffs.get(row["match_id"]),
-                "family": family_from_contract(key),
-                "contract_key": key,
-                "p_model": round(float(row["p_model"]), 8),
-                "p_empirical": (
-                    round(float(empirical["rate"]), 8)
-                    if empirical.get("available") and empirical.get("rate") is not None
-                    else None
-                ),
-                "outcome": int(row["outcome"]),
-            })
+    for row in _read_csv(replay_path):
+        key = row["contract_key"]
+        empirical = (
+            ((contracts.get(key) or {}).get("empirical_rate") or {})
+            .get("all_history") or {}
+        )
+        rows.append({
+            "match_id": row["match_id"],
+            "kickoff": kickoffs.get(row["match_id"]),
+            "family": family_from_contract(key),
+            "contract_key": key,
+            "p_model": round(float(row["p_model"]), 8),
+            "p_empirical": (
+                round(float(empirical["rate"]), 8)
+                if empirical.get("available") and empirical.get("rate") is not None
+                else None
+            ),
+            "outcome": int(row["outcome"]),
+        })
     return {
         "schema_version": 1,
         "source": "frozen pre-2026 simulator replay on settled WC2026 questions",
@@ -59,7 +70,7 @@ def main() -> int:
     parser.add_argument(
         "--replay",
         type=Path,
-        default=Path("../sportspredict-hybrid/notebooks/wc2026_simulator_oos_rows.csv"),
+        default=DEFAULT_SOURCE_ROOT / "notebooks" / "wc2026_simulator_oos_rows.csv",
     )
     parser.add_argument(
         "--artifact",
@@ -69,9 +80,11 @@ def main() -> int:
     parser.add_argument(
         "--catalog",
         type=Path,
-        default=Path(
-            "../sportspredict-hybrid/data/processed/"
-            "sportspredict_question_catalog.csv"
+        default=(
+            DEFAULT_SOURCE_ROOT
+            / "data"
+            / "processed"
+            / "sportspredict_question_catalog.csv"
         ),
     )
     parser.add_argument(
