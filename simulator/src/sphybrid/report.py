@@ -257,13 +257,17 @@ def _market_adjustment_guidance(market: str, params: dict, question: str) -> str
         )
     if market == SUBSTITUTION_BEFORE_HALF:
         return (
-            "Raise for pre-match injury doubts, heat, tactical mismatch risk or coaches known for early "
-            "changes; lower when both starting elevens are healthy and tactically stable."
+            "Lean toward WC2026 empirical rates; check whether either team has made first-half "
+            "substitutions in this tournament. Raise only for concrete injury/fitness doubts, heat, "
+            "tactical-disaster risk, goalkeeper/defender injury risk, concussion concern, or a coach "
+            "with recent early changes; ignore normal 60'-75' substitutions."
         )
     if market == SUBSTITUTE_SCORE:
         return (
-            "Raise for a deep attacking bench, likely high-impact substitutes, higher goal totals and a "
-            "game state likely to require chasing; lower for weak benches or low expected scoring."
+            "Lean toward WC2026 empirical rates and modern five-sub context. Identify each team's "
+            "likely attacking substitutes and whether they are real scorers/shooters from player_form "
+            "or research. Raise for high goal totals, chase state and strong scorer bench options; "
+            "lower for weak benches or low expected scoring."
         )
     if market == ANY_PLAYER_THRESHOLD and params.get("stat") == "goals":
         return (

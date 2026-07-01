@@ -127,6 +127,24 @@ class BundledSimulatorTests(unittest.TestCase):
         self.assertEqual(item["family"], "team_score_no_own")
         self.assertEqual(item["contract_key"], "team_score_no_own:reg")
 
+    def test_substitution_guidance_names_team_specific_checks(self):
+        sys.path.insert(0, str(SIMULATOR / "src"))
+        from sphybrid import report
+
+        early = report._market_adjustment_guidance(
+            "substitution_before_halftime", {},
+            "Will a substitution be made before halftime?",
+        )
+        self.assertIn("WC2026 empirical rates", early)
+        self.assertIn("first-half substitutions in this tournament", early)
+
+        scorer = report._market_adjustment_guidance(
+            "substitute_score", {},
+            "Will a substitute score?",
+        )
+        self.assertIn("likely attacking substitutes", scorer)
+        self.assertIn("scorers/shooters", scorer)
+
     def _run_bridge(self, payload):
         env = os.environ.copy()
         env["PYTHONPATH"] = str(SIMULATOR / "src")
