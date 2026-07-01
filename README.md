@@ -186,21 +186,14 @@ summary for every submitted market. The prompt is
 refuses to run after kickoff, and repeat manual runs reuse the frozen pre-match
 audit.
 
-## Market catalogs
+## Market catalog
 
 The raw provider-market reference is retained as
-`soccer_live_odds_market_catalog.pdf`. For day-to-day agent work, use
-`docs/market_catalog.md` or `docs/market_catalog.json`; they are generated from
-the current production matcher and list the API-Football and Odds API contracts
-the bot actually wires. Regenerate them after matcher changes:
-
-```bash
-.venv/bin/python -m scripts.export_market_catalog
-```
-
-Do not force unsupported, compound, simulator-only, or full-match knockout
-questions onto approximate bookmaker contracts. The generated catalog includes
-the current provider gaps and scope rules for those cases.
+`soccer_live_odds_market_catalog.pdf`. Use it when auditing or extending market
+matching, and keep the deterministic mappings in `bot/matcher.py` aligned with
+the exact provider contracts. Do not force unsupported, compound,
+simulator-only, or full-match knockout questions onto approximate bookmaker
+contracts.
 
 ## Ledger and settlement
 
@@ -294,7 +287,6 @@ simulator/
   data/                 fitted artifacts, lookup tables, Elo, audit evidence
   requirements.txt      numerical dependencies only
 prompts/                 audited pricing prompt
-docs/                    generated market mapping docs for agents
 scripts/
   cron_submit.py         T−30 dispatcher
   deploy.sh              build, smoke-test, and install cron

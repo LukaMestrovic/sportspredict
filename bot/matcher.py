@@ -5,8 +5,7 @@ API-Football pre-match market catalog. Odds API markets are handled separately.
 If no API-Football market fits, returns None and the question is skipped from
 that provider path.
 
-See ``docs/market_catalog.md`` for the generated agent-readable map and
-``soccer_live_odds_market_catalog.pdf`` for the raw provider catalog.
+See ``soccer_live_odds_market_catalog.pdf`` for the raw provider catalog.
 
 A spec is one of:
   {"type": "ou",     "bet_id": int, "side": "Over"|"Under", "line": float}
