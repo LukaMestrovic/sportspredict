@@ -86,11 +86,16 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(
             list(q)[:6],
             [
-                "intent", "market_id", "question", "contract_scope",
-                "direct_market_spec", "direct_odds",
+                "question_id", "market_id", "question", "intent",
+                "contract_scope", "direct_market_spec",
             ],
         )
+        self.assertEqual(q["question_id"], "Q1")
         self.assertEqual(q["market_id"], "win")
+        self.assertEqual(evidence["agent_workflow"]["subagent_count"], 1)
+        self.assertEqual(evidence["agent_workflow"]["question_ids"], ["Q1"])
+        self.assertEqual(q["decision_basis"]["primary"], "provided_direct_odds")
+        self.assertTrue(q["subagent_brief"]["assignment"].startswith("Q1:"))
         self.assertGreaterEqual(len(q["direct_odds"]), 2)
         sources = {obs["source"] for obs in q["direct_odds"]}
         books = {obs["bookmaker"] for obs in q["direct_odds"]}
@@ -418,7 +423,7 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(estimates.call_args.kwargs["intents"], result.intents)
         q = evidence["question_evidence"][0]
-        self.assertEqual(evidence["schema_version"], 19)
+        self.assertEqual(evidence["schema_version"], 20)
         self.assertEqual(q["simulator_estimate"], {"probability_pct": 24.1})
         self.assertLess(
             list(q).index("direct_odds"),
@@ -486,7 +491,7 @@ class EvidenceTests(unittest.TestCase):
             )
 
         question = bundle["question_evidence"][0]
-        self.assertEqual(bundle["schema_version"], 19)
+        self.assertEqual(bundle["schema_version"], 20)
         self.assertEqual(question["direct_market_spec"]["bet_id"], 14)
         self.assertEqual(len(question["direct_odds"]), 1)
         self.assertIn("regulation first-team-to-score proxy",
@@ -570,13 +575,14 @@ class ContextEvidenceTests(unittest.TestCase):
         with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
-        self.assertEqual(evidence["schema_version"], 19)
+        self.assertEqual(evidence["schema_version"], 20)
         self.assertEqual(
             list(evidence),
             [
                 "schema_version",
                 "created_at",
                 "match",
+                "agent_workflow",
                 "team_form",
                 "player_form",
                 "referee_profile",
@@ -626,6 +632,8 @@ class ContextEvidenceTests(unittest.TestCase):
         self.assertIn("Cyle Larin", q["adjustment_guidance"])
         self.assertIn("goals_per90", q["adjustment_guidance"])
         self.assertIn("direct_odds probability_pct", q["adjustment_guidance"])
+        target = q["subagent_brief"]["focused_context"]["target_player"]
+        self.assertEqual(target["provided_player_form"]["goals_per90"], 1.11)
 
     def test_player_shots_market_guidance_uses_sot_metrics(self):
         result = _result({
@@ -815,11 +823,15 @@ class ContextEvidenceTests(unittest.TestCase):
             path = write_evidence(evidence, directory=Path(tmp))
             text = path.read_text()
 
-        self.assertLess(text.index('"intent"'), text.index('"market_id"'))
+        self.assertLess(text.index('"question_id"'), text.index('"market_id"'))
         self.assertLess(text.index('"market_id"'), text.index('"question"'))
-        self.assertLess(text.index('"question"'), text.index('"contract_scope"'))
-        self.assertLess(text.index('"contract_scope"'), text.index('"direct_odds"'))
+        self.assertLess(text.index('"question"'), text.index('"intent"'))
+        self.assertLess(text.index('"intent"'), text.index('"contract_scope"'))
+        self.assertLess(text.index('"contract_scope"'), text.index('"direct_market_spec"'))
+        self.assertLess(text.index('"direct_market_spec"'), text.index('"direct_odds"'))
         self.assertLess(text.index('"match"'), text.index('"team_form"'))
+        self.assertLess(text.index('"match"'), text.index('"agent_workflow"'))
+        self.assertLess(text.index('"agent_workflow"'), text.index('"team_form"'))
         self.assertLess(text.index('"team_form"'), text.index('"player_form"'))
         self.assertLess(text.index('"player_form"'), text.index('"question_evidence"'))
         self.assertLess(text.index('"question_evidence"'), text.index('"evidence_hash"'))

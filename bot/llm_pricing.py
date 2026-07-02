@@ -369,7 +369,13 @@ def _markdown_report(
     for market in result.markets:
         mid = market["id"]
         audit = audits.get(mid)
-        lines.extend(["", f"### {market['question']}"])
+        qe = evidence_by_market.get(mid, {})
+        question_id = qe.get("question_id")
+        heading = (
+            f"{question_id}: {market['question']}"
+            if question_id else market["question"]
+        )
+        lines.extend(["", f"### {heading}"])
         if not audit:
             reason = result.skip_reasons.get(mid, "not priced")
             lines.append(f"- skipped: {reason}")
@@ -383,7 +389,6 @@ def _markdown_report(
         _append_audit_list(lines, "Ignored/downweighted", audit.get("ignored_or_downweighted_evidence"))
         lines.append(f"- reasoning summary: {audit.get('reasoning_summary')}")
         _append_audit_list(lines, "Sources", audit.get("sources"))
-        qe = evidence_by_market.get(mid, {})
         if "player_form" in qe:
             pf = qe["player_form"]
             lines.append("- player form (this player): "

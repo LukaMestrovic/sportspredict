@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
@@ -29,6 +30,7 @@ from .pricing import PriceCtx
 
 
 EVIDENCE_DIR = config.ROOT / "logs" / "llm_pricing_runs"
+EVIDENCE_SCHEMA_VERSION = 20
 MIN_BASELINE_COMPARISON_OBSERVATIONS = 30
 
 
@@ -89,36 +91,61 @@ def build_match_evidence(
 
     context = getattr(result, "match_context", None) or {}
 
+    match_meta = _match_meta(result, lineups, minutes_before)
     question_evidence = []
-    for market in result.markets:
+    for question_index, market in enumerate(result.markets, start=1):
         mid = market["id"]
         question = market["question"]
         intent = result.intents.get(mid)
         direct = direct_by_market[mid]
+        question_id = f"Q{question_index}"
+        contract_scope = _contract_scope(intent)
+        direct_compact = [_compact_direct_odd(obs) for obs in direct]
         item = {
-            "intent": intent,
+            "question_id": question_id,
             "market_id": mid,
             "question": question,
-            "contract_scope": _contract_scope(intent),
+            "intent": intent,
+            "contract_scope": contract_scope,
             "direct_market_spec": spec_by_market[mid],
         }
-        item["direct_odds"] = [_compact_direct_odd(obs) for obs in direct]
+        item["direct_odds"] = direct_compact
         online = [] if direct else public_odds.online_odds(intent, result.home, result.away)
         if online:
             item["online_odds_candidates"] = online
+        simulator_estimate = None
         if not direct and mid in simulator_by_market:
-            item["simulator_estimate"] = _compact_simulator_estimate(
+            simulator_estimate = _compact_simulator_estimate(
                 simulator_by_market[mid], stage=stage,
             )
+            item["simulator_estimate"] = simulator_estimate
         guidance = _adjustment_guidance(intent, question, result.home, result.away)
         if guidance:
             item["adjustment_guidance"] = guidance
+        item["decision_basis"] = _decision_basis(
+            direct_compact, online, simulator_estimate,
+        )
+        item["subagent_brief"] = _subagent_brief(
+            question_id=question_id,
+            market_id=mid,
+            question=question,
+            intent=intent,
+            contract_scope=contract_scope,
+            decision_basis=item["decision_basis"],
+            guidance=guidance,
+            focused_context=_focused_context(
+                intent, question, context, match_meta, result.home, result.away,
+            ),
+            home=result.home,
+            away=result.away,
+        )
         question_evidence.append(item)
 
     evidence = {
-        "schema_version": 19,
+        "schema_version": EVIDENCE_SCHEMA_VERSION,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "match": _match_meta(result, lineups, minutes_before),
+        "match": match_meta,
+        "agent_workflow": _agent_workflow(question_evidence),
         "team_form": context.get("team_form") or {},
         "player_form": context.get("player_form") or {},
         "referee_profile": context.get("referee_profile") or {},
@@ -204,6 +231,395 @@ def _adjustment_guidance(
     if special_guidance:
         parts.append(special_guidance)
     return "\n\n".join(parts) if parts else None
+
+
+def _agent_workflow(question_evidence: list[dict]) -> dict:
+    """Instructions that make the evidence file easy to split by question."""
+    return {
+        "mode": "main_agent_with_question_subagents",
+        "main_agent_steps": [
+            "Read the full pricing prompt and the whole evidence JSON once.",
+            "Do match-level pre-kickoff research first: official lineups, tactics, "
+            "form, venue/weather, referee, injuries, and broad market prices.",
+            "Spawn one independent subagent per question_evidence item when "
+            "subagent tooling is available.",
+            "Give each subagent the match object, top-level context blocks, the "
+            "match-level research notes, and exactly one question_evidence item.",
+            "Synthesize subagent recommendations, enforce cross-market coherence, "
+            "and return only the final pricing JSON.",
+        ],
+        "subagent_count": len(question_evidence),
+        "question_ids": [
+            item.get("question_id") for item in question_evidence
+            if item.get("question_id")
+        ],
+        "subagent_output_contract": {
+            "question_id": "Qn",
+            "market_id": "SportPredict market id",
+            "recommended_probability_int": "integer 1..99",
+            "provided_odds_used": "audit list for this question",
+            "online_odds_found": "audit list for this question",
+            "non_odds_factors_used": "audit list for this question",
+            "ignored_or_downweighted_evidence": "audit list for this question",
+            "reasoning_summary": "concise public audit",
+            "sources": "market-specific pre-kickoff URLs",
+        },
+    }
+
+
+def _decision_basis(
+    direct_odds: list[dict],
+    online_candidates: list[dict],
+    simulator_estimate: dict | None,
+) -> dict:
+    """Summarize the intended starting point for a question."""
+    if direct_odds:
+        values = [
+            float(obs["probability_pct"]) for obs in direct_odds
+            if isinstance(obs.get("probability_pct"), (int, float))
+        ]
+        basis = {
+            "primary": "provided_direct_odds",
+            "book_count": len(direct_odds),
+            "instruction": (
+                "Use direct_odds as the primary price spread. Move within or just "
+                "outside it only for confirmed match-specific evidence."
+            ),
+        }
+        if values:
+            basis["probability_pct_range"] = {
+                "min": round(min(values), 2),
+                "max": round(max(values), 2),
+            }
+            basis["midpoint_pct"] = round(sum(values) / len(values), 2)
+        return basis
+
+    if online_candidates:
+        values = [
+            float(obs["probability_pct"]) for obs in online_candidates
+            if isinstance(obs.get("probability_pct"), (int, float))
+        ]
+        basis = {
+            "primary": "pre_collected_online_odds",
+            "candidate_count": len(online_candidates),
+            "instruction": (
+                "Use exact, fresh online_odds_candidates before simulator or "
+                "empirical context; reject only for stale or wrong-scope reasons."
+            ),
+        }
+        if values:
+            basis["probability_pct_range"] = {
+                "min": round(min(values), 2),
+                "max": round(max(values), 2),
+            }
+            basis["midpoint_pct"] = round(sum(values) / len(values), 2)
+        return basis
+
+    simulator_estimate = simulator_estimate or {}
+    baseline = simulator_estimate.get("calibrated_baseline") or {}
+    if baseline:
+        basis = {
+            "primary": "calibrated_baseline",
+            "source": baseline.get("source"),
+            "probability_pct": baseline.get("probability_pct"),
+            "instruction": (
+                "Start from calibrated_baseline. If its source is empirical_rate "
+                "or always_50, treat the raw simulator as downweighted context."
+            ),
+        }
+        if baseline.get("scope"):
+            basis["scope"] = baseline["scope"]
+        if baseline.get("comparison_n") is not None:
+            basis["comparison_n"] = baseline["comparison_n"]
+        return {key: value for key, value in basis.items() if value is not None}
+
+    probability_pct = simulator_estimate.get("probability_pct")
+    if probability_pct is not None:
+        return {
+            "primary": "simulator_estimate",
+            "probability_pct": probability_pct,
+            "instruction": (
+                "No direct odds are present. Use simulator_estimate as model "
+                "context, then adjust only for researched match-specific levers."
+            ),
+        }
+
+    return {
+        "primary": "web_research_required",
+        "instruction": (
+            "No direct odds, pre-collected online odds, or simulator baseline are "
+            "present. Search for exact online odds first; otherwise build and "
+            "audit a transparent base-rate estimate from provided context."
+        ),
+    }
+
+
+def _subagent_brief(
+    *,
+    question_id: str,
+    market_id: str,
+    question: str,
+    intent: dict | None,
+    contract_scope: dict,
+    decision_basis: dict,
+    guidance: str | None,
+    focused_context: dict,
+    home: str,
+    away: str,
+) -> dict:
+    """One-market packet that a main agent can hand to a subagent."""
+    brief = {
+        "assignment": (
+            f"{question_id}: price only this YES contract, then return a concise "
+            "audit memo to the main agent."
+        ),
+        "market_id": market_id,
+        "question": question,
+        "settlement_scope": contract_scope,
+        "starting_point": decision_basis,
+        "research_focus": _research_focus(
+            intent, question, contract_scope, direct_primary=(
+                decision_basis.get("primary") == "provided_direct_odds"
+            ),
+            online_primary=(
+                decision_basis.get("primary") == "pre_collected_online_odds"
+            ),
+            simulator_primary=(
+                decision_basis.get("primary") in (
+                    "calibrated_baseline", "simulator_estimate",
+                )
+            ),
+            guidance=guidance,
+            home=home,
+            away=away,
+        ),
+        "decision_rules": [
+            "Use only pre-kickoff information and avoid result leakage.",
+            "Convert every online price used into probability and state the method.",
+            "Keep wrong-scope, stale, affiliate, or post-kickoff evidence out of "
+            "the price or list it as downweighted.",
+            "Return an integer YES probability from 1 to 99 with public audit "
+            "fields, not private chain-of-thought.",
+        ],
+    }
+    if focused_context:
+        brief["focused_context"] = focused_context
+    if guidance:
+        brief["adjustment_guidance_priority"] = (
+            "Treat question.adjustment_guidance as the mandatory market-specific "
+            "research checklist."
+        )
+    return brief
+
+
+def _research_focus(
+    intent: dict | None,
+    question: str,
+    contract_scope: dict,
+    *,
+    direct_primary: bool,
+    online_primary: bool,
+    simulator_primary: bool,
+    guidance: str | None,
+    home: str,
+    away: str,
+) -> list[str]:
+    """Compact checklist for a one-question research subagent."""
+    intent = intent or {}
+    lower = question.lower()
+    focus = [f"Verify settlement scope: {contract_scope.get('interpretation')}"]
+    if direct_primary:
+        focus.append(
+            "Start from the provided direct odds spread; research only levers "
+            "that can justify moving within or outside that spread."
+        )
+    elif online_primary:
+        focus.append(
+            "Audit the pre-collected online odds candidates for scope, freshness, "
+            "and de-vig; use exact candidates before model context."
+        )
+    elif simulator_primary:
+        focus.append(
+            "Start from the simulator/calibrated baseline and compare it with "
+            "empirical rates and exact-contract Brier information."
+        )
+    else:
+        focus.append(
+            "Search for exact online odds first; if absent, build a transparent "
+            "base-rate estimate from provided match context."
+        )
+
+    player = intent.get("player")
+    if player and player != "None":
+        focus.append(
+            f"Confirm {player}'s official lineup status, expected role/minutes, "
+            "recent player_form row, and direct player-prop odds."
+        )
+    if "shot on target" in lower or "shots on target" in lower:
+        focus.append(
+            "Search exact shots-on-target stat markets, including bookmaker "
+            "statistics pages and player/team total SOT lines."
+        )
+    if "corner" in lower:
+        focus.append(
+            "Check corner totals/team-corner markets and tactical width/territory "
+            f"for {home} vs {away}."
+        )
+    if any(term in lower for term in ("card", "booking", "penalty kick", "red card")):
+        focus.append(
+            "Use referee_profile, official referee assignment, discipline context, "
+            "and direct card/penalty/red-card odds or specials."
+        )
+    if any(term in lower for term in ("header", "outside the box", "own goal")):
+        focus.append(
+            "Search goal-method specials first, then compare empirical goal-method "
+            "rates with attacking personnel and set-piece/aerial context."
+        )
+    if "advance" in lower:
+        focus.append(
+            "Respect to_advance scope: include extra time and penalties; compare "
+            "qualification prices with 90-minute odds only as related context."
+        )
+    if guidance:
+        focus.append("Follow adjustment_guidance exactly for search terms and levers.")
+    return focus
+
+
+def _focused_context(
+    intent: dict | None,
+    question: str,
+    context: dict,
+    match_meta: dict,
+    home: str,
+    away: str,
+) -> dict:
+    """Small context excerpt for a per-question subagent packet."""
+    intent = intent or {}
+    focused: dict[str, dict | list | str] = {}
+    player = intent.get("player")
+    if player and player != "None":
+        target_player = {"name": player}
+        form_row = _find_player_context(context, player)
+        if form_row:
+            target_player["provided_player_form"] = form_row
+        lineup_status = _lineup_status(match_meta.get("lineups"), player)
+        if lineup_status:
+            target_player["lineup_status"] = lineup_status
+        focused["target_player"] = target_player
+
+    team_form = context.get("team_form") or {}
+    relevant_team_form = _relevant_team_form(
+        intent, question, team_form, home=home, away=away,
+    )
+    if relevant_team_form:
+        focused["team_form"] = relevant_team_form
+
+    if _needs_referee_context(intent, question) and context.get("referee_profile"):
+        focused["referee_profile"] = context["referee_profile"]
+
+    injuries = context.get("injuries") or {}
+    relevant_injuries = {
+        side: rows for side, rows in injuries.items()
+        if side in ("home", "away") and rows
+    }
+    if relevant_injuries and (
+        player or _needs_team_context(question) or _needs_referee_context(intent, question)
+    ):
+        focused["injuries"] = relevant_injuries
+
+    return focused
+
+
+def _find_player_context(context: dict, player: str) -> dict | None:
+    index = context.get("player_index") or {}
+    player_key = _name_key(player)
+    for name, row in index.items():
+        if _name_matches(player_key, name):
+            return row
+    for rows in (context.get("player_form") or {}).values():
+        for row in rows or []:
+            if _name_matches(player_key, row.get("name")):
+                return row
+    return None
+
+
+def _lineup_status(lineups: dict | None, player: str) -> dict | None:
+    if not lineups:
+        return None
+    player_key = _name_key(player)
+    for team, summary in lineups.items():
+        for group, status in (
+            ("starting_xi", "starting_xi"),
+            ("bench", "bench"),
+        ):
+            for candidate in summary.get(group) or []:
+                if _name_matches(player_key, candidate):
+                    return {"team": team, "status": status, "matched_name": candidate}
+    return {"status": "not_listed_in_confirmed_lineups"}
+
+
+def _relevant_team_form(
+    intent: dict,
+    question: str,
+    team_form: dict,
+    *,
+    home: str,
+    away: str,
+) -> dict:
+    if not team_form:
+        return {}
+    subject = intent.get("subject")
+    include_both = _needs_team_context(question) or subject in ("match", None)
+    sides: list[str]
+    if include_both:
+        sides = ["home", "away"]
+    elif subject in ("home", "away"):
+        sides = [subject, "away" if subject == "home" else "home"]
+    else:
+        sides = []
+    names = {"home": home, "away": away}
+    return {
+        side: {"team": names[side], "form": team_form[side]}
+        for side in sides
+        if side in team_form and team_form.get(side)
+    }
+
+
+def _needs_team_context(question: str) -> bool:
+    lower = question.lower()
+    return any(term in lower for term in (
+        "goal", "score", "shot", "corner", "advance", "win", "half",
+        "total", "possession", "offside", "foul",
+    ))
+
+
+def _needs_referee_context(intent: dict, question: str) -> bool:
+    lower = question.lower()
+    market = intent.get("market")
+    return market in {"team_cards"} or any(term in lower for term in (
+        "card", "booking", "penalty kick", "red card", "foul",
+    ))
+
+
+def _name_key(value) -> str:
+    if value is None:
+        return ""
+    normalized = unicodedata.normalize("NFKD", str(value))
+    ascii_value = normalized.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", "", ascii_value.lower())
+
+
+def _name_matches(target_key: str, candidate) -> bool:
+    candidate_key = _name_key(candidate)
+    return bool(
+        target_key
+        and candidate_key
+        and (
+            target_key == candidate_key
+            or target_key in candidate_key
+            or candidate_key in target_key
+        )
+    )
 
 
 def _player_form_guidance(intent: dict | None) -> str | None:

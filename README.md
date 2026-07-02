@@ -36,6 +36,9 @@ The main boundaries are:
    simulator fallback when that exact contract is supported, plus structured
    match context in one JSON file. Unsupported goal-method props are left
    explicitly empty for audited web research rather than matched approximately.
+   Each market also carries a stable `Qn` label, a starting-price
+   `decision_basis`, and a `subagent_brief` so manual runs can split
+   question-specific research cleanly.
 4. `simulator/` contains the learned-rate simulator source, lean training
    pipeline, compact training tables, configuration, and fitted artifacts.
    `bot/simulator.py` invokes it through a JSON child-process boundary so
