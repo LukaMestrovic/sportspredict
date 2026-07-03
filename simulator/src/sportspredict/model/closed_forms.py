@@ -35,8 +35,11 @@ def frailty_nodes(var: float, m: int = 64) -> np.ndarray:
 
 
 def _clip_rho_scalar(mu_a: float, mu_b: float, rho: float) -> float:
-    lo = max(-1.0 / mu_a, -1.0 / mu_b) + _EPS
-    hi = min(1.0 / (mu_a * mu_b), 1.0) - _EPS
+    lo00 = -1.0 / (mu_a * mu_b) if mu_a > 0.0 and mu_b > 0.0 else float("-inf")
+    hi01 = 1.0 / mu_a if mu_a > 0.0 else float("inf")
+    hi10 = 1.0 / mu_b if mu_b > 0.0 else float("inf")
+    lo = max(lo00, -1.0) + _EPS
+    hi = min(hi01, hi10) - _EPS
     return float(np.clip(rho, lo, hi))
 
 
@@ -46,10 +49,10 @@ def _dc_joint(mu_a: float, mu_b: float, rho: float, k: int) -> np.ndarray:
     joint = np.outer(stats.poisson.pmf(x, mu_a), stats.poisson.pmf(x, mu_b))
     if rho != 0.0:
         r = _clip_rho_scalar(mu_a, mu_b, rho)
-        joint[0, 0] *= 1.0 - mu_a * mu_b * r
-        joint[0, 1] *= 1.0 + mu_a * r
-        joint[1, 0] *= 1.0 + mu_b * r
-        joint[1, 1] *= 1.0 - r
+        joint[0, 0] *= 1.0 + mu_a * mu_b * r
+        joint[0, 1] *= 1.0 - mu_a * r
+        joint[1, 0] *= 1.0 - mu_b * r
+        joint[1, 1] *= 1.0 + r
     return joint / joint.sum()
 
 

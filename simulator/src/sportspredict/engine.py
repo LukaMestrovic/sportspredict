@@ -9,6 +9,7 @@ shrink weight of 0, so they are pure model.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections.abc import Iterable
 
 import numpy as np
 
@@ -90,7 +91,7 @@ class Engine:
         key = (
             ctx.team_a, ctx.team_b, ctx.elo_a, ctx.elo_b, ctx.stage,
             ctx.host_a, ctx.host_b, ctx.referee_card_mult, ctx.referee_foul_mult,
-            ctx.referee_pen_mult, n,
+            ctx.referee_pen_mult, _rate_mult_key(ctx), n,
         )
         if key not in self._sim_cache:
             rates = self.rate_model.build(ctx)
@@ -164,6 +165,27 @@ def _threshold_matches_line(comp: str, threshold: float, line: float) -> bool:
     if comp == "<=":
         return threshold + 0.5 == line
     return False
+
+
+def _rate_mult_key(ctx: MatchContext) -> tuple:
+    """Cache key component for odds-anchor multipliers stored on ``ctx.extra``."""
+    raw = (ctx.extra or {}).get("rate_mult")
+    if not isinstance(raw, dict) or not raw:
+        return ()
+
+    def freeze(value):
+        if isinstance(value, Iterable) and not isinstance(value, (str, bytes, dict)):
+            return tuple(round(float(v), 12) for v in value)
+        return round(float(value), 12)
+
+    items = []
+    for stat, value in sorted(raw.items()):
+        try:
+            frozen = freeze(value)
+        except (TypeError, ValueError):
+            frozen = repr(value)
+        items.append((str(stat), frozen))
+    return tuple(items)
 
 
 def _notes(spec: MarketSpec, p_market: float | None, weight: float) -> str:

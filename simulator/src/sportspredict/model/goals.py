@@ -5,8 +5,9 @@ Generative definition (per simulated match):
 
 1. Full-match goal means are the per-team goal rates scaled by the shared tempo frailty.
 2. Full-match goal totals ``(X, Y)`` are drawn from a Dixon-Coles bivariate Poisson — an
-   independent Poisson pair reweighted by ``tau`` on the four low-score cells, which lifts
-   0-0/1-1 and lowers 1-0/0-1 to calibrate draws. Sampled exactly by rejection.
+   independent Poisson pair reweighted by ``tau`` on the four low-score cells. Positive
+   ``rho`` lifts 0-0/1-1 and lowers 1-0/0-1 to calibrate draws. Sampled exactly by
+   rejection.
 3. Each total is split across halves by a binomial with the half-share probability (the
    exact conditional half allocation of a Poisson total).
 4. Knockout matches tied after regulation play 30' of extra time (rates scaled by
@@ -24,9 +25,13 @@ _EPS = 1e-9
 
 
 def _clip_rho(mu_a: np.ndarray, mu_b: np.ndarray, rho: float) -> np.ndarray:
-    """Clip the DC correlation per sim so all four tau cells stay non-negative."""
-    lo = np.maximum(-1.0 / mu_a, -1.0 / mu_b) + _EPS
-    hi = np.minimum(np.minimum(1.0 / (mu_a * mu_b), 1.0), 1.0) - _EPS
+    """Clip the draw-lift parameter per sim so all four tau cells stay non-negative."""
+    with np.errstate(divide="ignore", invalid="ignore"):
+        lo00 = np.where(mu_a * mu_b > 0.0, -1.0 / (mu_a * mu_b), -np.inf)
+        hi01 = np.where(mu_a > 0.0, 1.0 / mu_a, np.inf)
+        hi10 = np.where(mu_b > 0.0, 1.0 / mu_b, np.inf)
+    lo = np.maximum(lo00, -1.0) + _EPS
+    hi = np.minimum(hi01, hi10) - _EPS
     return np.clip(np.full_like(mu_a, rho), lo, hi)
 
 
@@ -39,10 +44,10 @@ def _tau(
     m01 = (x == 0) & (y == 1)
     m10 = (x == 1) & (y == 0)
     m11 = (x == 1) & (y == 1)
-    tau[m00] = (1.0 - mu_a * mu_b * rho)[m00]
-    tau[m01] = (1.0 + mu_a * rho)[m01]
-    tau[m10] = (1.0 + mu_b * rho)[m10]
-    tau[m11] = (1.0 - rho)[m11]
+    tau[m00] = (1.0 + mu_a * mu_b * rho)[m00]
+    tau[m01] = (1.0 - mu_a * rho)[m01]
+    tau[m10] = (1.0 - mu_b * rho)[m10]
+    tau[m11] = (1.0 + rho)[m11]
     return tau
 
 
@@ -57,19 +62,17 @@ def sample_dixon_coles(
 
     rho_eff = _clip_rho(mu_a, mu_b, rho)
     # Per-sim acceptance ceiling = max tau over the four special cells and the bulk (=1).
-    tau00 = 1.0 - mu_a * mu_b * rho_eff
-    tau01 = 1.0 + mu_a * rho_eff
-    tau10 = 1.0 + mu_b * rho_eff
-    tau11 = 1.0 - rho_eff
+    tau00 = 1.0 + mu_a * mu_b * rho_eff
+    tau01 = 1.0 - mu_a * rho_eff
+    tau10 = 1.0 - mu_b * rho_eff
+    tau11 = 1.0 + rho_eff
     ceil = np.maximum.reduce(
         [np.ones_like(mu_a), tau00, tau01, tau10, tau11]
     )
 
     pending = np.ones(mu_a.shape[0], dtype=bool)
-    for _ in range(64):
+    while pending.any():
         idx = np.nonzero(pending)[0]
-        if idx.size == 0:
-            break
         tau = _tau(x[idx], y[idx], mu_a[idx], mu_b[idx], rho_eff[idx])
         u = rng.random(idx.size)
         accept = u < (tau / ceil[idx])
