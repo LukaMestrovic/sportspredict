@@ -245,6 +245,8 @@ def _submit(args) -> None:
         print(f"MATCH={session['match'].get('name', session['match']['id'])}")
         print(f"KICKOFF={kickoff.isoformat()}")
         print(f"EVIDENCE_PATH={_host_path(result.evidence_path)}")
+        if result.llm_match_read_path:
+            print(f"MATCH_READ_PATH={_host_path(result.llm_match_read_path)}")
         print(f"LLM_AUDIT_PATH={_host_path(result.llm_pricing_audit_path)}")
         print(f"LLM_REPORT_PATH={_host_path(result.llm_pricing_report_path)}")
         print(f"LEDGER_RUN_ID={run_id}")
@@ -379,6 +381,7 @@ def _result_from_session(session: dict) -> MatchResult:
         oa_observations=session.get("oa_observations") or [],
         evidence_path=session.get("evidence_path"),
         evidence_hash=session.get("evidence_hash"),
+        llm_match_read_path=session.get("llm_match_read_path"),
     )
 
 
@@ -402,15 +405,17 @@ def _chatgpt_request(evidence_json: dict, evidence_path: str) -> str:
         "## Manual instruction\n\n"
         "Execute `prompts/llm_pricing_prompt.md` as the full task specification. "
         "Use the provided evidence JSON as MATCH EVIDENCE JSON. This request is "
-        "designed for a main agent plus one question-specific subagent per "
-        "`question_evidence` item; use each item's `question_id`, "
-        "`decision_basis`, and `subagent_brief` as the delegation packet. If "
-        "subagent tooling is unavailable, emulate the same isolated per-question "
-        "passes yourself.\n\n"
+        "designed for one prompt-only main agent that first prices base "
+        "probabilities, then creates an extensive match-read markdown through "
+        "aspect subagents/emulated aspect passes, then performs one "
+        "question-specific adjustment pass per `question_evidence` item. Use "
+        "each item's `question_id`, `decision_basis`, and `subagent_brief` as "
+        "the delegation packet.\n\n"
         "Run pre-kickoff web research where required. Return ONLY valid JSON "
         "matching the prompt output schema: top-level `briefing`, `sources`, "
-        "and `markets`. Include one market object for every `market_id` in "
-        "`question_evidence`.\n\n"
+        "`match_read_markdown`, `match_read_sources`, and `markets`. Include "
+        "one market object for every `market_id` in `question_evidence`, with "
+        "`base_probability_int` and `language_adjustment` on every market.\n\n"
         "Do not include prose outside JSON. Do not reveal private chain-of-"
         "thought; keep reasoning in concise public audit summaries.\n\n"
         "## prompts/llm_pricing_prompt.md\n\n"

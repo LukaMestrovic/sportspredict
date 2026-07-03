@@ -56,6 +56,7 @@ class MatchResult:
     llm_pricing_response: dict | None = None
     llm_pricing_audit_path: str | None = None
     llm_pricing_report_path: str | None = None
+    llm_match_read_path: str | None = None
 
 
 class PlatformVerificationError(RuntimeError):

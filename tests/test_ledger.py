@@ -37,6 +37,7 @@ class LedgerRecordingTests(unittest.TestCase):
         self.assertEqual(run["match_id"], "match")
         self.assertEqual(run["evidence_path"], "logs/llm_pricing_runs/evidence.json")
         self.assertEqual(run["evidence_hash"], "hash123")
+        self.assertEqual(run["llm_match_read_path"], "logs/llm_pricing_runs/match_read.md")
         self.assertEqual(run["llm_pricing_report_path"], "logs/llm_pricing_runs/audit.md")
         self.assertEqual(json.loads(run["af_odds_json"]), [{"book": "af"}])
         self.assertEqual(json.loads(run["oa_odds_json"]), [{"book": "oa"}])
@@ -121,7 +122,18 @@ def _result(probability=0.634, probability_int=63):
     )
     prediction.llm_audit = {
         "market_id": "a",
+        "base_probability_int": probability_int,
         "probability_int": probability_int,
+        "language_adjustment": {
+            "action": "hold",
+            "direction": "none",
+            "move_points": 0,
+            "confidence": "medium",
+            "base_used": probability_int,
+            "match_read_evidence": [],
+            "additional_research": [],
+            "why_move_or_hold": "base held",
+        },
         "provided_odds_used": [],
         "online_odds_found": [],
         "non_odds_factors_used": [],
@@ -150,6 +162,7 @@ def _result(probability=0.634, probability_int=63):
         oa_observations=[{"book": "oa"}],
         evidence_path="logs/llm_pricing_runs/evidence.json",
         evidence_hash="hash123",
+        llm_match_read_path="logs/llm_pricing_runs/match_read.md",
         llm_pricing_report_path="logs/llm_pricing_runs/audit.md",
     )
 

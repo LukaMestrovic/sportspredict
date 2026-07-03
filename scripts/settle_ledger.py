@@ -25,6 +25,8 @@ def _print_match_detail(detail: dict) -> None:
           f"recorded {run['recorded_at']}  status={run['status']}")
     if run.get("evidence_path"):
         print(f"[evidence] {run['evidence_path']}  hash={run.get('evidence_hash')}")
+    if run.get("llm_match_read_path"):
+        print(f"[match read] {run['llm_match_read_path']}")
     if run.get("llm_pricing_report_path"):
         print(f"[audit] {run['llm_pricing_report_path']}")
     briefing = run.get("llm_pricing_briefing_json")

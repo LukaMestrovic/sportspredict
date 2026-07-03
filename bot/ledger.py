@@ -13,7 +13,7 @@ from .parser import PROMPT_VERSION
 
 
 LEDGER_PATH = config.ROOT / "logs" / "prediction_ledger.sqlite3"
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 def _now() -> str:
@@ -61,6 +61,7 @@ def connect(path: Path = LEDGER_PATH) -> sqlite3.Connection:
             oa_odds_json TEXT NOT NULL,
             evidence_path TEXT,
             evidence_hash TEXT,
+            llm_match_read_path TEXT,
             llm_pricing_audit_path TEXT,
             llm_pricing_report_path TEXT,
             llm_pricing_briefing_json TEXT
@@ -108,6 +109,7 @@ def connect(path: Path = LEDGER_PATH) -> sqlite3.Connection:
     _ensure_columns(db, "runs", (
         ("evidence_path", "TEXT"),
         ("evidence_hash", "TEXT"),
+        ("llm_match_read_path", "TEXT"),
         ("llm_pricing_audit_path", "TEXT"),
         ("llm_pricing_report_path", "TEXT"),
         ("llm_pricing_briefing_json", "TEXT"),
@@ -146,11 +148,11 @@ def record_run(
                 id, recorded_at, event_id, lobby_id, match_id, fixture_id,
                 match_name, home, away, kickoff, window_min, minutes_before,
                 parser_version, parser_model, status, af_odds_json, oa_odds_json,
-                evidence_path, evidence_hash,
+                evidence_path, evidence_hash, llm_match_read_path,
                 llm_pricing_audit_path, llm_pricing_report_path,
                 llm_pricing_briefing_json
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'priced',
-                      ?, ?, ?, ?, ?, ?, ?)""",
+                      ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 run_id, recorded_at, event_id, lobby_id, result.sp_match["id"],
                 fixture_id, result.sp_match.get("name", result.sp_match["id"]),
@@ -159,6 +161,7 @@ def record_run(
                 _json(result.af_books), _json(result.oa_observations),
                 getattr(result, "evidence_path", None),
                 getattr(result, "evidence_hash", None),
+                getattr(result, "llm_match_read_path", None),
                 getattr(result, "llm_pricing_audit_path", None),
                 getattr(result, "llm_pricing_report_path", None),
                 llm_pricing_json,

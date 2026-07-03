@@ -30,7 +30,7 @@ from .pricing import PriceCtx
 
 
 EVIDENCE_DIR = config.ROOT / "logs" / "llm_pricing_runs"
-EVIDENCE_SCHEMA_VERSION = 20
+EVIDENCE_SCHEMA_VERSION = 21
 MIN_BASELINE_COMPARISON_OBSERVATIONS = 30
 
 
@@ -236,17 +236,31 @@ def _adjustment_guidance(
 def _agent_workflow(question_evidence: list[dict]) -> dict:
     """Instructions that make the evidence file easy to split by question."""
     return {
-        "mode": "main_agent_with_question_subagents",
+        "mode": "prompt_only_match_read_then_question_adjustment",
         "main_agent_steps": [
             "Read the full pricing prompt and the whole evidence JSON once.",
-            "Do match-level pre-kickoff research first: official lineups, tactics, "
-            "form, venue/weather, referee, injuries, and broad market prices.",
-            "Spawn one independent subagent per question_evidence item when "
-            "subagent tooling is available.",
-            "Give each subagent the match object, top-level context blocks, the "
-            "match-level research notes, and exactly one question_evidence item.",
-            "Synthesize subagent recommendations, enforce cross-market coherence, "
-            "and return only the final pricing JSON.",
+            "Price a base probability for every question from deterministic "
+            "evidence before applying language research.",
+            "Run match-read aspect subagents, or emulate them in isolated passes, "
+            "for tactics/tempo, lineups/minutes, attack/defence, stats, set "
+            "pieces/goal methods, referee/cards, venue/weather/rest/motivation, "
+            "and broad market consensus.",
+            "Write one extensive markdown match read with sources.",
+            "Run one independent question pass per question_evidence item using "
+            "the match read, the original evidence, and additional targeted web "
+            "research only where it can move that contract.",
+            "Synthesize final probabilities, enforce cross-market coherence, and "
+            "emit base_probability_int, language_adjustment, and probability_int.",
+        ],
+        "match_read_aspect_subagents": [
+            "tactics_tempo_game_state",
+            "lineups_minutes_availability",
+            "attacking_defensive_profile",
+            "stat_market_shape",
+            "set_pieces_goal_methods",
+            "referee_cards_penalties",
+            "venue_weather_rest_motivation",
+            "broad_market_consensus",
         ],
         "subagent_count": len(question_evidence),
         "question_ids": [
@@ -256,7 +270,9 @@ def _agent_workflow(question_evidence: list[dict]) -> dict:
         "subagent_output_contract": {
             "question_id": "Qn",
             "market_id": "SportPredict market id",
+            "base_probability_int": "integer 1..99 before language adjustment",
             "recommended_probability_int": "integer 1..99",
+            "language_adjustment": "move/hold audit versus the base probability",
             "provided_odds_used": "audit list for this question",
             "online_odds_found": "audit list for this question",
             "non_odds_factors_used": "audit list for this question",

@@ -18,6 +18,8 @@ class LLMFinalPricingTests(unittest.TestCase):
         llm_pricing._ask = lambda evidence, **_kw: {
             "briefing": "Home should control territory.",
             "sources": ["https://example.com/preview"],
+            "match_read_markdown": "# Match read\n\nHome should control territory.",
+            "match_read_sources": ["https://example.com/preview"],
             "markets": [_audit("m1", 57)],
         }
         with tempfile.TemporaryDirectory() as tmp:
@@ -37,10 +39,13 @@ class LLMFinalPricingTests(unittest.TestCase):
         self.assertEqual(result.skipped, [])
         self.assertTrue(Path(result.llm_pricing_audit_path).exists())
         self.assertTrue(Path(result.llm_pricing_report_path).exists())
+        self.assertTrue(Path(result.llm_match_read_path).exists())
+        self.assertIn("Home should control territory",
+                      Path(result.llm_match_read_path).read_text())
 
     def test_report_surfaces_provided_context(self):
         llm_pricing._ask = lambda evidence, **_kw: {
-            "briefing": "b", "sources": [], "markets": [_audit("m1", 57)],
+            **_response([_audit("m1", 57)]), "briefing": "b", "sources": [],
         }
         with tempfile.TemporaryDirectory() as tmp:
             result = llm_pricing.price_match(
@@ -55,10 +60,12 @@ class LLMFinalPricingTests(unittest.TestCase):
         self.assertIn("home player form: 1 players", report)
         self.assertIn("structured context available: team form, player form, referee, injuries",
                       report)
+        self.assertIn("match read:", report)
+        self.assertIn("language adjustment:", report)
 
     def test_report_surfaces_simulator_estimate(self):
         llm_pricing._ask = lambda evidence, **_kw: {
-            "briefing": "b", "sources": [], "markets": [_audit("m1", 57)],
+            **_response([_audit("m1", 57)]), "briefing": "b", "sources": [],
         }
         with tempfile.TemporaryDirectory() as tmp:
             result = llm_pricing.price_match(
@@ -75,16 +82,55 @@ class LLMFinalPricingTests(unittest.TestCase):
     def test_missing_audit_field_skips_market(self):
         bad = _audit("m1", 57)
         bad.pop("online_odds_found")
-        llm_pricing._ask = lambda evidence, **_kw: {"markets": [bad]}
+        llm_pricing._ask = lambda evidence, **_kw: _response([bad])
         result = llm_pricing.price_match(_result(), _evidence(), None, 30.0, force=True)
         self.assertEqual(result.predictions, [])
         self.assertEqual(result.skip_reasons["m1"],
                          "LLM pricing missing audit field: online_odds_found")
 
-    def test_precollected_online_odds_candidate_must_be_used(self):
+    def test_missing_match_read_skips_all_markets(self):
         llm_pricing._ask = lambda evidence, **_kw: {
             "briefing": "b", "sources": [], "markets": [_audit("m1", 57)],
         }
+        result = llm_pricing.price_match(_result(), _evidence(), None, 30.0, force=True)
+        self.assertEqual(result.predictions, [])
+        self.assertEqual(result.skip_reasons["m1"],
+                         "LLM pricing missing match_read_markdown")
+
+    def test_missing_language_adjustment_skips_market(self):
+        bad = _audit("m1", 57)
+        bad.pop("language_adjustment")
+        llm_pricing._ask = lambda evidence, **_kw: _response([bad])
+        result = llm_pricing.price_match(_result(), _evidence(), None, 30.0, force=True)
+        self.assertEqual(result.predictions, [])
+        self.assertEqual(result.skip_reasons["m1"],
+                         "LLM pricing missing language_adjustment object")
+
+    def test_base_final_move_mismatch_skips_market(self):
+        bad = _audit("m1", 57, base=55, move=1, direction="up")
+        llm_pricing._ask = lambda evidence, **_kw: _response([bad])
+        result = llm_pricing.price_match(_result(), _evidence(), None, 30.0, force=True)
+        self.assertEqual(result.predictions, [])
+        self.assertEqual(result.skip_reasons["m1"],
+                         "LLM pricing language_adjustment move does not match final probability")
+
+    def test_direct_odds_move_cap_violation_skips_market(self):
+        bad = _audit("m1", 62, base=55, move=7, direction="up")
+        llm_pricing._ask = lambda evidence, **_kw: _response([bad])
+        result = llm_pricing.price_match(_result(), _evidence(), None, 30.0, force=True)
+        self.assertEqual(result.predictions, [])
+        self.assertEqual(result.skip_reasons["m1"],
+                         "LLM pricing language_adjustment move exceeds 5 point cap")
+
+    def test_direct_odds_move_within_cap_is_accepted(self):
+        audit = _audit("m1", 59, base=55, move=4, direction="up")
+        llm_pricing._ask = lambda evidence, **_kw: _response([audit])
+        result = llm_pricing.price_match(_result(), _evidence(), None, 30.0, force=True)
+        self.assertEqual(len(result.predictions), 1)
+        self.assertEqual(result.predictions[0].probability_int, 59)
+
+    def test_precollected_online_odds_candidate_must_be_used(self):
+        llm_pricing._ask = lambda evidence, **_kw: _response([_audit("m1", 57)])
         result = llm_pricing.price_match(
             _result(), _evidence(with_online_candidate=True),
             None, 30.0, force=True,
@@ -106,9 +152,7 @@ class LLMFinalPricingTests(unittest.TestCase):
             "conversion_method": "same-book over/under de-vig",
             "how_used": "direct online price",
         }]
-        llm_pricing._ask = lambda evidence, **_kw: {
-            "briefing": "b", "sources": [], "markets": [audit],
-        }
+        llm_pricing._ask = lambda evidence, **_kw: _response([audit])
         result = llm_pricing.price_match(
             _result(), _evidence(with_online_candidate=True),
             None, 30.0, force=True,
@@ -119,7 +163,7 @@ class LLMFinalPricingTests(unittest.TestCase):
     def test_leak_guard_refuses_after_kickoff(self):
         calls = []
         llm_pricing._ask = (
-            lambda evidence, **_kw: calls.append(1) or {"markets": [_audit("m1", 57)]}
+            lambda evidence, **_kw: calls.append(1) or _response([_audit("m1", 57)])
         )
         result = llm_pricing.price_match(_result(), _evidence(), None, -1.0, force=True)
         self.assertEqual(calls, [])
@@ -130,7 +174,7 @@ class LLMFinalPricingTests(unittest.TestCase):
         seen = []
         llm_pricing._ask = (
             lambda evidence, **kw: seen.append(kw.get("refresh"))
-            or {"markets": [_audit("m1", 57)]}
+            or _response([_audit("m1", 57)])
         )
         llm_pricing.price_match(
             _result(), _evidence(), None, 30.0, force=True, refresh=True,
@@ -138,10 +182,41 @@ class LLMFinalPricingTests(unittest.TestCase):
         self.assertEqual(seen, [True])
 
 
-def _audit(market_id, probability):
+def _response(markets):
+    return {
+        "briefing": "Home should control territory.",
+        "sources": ["https://example.com/preview"],
+        "match_read_markdown": "# Match read\n\nHome should control territory.",
+        "match_read_sources": ["https://example.com/preview"],
+        "markets": markets,
+    }
+
+
+def _audit(market_id, probability, *, base=55, move=2, direction="up"):
+    action = "hold" if move == 0 else "move"
+    if move == 0:
+        direction = "none"
     return {
         "market_id": market_id,
+        "base_probability_int": base,
         "probability_int": probability,
+        "language_adjustment": {
+            "action": action,
+            "direction": direction,
+            "move_points": move,
+            "confidence": "medium",
+            "base_used": base,
+            "match_read_evidence": [
+                {
+                    "aspect": "lineups",
+                    "source": "provided evidence",
+                    "effect": "raises",
+                    "why": "strong home XI supports the move",
+                }
+            ] if move else [],
+            "additional_research": [],
+            "why_move_or_hold": "match read supports the adjustment.",
+        },
         "provided_odds_used": [{"source": "api-football", "bookmaker": "Bet365"}],
         "online_odds_found": [],
         "non_odds_factors_used": [{"factor": "lineup", "source": "provided evidence"}],

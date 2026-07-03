@@ -9,28 +9,34 @@ factors used, evidence ignored or downweighted, reasoning summary, and sources.
 
 ## Operating Mode
 
-Use a main-agent plus question-subagent workflow whenever your environment has
-subagent tools:
+Use one prompt-only main-agent workflow. If your environment has no real
+subagent tools, emulate the subagents internally through isolated passes. Do not
+mention hidden chain-of-thought in the final answer.
 
-1. The main agent reads this prompt and the full evidence JSON once.
-2. The main agent performs match-level research first: official lineups, team
-   news, tactical setup, form, venue/weather, referee, and broad market prices.
-3. The main agent spawns exactly one independent subagent for each item in
-   `question_evidence` (`Q1`, `Q2`, ...). Pass each subagent:
-   - the match object;
-   - top-level context blocks (`team_form`, `player_form`, `referee_profile`,
-     `injuries`);
-   - the match-level research notes and URLs;
-   - exactly one `question_evidence` object, especially its `subagent_brief`,
-     `decision_basis`, `adjustment_guidance`, odds, and simulator fields.
-4. Each subagent researches and prices only its assigned question, then returns a
-   concise audit memo to the main agent.
-5. The main agent reconciles the subagent memos, checks cross-market coherence,
-   and emits the final JSON only.
-
-If no subagent tool exists, emulate the same workflow internally by making one
-isolated pass per `question_evidence` item. Do not mention subagents in the final
-answer.
+1. Read this prompt and the full evidence JSON once.
+2. Make a base pricing pass for every `question_evidence` item from only the
+   deterministic evidence hierarchy below. Record this as `base_probability_int`.
+3. Conduct a deep pre-kickoff match read. Split the research into aspect
+   subagents, real or emulated, covering:
+   - tactics, tempo, expected game state, pressing, transition profile;
+   - official/predicted lineups, minutes, role changes, injuries, suspensions;
+   - attacking and defensive form, xG/shot quality, territory and set pieces;
+   - stat-market shape for shots, shots on target, corners, fouls, offsides,
+     saves, goal kicks, throw-ins, tackles, and similar count markets;
+   - goal-method and set-piece mechanisms including headers, own goals, outside
+     the box/area, braces, scorer/assist involvement, and substitutes;
+   - referee, cards, penalties, VAR, discipline, and game-control profile;
+   - venue, pitch, roof, weather, travel/rest, motivation, group/knockout state;
+   - broad market consensus from liquid match, team, player, and specials odds.
+4. Synthesize the aspect notes into one extensive `match_read_markdown` file.
+   It must be written as public markdown with sections, source links, and clear
+   language about how the game is expected to play.
+5. For each question, make one isolated question-adjustment pass. Give it the
+   original evidence item, the match read, and any additional targeted web
+   research that can affect that exact contract. It must decide whether language
+   research should move or hold the base.
+6. The main agent then reconciles question recommendations, checks cross-market
+   coherence, applies the movement guardrails, and emits the final JSON only.
 
 ## Contract Scope Is Strict
 
@@ -49,6 +55,8 @@ answer.
 ## Pricing Hierarchy
 
 For every question, follow `decision_basis` and `subagent_brief.research_focus`.
+The first result of this hierarchy is `base_probability_int`; only the later
+language-adjustment pass may move it.
 
 1. If `direct_odds` exists, use its de-vigged `probability_pct` values as the
    primary price spread. Give more weight to liquid, independent books with
@@ -75,23 +83,39 @@ For every question, follow `decision_basis` and `subagent_brief.research_focus`.
 Do not average blindly. Weigh liquidity, independence, scope match, freshness,
 lineup certainty, tactical fit, weather/venue, referee, and sample size.
 
-## Question-Subagent Instructions
+## Question-Adjustment Instructions
 
 For each assigned question, the subagent should:
 
 - Price only the assigned YES contract.
-- Use `subagent_brief.starting_point` as the starting-price instruction.
+- Use `subagent_brief.starting_point` as the base-price instruction.
 - Follow `adjustment_guidance` exactly when present; it names the search terms
   and levers most likely to move this market.
 - Search online only for information that can affect this market.
 - Convert every online price used into probability and state the method.
 - Keep stale, wrong-scope, affiliate/tipster, or post-kickoff information out of
   the price or list it as ignored/downweighted.
-- Return an audit memo with the same fields required for the final market JSON.
+- Return an audit memo with `base_probability_int`, `language_adjustment`, and
+  the same audit fields required for the final market JSON.
 
 The main agent may change a subagent recommendation only for a clear reason:
 cross-market coherence, stronger match-level evidence, better direct odds, or a
 settlement-scope correction.
+
+## Movement Guardrails
+
+Use `language_adjustment` to explain exactly how the match read moved the base.
+
+- Direct provider odds primary: maximum move is 5 probability points.
+- Pre-collected online odds primary: maximum move is 6 probability points.
+- Simulator/calibrated/no-odds primary: maximum move is 10 probability points.
+- A non-zero move must include non-empty `match_read_evidence` and a clear
+  `why_move_or_hold`.
+- Holding the base is often correct. Do not move merely because a source is
+  interesting; move only when the language evidence changes the expected game
+  script for the exact settlement contract.
+- `probability_int` must equal `base_probability_int` plus or minus
+  `language_adjustment.move_points` according to `direction`.
 
 ## Research Requirements
 
@@ -213,11 +237,37 @@ object when present.
 {
   "briefing": "Short match-level read: game state, tempo/goals, cards/fouls, tactical/weather/lineup notes.",
   "sources": ["match-level source URL", "..."],
+  "match_read_markdown": "# Match read: Team A vs Team B\n\nExtensive public markdown...",
+  "match_read_sources": ["match-read source URL", "..."],
   "markets": [
     {
       "question_id": "Q1",
       "market_id": "<id>",
+      "base_probability_int": <integer 1..99>,
       "probability_int": <integer 1..99>,
+      "language_adjustment": {
+        "action": "hold or move",
+        "direction": "none, up, or down",
+        "move_points": <integer >= 0>,
+        "confidence": "low, medium, or high",
+        "base_used": <same integer as base_probability_int>,
+        "match_read_evidence": [
+          {
+            "aspect": "lineups/tactics/referee/weather/etc.",
+            "source": "URL or 'provided evidence'",
+            "effect": "raises/lowers/holds",
+            "why": "language mechanism tied to this exact contract"
+          }
+        ],
+        "additional_research": [
+          {
+            "source": "URL or 'none'",
+            "finding": "question-specific pre-kickoff finding",
+            "effect": "raises/lowers/holds"
+          }
+        ],
+        "why_move_or_hold": "Public explanation of why final probability moved or stayed at the base."
+      },
       "provided_odds_used": [
         {
           "source": "odds-api or api-football",

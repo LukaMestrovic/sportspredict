@@ -280,6 +280,7 @@ def _write_audit(head, kickoff, window, mins, outcome, by_src, result, run_id) -
         "evidence_path": getattr(result, "evidence_path", None),
         "evidence_hash": getattr(result, "evidence_hash", None),
         "lineups_available": _result_has_lineups(result),
+        "llm_match_read_path": getattr(result, "llm_match_read_path", None),
         "llm_pricing_audit_path": getattr(result, "llm_pricing_audit_path", None),
         "llm_pricing_report_path": getattr(result, "llm_pricing_report_path", None),
         "llm_pricing_briefing": getattr(result, "llm_pricing_briefing", None),
@@ -308,6 +309,8 @@ def _write_llm_pricing_report(head, kickoff, mins, result, run_id) -> None:
     ]
     if getattr(result, "evidence_path", None):
         lines.append(f"[evidence] {result.evidence_path}")
+    if getattr(result, "llm_match_read_path", None):
+        lines.append(f"[match read] {result.llm_match_read_path}")
     if getattr(result, "llm_pricing_report_path", None):
         lines.append(f"[full audit] {result.llm_pricing_report_path}")
     if getattr(result, "llm_pricing_briefing", None):

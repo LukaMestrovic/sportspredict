@@ -33,6 +33,8 @@ def main() -> None:
             print(f"\n=== {head} ===")
             if r.evidence_path:
                 print(f"  [evidence] {r.evidence_path}")
+            if r.llm_match_read_path:
+                print(f"  [match read] {r.llm_match_read_path}")
             if r.llm_pricing_report_path:
                 print(f"  [audit] {r.llm_pricing_report_path}")
             for p in r.predictions:

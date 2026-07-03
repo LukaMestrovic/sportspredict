@@ -1,10 +1,9 @@
 """Auditable LLM pricing from match evidence.
 
 This layer receives the deterministic evidence JSON for one match and returns
-the submitted probabilities. It does not tilt anchors: every priced
-prediction must have a complete per-market audit showing provided odds used,
-online odds found, non-odds factors, downweighted evidence, and a concise
-reasoning summary.
+the submitted probabilities. The model first prices a base from the evidence,
+then writes a researched match read and may move probabilities only through a
+complete, validator-checked language-adjustment audit.
 """
 from __future__ import annotations
 
@@ -21,9 +20,10 @@ from . import cache, config
 from .pipeline import Prediction
 
 
-LLM_PRICING_VERSION = "lp6"
+LLM_PRICING_VERSION = "lp7"
 MODEL = os.environ.get("LLM_PRICING_MODEL", "gpt-5.5")
 REASONING_EFFORT = os.environ.get("LLM_PRICING_REASONING_EFFORT", "high")
+SEARCH_CONTEXT_SIZE = os.environ.get("LLM_PRICING_SEARCH_CONTEXT_SIZE", "medium")
 PROMPT_PATH = config.ROOT / "prompts" / "llm_pricing_prompt.md"
 ENABLED = os.environ.get("LLM_PRICING_ENABLED", "1") != "0"
 # Read timeout (seconds) for the single per-match OpenAI call. This model does
@@ -55,8 +55,9 @@ _prompt_cache: str | None = None
 
 _FALLBACK_PROMPT = """You are a football probability analyst. Price every binary
 SportPredict market from the supplied evidence JSON plus web research. Return
-only JSON with a market entry for every market_id. Include probability_int 1-99
-and a complete audit: provided_odds_used, online_odds_found,
+only JSON with match_read_markdown, match_read_sources, and a market entry for
+every market_id. Include base_probability_int, probability_int 1-99, a complete
+language_adjustment audit, provided_odds_used, online_odds_found,
 non_odds_factors_used, ignored_or_downweighted_evidence, reasoning_summary, and
 sources. When no direct odds exist, use simulator_estimate.calibrated_baseline
 as the base when present. Do not mention hidden reasoning or chain-of-thought."""
@@ -77,6 +78,8 @@ def _cache_key(match_id: str) -> str:
     return json.dumps({
         "v": LLM_PRICING_VERSION,
         "model": MODEL,
+        "reasoning_effort": REASONING_EFFORT,
+        "search_context_size": SEARCH_CONTEXT_SIZE,
         "match_id": match_id,
         "prompt_sha": prompt_sha,
     }, sort_keys=True)
@@ -121,7 +124,7 @@ def _record_usage(data: dict) -> None:
 def _call_llm(evidence: dict) -> dict:
     payload = {
         "model": MODEL,
-        "tools": [{"type": "web_search", "search_context_size": "low"}],
+        "tools": [{"type": "web_search", "search_context_size": SEARCH_CONTEXT_SIZE}],
         "reasoning": {"effort": REASONING_EFFORT},
         "input": f"{_load_prompt()}\n\nMATCH EVIDENCE JSON:\n"
                  f"{json.dumps(evidence, ensure_ascii=False)}",
@@ -195,6 +198,13 @@ def apply_pricing_response(
     model_label: str | None = None,
 ):
     """Validate an audited pricing JSON response and attach predictions."""
+    match_read = str(response.get("match_read_markdown") or "").strip()
+    if not match_read:
+        _skip_all(result, "LLM pricing missing match_read_markdown")
+        if require_all_markets:
+            raise ValueError("LLM pricing missing match_read_markdown")
+        return result
+
     markets = response.get("markets")
     if not isinstance(markets, list):
         _skip_all(result, "LLM pricing returned no markets list")
@@ -249,21 +259,28 @@ def apply_pricing_response(
         problems = "; ".join(f"{q}: {why}" for q, why in result.skipped[:5])
         raise ValueError(f"invalid pricing response: {problems}")
 
-    audit_path, report_path = write_audit_bundle(
+    audit_path, report_path, match_read_path = write_audit_bundle(
         result, evidence, evidence_path, response, model_label=model_label,
     )
     result.llm_pricing_audit_path = str(audit_path)
     result.llm_pricing_report_path = str(report_path)
+    result.llm_match_read_path = str(match_read_path)
     return result
 
 
 def validate_market_audit(
     audit: dict, question_evidence: dict | None = None
 ) -> tuple[bool, str, int]:
-    raw_p = audit.get("probability_int")
-    if not isinstance(raw_p, (int, float)):
-        return False, "LLM pricing missing numeric probability_int", 0
-    probability_int = max(1, min(99, round(float(raw_p))))
+    ok, reason, probability_int = _probability_int(
+        audit.get("probability_int"), "probability_int",
+    )
+    if not ok:
+        return False, reason, 0
+    ok, reason, base_probability_int = _probability_int(
+        audit.get("base_probability_int"), "base_probability_int",
+    )
+    if not ok:
+        return False, reason, 0
     for field in REQUIRED_AUDIT_FIELDS:
         value = audit.get(field)
         if value is None:
@@ -272,6 +289,11 @@ def validate_market_audit(
             return False, "LLM pricing missing reasoning summary", 0
         if field != "reasoning_summary" and not isinstance(value, list):
             return False, f"LLM pricing audit field must be a list: {field}", 0
+    ok, reason = _validate_language_adjustment(
+        audit, probability_int, base_probability_int, question_evidence or {},
+    )
+    if not ok:
+        return False, reason, 0
     candidates = (question_evidence or {}).get("online_odds_candidates") or []
     if candidates and not _audit_uses_online_candidate(audit, candidates):
         return (
@@ -280,6 +302,97 @@ def validate_market_audit(
             0,
         )
     return True, "", probability_int
+
+
+def _probability_int(value, field: str) -> tuple[bool, str, int]:
+    if not isinstance(value, (int, float)):
+        return False, f"LLM pricing missing numeric {field}", 0
+    rounded = round(float(value))
+    if abs(float(value) - rounded) > 1e-9:
+        return False, f"LLM pricing {field} must be an integer", 0
+    if rounded < 1 or rounded > 99:
+        return False, f"LLM pricing {field} outside 1-99", 0
+    return True, "", int(rounded)
+
+
+def _validate_language_adjustment(
+    audit: dict,
+    probability_int: int,
+    base_probability_int: int,
+    question_evidence: dict,
+) -> tuple[bool, str]:
+    adjustment = audit.get("language_adjustment")
+    if not isinstance(adjustment, dict):
+        return False, "LLM pricing missing language_adjustment object"
+    required = (
+        "action", "direction", "move_points", "confidence", "base_used",
+        "match_read_evidence", "additional_research", "why_move_or_hold",
+    )
+    for field in required:
+        if field not in adjustment:
+            return False, f"LLM pricing language_adjustment missing field: {field}"
+
+    ok, reason, base_used = _probability_int(adjustment.get("base_used"), "base_used")
+    if not ok:
+        return False, reason
+    if base_used != base_probability_int:
+        return False, "LLM pricing language_adjustment base_used != base_probability_int"
+
+    move_raw = adjustment.get("move_points")
+    if not isinstance(move_raw, (int, float)):
+        return False, "LLM pricing language_adjustment missing numeric move_points"
+    move_points = round(float(move_raw))
+    if abs(float(move_raw) - move_points) > 1e-9 or move_points < 0:
+        return False, "LLM pricing language_adjustment move_points must be a non-negative integer"
+
+    action = str(adjustment.get("action") or "").lower().strip()
+    direction = str(adjustment.get("direction") or "").lower().strip()
+    if action not in {"hold", "move"}:
+        return False, "LLM pricing language_adjustment action must be hold or move"
+    if direction not in {"none", "up", "down"}:
+        return False, "LLM pricing language_adjustment direction must be none, up, or down"
+
+    if direction == "up":
+        expected = base_probability_int + move_points
+    elif direction == "down":
+        expected = base_probability_int - move_points
+    else:
+        expected = base_probability_int
+    if expected != probability_int:
+        return False, "LLM pricing language_adjustment move does not match final probability"
+
+    if move_points == 0:
+        if action != "hold" or direction != "none":
+            return False, "LLM pricing zero move must use action=hold and direction=none"
+    else:
+        if action != "move" or direction == "none":
+            return False, "LLM pricing non-zero move must use action=move and direction up/down"
+        if not str(adjustment.get("why_move_or_hold") or "").strip():
+            return False, "LLM pricing non-zero move missing why_move_or_hold"
+        evidence_items = adjustment.get("match_read_evidence")
+        if not isinstance(evidence_items, list) or not evidence_items:
+            return False, "LLM pricing non-zero move missing match_read_evidence"
+
+    if not str(adjustment.get("why_move_or_hold") or "").strip():
+        return False, "LLM pricing language_adjustment missing why_move_or_hold"
+    if not isinstance(adjustment.get("match_read_evidence"), list):
+        return False, "LLM pricing language_adjustment match_read_evidence must be a list"
+    if not isinstance(adjustment.get("additional_research"), list):
+        return False, "LLM pricing language_adjustment additional_research must be a list"
+
+    cap = _movement_cap(question_evidence)
+    if move_points > cap:
+        return False, f"LLM pricing language_adjustment move exceeds {cap} point cap"
+    return True, ""
+
+
+def _movement_cap(question_evidence: dict) -> int:
+    primary = ((question_evidence.get("decision_basis") or {}).get("primary") or "")
+    if primary == "provided_direct_odds" or question_evidence.get("direct_odds"):
+        return 5
+    if primary == "pre_collected_online_odds" or question_evidence.get("online_odds_candidates"):
+        return 6
+    return 10
 
 
 def _audit_uses_online_candidate(audit: dict, candidates: list[dict]) -> bool:
@@ -308,7 +421,7 @@ def write_audit_bundle(
     *,
     directory: Path | None = None,
     model_label: str | None = None,
-) -> tuple[Path, Path]:
+) -> tuple[Path, Path, Path]:
     directory = directory or config.ROOT / "logs" / "llm_pricing_runs"
     directory.mkdir(parents=True, exist_ok=True)
     match = evidence.get("match", {})
@@ -316,13 +429,19 @@ def write_audit_bundle(
     slug = _slug(f"{match.get('home') or 'home'}_vs_{match.get('away') or 'away'}")
     audit_path = directory / f"{stamp}_{slug}_llm_audit.json"
     report_path = directory / f"{stamp}_{slug}_llm_audit.md"
+    match_read_path = directory / f"{stamp}_{slug}_match_read.md"
 
     model = model_label or MODEL
+    match_read_text = str(response.get("match_read_markdown") or "").strip()
+    match_read_path.write_text(match_read_text + "\n")
+    result.llm_match_read_path = str(match_read_path)
     payload = {
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "model": model,
         "evidence_path": str(evidence_path) if evidence_path else None,
         "evidence_hash": evidence.get("evidence_hash"),
+        "match_read_path": str(match_read_path),
+        "match_read_sources": response.get("match_read_sources") or [],
         "response": response,
         "predictions": [p.llm_audit for p in result.predictions],
         "skipped": [{"question": q, "why": why} for q, why in result.skipped],
@@ -332,7 +451,7 @@ def write_audit_bundle(
         _markdown_report(result, evidence, evidence_path, response, model_label=model)
         + "\n"
     )
-    return audit_path, report_path
+    return audit_path, report_path, match_read_path
 
 
 def _markdown_report(
@@ -352,6 +471,12 @@ def _markdown_report(
         f"- evidence: {evidence_path or 'not written'}",
         f"- evidence hash: {evidence.get('evidence_hash')}",
     ]
+    match_read_path = getattr(result, "llm_match_read_path", None)
+    if match_read_path:
+        lines.append(f"- match read: {match_read_path}")
+    if response.get("match_read_sources"):
+        lines.extend(["", "## Match-read sources", ""])
+        lines.extend(f"- {src}" for src in response.get("match_read_sources", []))
     if response.get("briefing"):
         lines.extend(["", "## Match briefing", "", str(response.get("briefing"))])
     if response.get("sources"):
@@ -380,9 +505,9 @@ def _markdown_report(
             reason = result.skip_reasons.get(mid, "not priced")
             lines.append(f"- skipped: {reason}")
             continue
-        lines.append(
-            f"- probability: {audit.get('probability_int')}%"
-        )
+        lines.append(f"- base probability: {audit.get('base_probability_int')}%")
+        lines.append(f"- final probability: {audit.get('probability_int')}%")
+        _append_language_adjustment(lines, audit.get("language_adjustment"))
         _append_audit_list(lines, "Provided odds used", audit.get("provided_odds_used"))
         _append_audit_list(lines, "Online odds found", audit.get("online_odds_found"))
         _append_audit_list(lines, "Non-odds factors", audit.get("non_odds_factors_used"))
@@ -526,6 +651,26 @@ def _append_audit_list(lines: list[str], title: str, items) -> None:
             lines.append(f"  - {item}")
         else:
             lines.append(f"  - {json.dumps(item, ensure_ascii=False, sort_keys=True)}")
+
+
+def _append_language_adjustment(lines: list[str], adjustment) -> None:
+    lines.append("- language adjustment:")
+    if not isinstance(adjustment, dict):
+        lines.append("  - none")
+        return
+    summary = {
+        key: adjustment.get(key)
+        for key in (
+            "action", "direction", "move_points", "confidence",
+            "base_used", "why_move_or_hold",
+        )
+    }
+    lines.append(f"  - {json.dumps(summary, ensure_ascii=False, sort_keys=True)}")
+    evidence_items = adjustment.get("match_read_evidence") or []
+    if evidence_items:
+        lines.append("  - match_read_evidence:")
+        for item in evidence_items:
+            lines.append(f"    - {json.dumps(item, ensure_ascii=False, sort_keys=True)}")
 
 
 def _skip_all(result, reason: str) -> None:

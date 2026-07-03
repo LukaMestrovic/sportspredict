@@ -94,6 +94,14 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(q["market_id"], "win")
         self.assertEqual(evidence["agent_workflow"]["subagent_count"], 1)
         self.assertEqual(evidence["agent_workflow"]["question_ids"], ["Q1"])
+        self.assertEqual(
+            evidence["agent_workflow"]["mode"],
+            "prompt_only_match_read_then_question_adjustment",
+        )
+        self.assertIn(
+            "tactics_tempo_game_state",
+            evidence["agent_workflow"]["match_read_aspect_subagents"],
+        )
         self.assertEqual(q["decision_basis"]["primary"], "provided_direct_odds")
         self.assertTrue(q["subagent_brief"]["assignment"].startswith("Q1:"))
         self.assertGreaterEqual(len(q["direct_odds"]), 2)
@@ -423,7 +431,7 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(estimates.call_args.kwargs["intents"], result.intents)
         q = evidence["question_evidence"][0]
-        self.assertEqual(evidence["schema_version"], 20)
+        self.assertEqual(evidence["schema_version"], 21)
         self.assertEqual(q["simulator_estimate"], {"probability_pct": 24.1})
         self.assertLess(
             list(q).index("direct_odds"),
@@ -491,7 +499,7 @@ class EvidenceTests(unittest.TestCase):
             )
 
         question = bundle["question_evidence"][0]
-        self.assertEqual(bundle["schema_version"], 20)
+        self.assertEqual(bundle["schema_version"], 21)
         self.assertEqual(question["direct_market_spec"]["bet_id"], 14)
         self.assertEqual(len(question["direct_odds"]), 1)
         self.assertIn("regulation first-team-to-score proxy",
@@ -575,7 +583,7 @@ class ContextEvidenceTests(unittest.TestCase):
         with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
-        self.assertEqual(evidence["schema_version"], 20)
+        self.assertEqual(evidence["schema_version"], 21)
         self.assertEqual(
             list(evidence),
             [

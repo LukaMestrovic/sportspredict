@@ -75,9 +75,11 @@ echo ">> smoke-test image (--status, no submit) ..."
 set -a; . ./.env; set +a
 export LLM_PRICING_MODEL="${LLM_PRICING_MODEL:-gpt-5.5}"
 export LLM_PRICING_REASONING_EFFORT="${LLM_PRICING_REASONING_EFFORT:-high}"
+export LLM_PRICING_SEARCH_CONTEXT_SIZE="${LLM_PRICING_SEARCH_CONTEXT_SIZE:-medium}"
 docker run -i --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -e SPORTSPREDICT_KEY -e APIFOOTBALL_KEY -e ODDS_API_KEY -e OPENAI_API_KEY \
   -e LLM_PRICING_MODEL -e LLM_PRICING_REASONING_EFFORT \
+  -e LLM_PRICING_SEARCH_CONTEXT_SIZE \
   -e SPLLM_HOST_ROOT="$ROOT" \
   -v "$ROOT/cache:/app/cache" -v "$ROOT/logs:/app/logs" \
   "$IMAGE:$TAG" --status
@@ -110,12 +112,14 @@ set -a; . "\$ROOT/.env"; set +a
 : "\${SPORTSPREDICT_KEY:?SPORTSPREDICT_KEY not set in .env}"
 export LLM_PRICING_MODEL="\${LLM_PRICING_MODEL:-gpt-5.5}"
 export LLM_PRICING_REASONING_EFFORT="\${LLM_PRICING_REASONING_EFFORT:-high}"
+export LLM_PRICING_SEARCH_CONTEXT_SIZE="\${LLM_PRICING_SEARCH_CONTEXT_SIZE:-medium}"
 
 mkdir -p "\$ROOT/cache" "\$ROOT/logs"
 exec docker run -i --rm --user "\$(id -u):\$(id -g)" -e HOME=/tmp \\
   -e SPORTSPREDICT_KEY -e APIFOOTBALL_KEY -e ODDS_API_KEY -e OPENAI_API_KEY \\
   -e PARSER_MODEL -e ODDS_REGIONS -e LLM_PRICING_ENABLED -e LLM_PRICING_MODEL \\
-  -e LLM_PRICING_REASONING_EFFORT -e SPLLM_HOST_ROOT="\$ROOT" \\
+  -e LLM_PRICING_REASONING_EFFORT -e LLM_PRICING_SEARCH_CONTEXT_SIZE \\
+  -e SPLLM_HOST_ROOT="\$ROOT" \\
   -e SPORTSPREDICT_SIMULATOR_N_SIMS \\
   -v "\$ROOT/cache:/app/cache" \\
   -v "\$ROOT/logs:/app/logs" \\
