@@ -255,6 +255,17 @@ class KnockoutWordingTests(unittest.TestCase):
         self.assertEqual(first["time_scope"], "full_match")
         self.assertEqual(red["time_scope"], "full_match")
 
+    def test_team_card_90_minute_scope_is_regulation(self):
+        intent = self._parse(
+            "Will France receive at least 1 card (90 minutes + stoppage time)?",
+            "France", "Sweden",
+        )
+        self.assertEqual(
+            (intent["market"], intent["subject"], intent["comparator"],
+             intent["threshold"], intent["period"], intent["time_scope"]),
+            ("team_cards", "home", "gte", 1, "match", "regulation"),
+        )
+
     def test_goal_method_and_team_score_templates_are_deterministic(self):
         own = self._parse(
             "Will an own goal be scored in regulation (90 minutes + stoppage time)?",

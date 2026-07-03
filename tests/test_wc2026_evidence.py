@@ -172,6 +172,18 @@ class WC2026EvidenceTests(unittest.TestCase):
         )
         self.assertEqual(
             wc2026_evidence.labels_for_contract(
+                "count:cards:team:full:>=:1:match", facts,
+            ),
+            [False, True],
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract(
+                "count:cards:team:full:>=:1:reg", facts,
+            ),
+            [False, False],
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract(
                 "total_goals:full:>=:1:match", facts,
             ),
             [True],
