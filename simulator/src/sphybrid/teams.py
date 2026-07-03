@@ -34,7 +34,7 @@ FIFA_CODE_TO_NAME: dict[str, str] = {
     "JPN": "Japan", "KOR": "South Korea", "IRN": "Iran", "AUS": "Australia",
     "KSA": "Saudi Arabia", "QAT": "Qatar", "IRQ": "Iraq", "UAE": "United Arab Emirates",
     "UZB": "Uzbekistan", "JOR": "Jordan", "OMA": "Oman", "BHR": "Bahrain",
-    "CHN": "China PR", "IND": "India",
+    "CHN": "China", "IND": "India",
     # CAF
     "MAR": "Morocco", "SEN": "Senegal", "TUN": "Tunisia", "GHA": "Ghana",
     "CMR": "Cameroon", "NGA": "Nigeria", "EGY": "Egypt", "ALG": "Algeria",

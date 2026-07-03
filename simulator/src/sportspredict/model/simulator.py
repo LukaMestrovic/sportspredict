@@ -44,8 +44,8 @@ def simulate(
     reg_counts = counts.sample_regulation_counts(rng, rates, gt, gp)
     et_counts = counts.sample_et_counts(rng, rates, gt, gp, et_played, et_scale)
 
-    reds = cards.sample_reds(rng, rates, gp, et_played, et_scale)
-    penalties = cards.sample_penalties(rng, rates, gp, et_played, et_scale)
+    reds = cards.sample_reds(rng, rates, gt, gp, et_played, et_scale)
+    penalties = cards.sample_penalties(rng, rates, gt, gp, et_played, et_scale)
 
     # Goals share the same per-half / extra-time storage as the count stats.
     reg_counts[GOALS] = reg_goals

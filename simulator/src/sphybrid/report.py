@@ -454,8 +454,8 @@ def context_from_payload(payload: dict[str, Any], settings: Settings | None = No
     kickoff = str(payload.get("kickoff") or "")
     knockout_after = str(tournament.get("group_stage_end") or "")
     ctx = MatchContext(
-        home,
-        away,
+        canonical_home,
+        canonical_away,
         elo_a=float(elo_table.get(canonical_home, 1500.0)),
         elo_b=float(elo_table.get(canonical_away, 1500.0)),
         stage="knockout" if kickoff and knockout_after and kickoff >= knockout_after else "group",
@@ -463,7 +463,10 @@ def context_from_payload(payload: dict[str, Any], settings: Settings | None = No
         host_b=canonical_away in hosts,
         date=kickoff or None,
     )
-    ctx.extra["aliases"] = {"A": [canonical_home], "B": [canonical_away]}
+    ctx.extra["aliases"] = {
+        "A": [name for name in (home, canonical_home) if name],
+        "B": [name for name in (away, canonical_away) if name],
+    }
 
     if payload.get("stage"):
         ctx.stage = str(payload["stage"])
@@ -477,10 +480,12 @@ def context_from_payload(payload: dict[str, Any], settings: Settings | None = No
     lineups = payload.get("lineups") or {}
     if isinstance(lineups, dict):
         ctx.lineup_a = _lineup_players(
-            lineups.get("A") or lineups.get("home") or lineups.get(home), ctx.team_a,
+            lineups.get("A") or lineups.get("home") or lineups.get(home)
+            or lineups.get(canonical_home), ctx.team_a,
         )
         ctx.lineup_b = _lineup_players(
-            lineups.get("B") or lineups.get("away") or lineups.get(away), ctx.team_b,
+            lineups.get("B") or lineups.get("away") or lineups.get(away)
+            or lineups.get(canonical_away), ctx.team_b,
         )
     elif isinstance(lineups, list):
         # Native API-Football fixtures/lineups response used by sportspredict-llm.
@@ -502,10 +507,11 @@ def context_from_payload(payload: dict[str, Any], settings: Settings | None = No
             by_team[team_name] = rows
         ordered = list(by_team.values())
         ctx.lineup_a = _lineup_players(
-            by_team.get(home) or by_team.get(ctx.team_a) or (ordered[0] if ordered else []), ctx.team_a,
+            by_team.get(home) or by_team.get(canonical_home)
+            or by_team.get(ctx.team_a) or (ordered[0] if ordered else []), ctx.team_a,
         )
         ctx.lineup_b = _lineup_players(
-            by_team.get(away) or by_team.get(ctx.team_b)
+            by_team.get(away) or by_team.get(canonical_away) or by_team.get(ctx.team_b)
             or (ordered[1] if len(ordered) > 1 else []), ctx.team_b,
         )
     return ctx

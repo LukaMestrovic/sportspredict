@@ -145,6 +145,29 @@ class TournamentFamilyBenchmarkTests(unittest.TestCase):
         self.assertEqual(summary["brier"]["always_50"], 0.25)
         self.assertNotIn("empirical_rate", summary["brier"])
 
+    def test_catalog_hash_mismatch_forces_replay_rebuild(self):
+        with tempfile.TemporaryDirectory() as directory:
+            replay_dir = Path(directory)
+            replay = replay_dir / "123.json"
+            replay.write_text(json.dumps({
+                "replay_version": simulator_benchmark.REPLAY_VERSION,
+                "catalog_hash": "oldhash",
+                "stage": "group",
+                "rows": [{"fixture_id": 123, "contract_key": "old_contract"}],
+            }))
+
+            with patch.object(simulator_benchmark, "REPLAY_DIR", replay_dir):
+                loaded, dirty = simulator_benchmark._load_replay(
+                    123, "newhash",
+                    {"new_contract": {
+                        "p_empirical": 0.25,
+                        "empirical_training_observations": 100,
+                    }},
+                )
+
+        self.assertIsNone(loaded)
+        self.assertFalse(dirty)
+
 
 if __name__ == "__main__":
     unittest.main()

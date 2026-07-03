@@ -69,6 +69,12 @@ def _strip_lead(raw: str) -> str:
     return _LEADING_Q.sub("", core).strip() if _PARSER_OK else core
 
 
+def _regulation_only(raw_lower: str) -> bool:
+    return any(token in raw_lower for token in (
+        "regulation", "90 minutes", "excluding extra time",
+    ))
+
+
 def _threshold(text: str) -> tuple[str, float] | None:
     for comp, pattern in (
         (">=", r"(?:at least\s+)?(\d+)\s+(?:or more|or greater)"),
@@ -186,7 +192,7 @@ def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
         if len(teams) == 1:
             return ExtSpec(TEAM_SCORE_NO_OWN, {
                 "team": _LABEL[teams[0]],
-                "regulation": "regulation" in raw_lower or "90 minutes" in raw_lower,
+                "regulation": _regulation_only(raw_lower),
             }, question)
     if core.startswith("any player"):
         count = _threshold(core)
@@ -215,7 +221,7 @@ def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
                 "regulation": True,
             }, question)
     if re.search(r"\ba red card be shown\b", core) and "penalt" not in core:
-        return ExtSpec(RED_CARD, {"regulation": "regulation" in raw_lower}, question)
+        return ExtSpec(RED_CARD, {"regulation": _regulation_only(raw_lower)}, question)
     if re.search(r"both teams? receive at least (?:one|1) card", core):
         return ExtSpec(BOTH_TEAMS_CARD, {"regulation": True}, question)
     if re.search(r"\ba card be shown in the first half\b", core):
@@ -258,9 +264,7 @@ def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
     if "goal" in core and "before the first hydration break" in core:
         return ExtSpec(GOAL_WINDOW, {"window": "before_first_hydration"}, question)
     if "goal" in core and "after the second hydration break" in core:
-        regulation_only = any(token in raw_lower for token in (
-            "regulation", "90 minutes", "excluding extra time",
-        ))
+        regulation_only = _regulation_only(raw_lower)
         return ExtSpec(GOAL_WINDOW, {
             "window": "after_second_hydration", "include_et": not regulation_only,
         }, question)
@@ -287,7 +291,7 @@ def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
     # Regulation is a contract, not a synonym for "full match": knockout full-match baseline
     # resolvers can include extra time. Route the exact baseline spec through a regulation-only
     # resolver. This also safely handles SportPredict's parenthesized player-team qualifier.
-    if "regulation" in raw_lower or "excluding extra time" in raw_lower:
+    if _regulation_only(raw_lower):
         try:
             baseline_spec = _qualified_baseline_spec(question, ctx)
         except Exception:
@@ -326,7 +330,7 @@ def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
             and baseline_spec.params.get("stat") == "cards"
         ):
             return ExtSpec(REGULATION_STANDARD, {
-                "baseline_spec": baseline_spec, "regulation": "regulation" in raw_lower,
+                "baseline_spec": baseline_spec, "regulation": _regulation_only(raw_lower),
             }, question)
 
     if re.search(r"\band\b", core):
@@ -338,9 +342,7 @@ def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
 
     leg = _parse_leg(core, ctx)
     if leg and leg[0] == "first":
-        regulation_only = any(token in raw_lower for token in (
-            "regulation", "90 minutes", "excluding extra time",
-        ))
+        regulation_only = _regulation_only(raw_lower)
         return ExtSpec(FIRST_GOAL, {
             "team": leg[1],
             "half": leg[2] if len(leg) > 2 else None,

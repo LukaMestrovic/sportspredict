@@ -142,6 +142,71 @@ class WC2026EvidenceTests(unittest.TestCase):
         self.assertTrue(rate["complete"])
         self.assertEqual(rate["population"], "all_labelable_matches")
 
+    def test_extra_time_goals_and_cards_label_match_scope_only(self):
+        fixture = _fixture(
+            10, "2026-07-01T20:00:00Z", status="AET", round_name="Round of 16",
+        )
+        home_id = fixture["teams"]["home"]["id"]
+        away_id = fixture["teams"]["away"]["id"]
+        facts = wc2026_evidence._fixture_facts(
+            fixture,
+            events=[
+                _event("Goal", 105, detail="Normal Goal", team_id=home_id),
+                _event("Card", 110, detail="Yellow Card", team_id=away_id),
+            ],
+            statistics=None,
+            players=None,
+        )
+
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract(
+                "count:goals:team:full:>=:1:match", facts,
+            ),
+            [True, False],
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract(
+                "count:goals:team:full:>=:1:reg", facts,
+            ),
+            [False, False],
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract(
+                "total_goals:full:>=:1:match", facts,
+            ),
+            [True],
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract(
+                "total_goals:full:>=:1:reg", facts,
+            ),
+            [False],
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract("first_goal:full:et:team", facts),
+            [True, False],
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract("first_goal:full:team", facts),
+            [False, False],
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract("clean_sheet:match", facts),
+            [True, False],
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract("clean_sheet:reg", facts),
+            [True, True],
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract("compare:cards:full:match", facts),
+            [False, True],
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract("compare:cards:full:reg", facts),
+            [False, False],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -6,11 +6,13 @@ assisted). For the *score-or-assist* market we need ``P(player scores >=1 OR ass
 which we compute **analytically conditional on each sim's team goal count** and average over
 sims — a Rao-Blackwellized estimator with far lower variance than drawing per-goal owners:
 
-    P(score or assist | k goals) = 1 - ((1 - p_goal) * (1 - q_assist))^k
+    P(score or assist | k goals) = 1 - (1 - min(p_goal + q_assist, 1))^k
 
 where ``p_goal`` is the player's share of team goals and ``q_assist = rho * a_share`` is the
-chance a given goal is assisted by the player. Conditioning on ``k`` (which is correlated with
-the match result via the shared frailties) preserves the player↔team-success correlation.
+chance a given goal is assisted by the player. Scoring and assisting the same goal are mutually
+exclusive, so the per-goal involvement probabilities add rather than multiply. Conditioning on
+``k`` (which is correlated with the match result via the shared frailties) preserves the
+player↔team-success correlation.
 """
 
 from __future__ import annotations
@@ -104,7 +106,8 @@ def prob_score_or_assist(
     """Probability the target player scores or assists, over the simulated matches."""
     settings = settings or default_settings()
     p_goal, q_assist, k = _shares(outcome, team_index, target, lineup, include_et, settings, half)
-    return float(np.mean(1.0 - ((1.0 - p_goal) * (1.0 - q_assist)) ** k))
+    per_goal = float(np.clip(p_goal + q_assist, 0.0, 1.0))
+    return float(np.mean(1.0 - (1.0 - per_goal) ** k))
 
 
 def prob_score(

@@ -109,9 +109,10 @@ def _load_replay(
         return None, False
     if replay.get("replay_version") not in {2, REPLAY_VERSION}:
         return None, False
+    if replay.get("catalog_hash") != catalog_hash:
+        return None, False
     dirty = (
         replay.get("replay_version") != REPLAY_VERSION
-        or replay.get("catalog_hash") != catalog_hash
     )
     _refresh_replay_baselines(replay, contracts)
     if dirty:

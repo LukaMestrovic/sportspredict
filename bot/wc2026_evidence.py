@@ -263,9 +263,11 @@ def _stat_values(
     facts: dict, stat: str, half: str, scope: str, time_scope: str = "reg",
 ) -> list[float] | None:
     if stat == "goals":
-        values = facts["team_goals"].get(half)
+        key = "match" if half == "full" and time_scope == "match" else half
+        values = facts["team_goals"].get(key)
     elif stat == "cards":
-        values = facts["team_cards"].get(half)
+        key = "match" if half == "full" and time_scope == "match" else half
+        values = facts["team_cards"].get(key)
     elif half == "full":
         if time_scope == "reg" and facts.get("stats_include_extra_time"):
             return None
@@ -309,8 +311,9 @@ def _labels(key: str, facts: dict) -> list[bool] | None:
         key,
     )
     if total_goals:
-        half, comparator, raw_threshold, _scope = total_goals.groups()
-        values = facts["team_goals"].get(half)
+        half, comparator, raw_threshold, time_scope = total_goals.groups()
+        key = "match" if half == "full" and time_scope == "match" else half
+        values = facts["team_goals"].get(key)
         if values is None:
             return None
         return [_compare_value(sum(values), comparator, float(raw_threshold))]
@@ -343,7 +346,10 @@ def _labels(key: str, facts: dict) -> list[bool] | None:
         winner = facts.get("winner")
         return [winner == 0, winner == 1] if winner in (0, 1) else None
     if key.startswith("first_goal:"):
-        first = facts.get("first_goal_team")
+        first = (
+            facts.get("first_goal_match_team")
+            if ":et:" in key else facts.get("first_goal_team")
+        )
         if key.startswith("first_goal:2H"):
             first = facts.get("first_goal_2h_team")
         return [first == 0, first == 1] if first in (0, 1, None) else None
@@ -359,7 +365,7 @@ def _labels(key: str, facts: dict) -> list[bool] | None:
             goals[0] - goals[1] >= 2, goals[1] - goals[0] >= 2,
         ] if goals is not None else None
     if key.startswith("clean_sheet:"):
-        goals = facts["team_goals"].get("full")
+        goals = facts["team_goals"].get("match" if key.endswith(":match") else "full")
         return [goals[1] == 0, goals[0] == 0] if goals is not None else None
 
     player_threshold = re.fullmatch(
@@ -422,7 +428,11 @@ def _event_label(key: str, facts: dict) -> bool | None:
         scoped = reds if key.endswith(":match") else [e for e in reds if e["minute"] <= 90]
         return bool(scoped)
     if key.startswith("both_teams_card:"):
-        teams = {event["team_id"] for event in cards if event["minute"] <= 90}
+        include_et = key.endswith(":match")
+        teams = {
+            event["team_id"] for event in cards
+            if include_et or event["minute"] <= 90
+        }
         teams.discard(None)
         return len(teams) >= 2
     if key.startswith("penalty_awarded:"):
@@ -501,8 +511,9 @@ def _fixture_facts(
                 facts["reds"].append(item)
         elif event_type in {"subst", "substitution"}:
             facts["substitutions"].append(item)
+    match_goals = list(facts["goals"])
     regulation_goals = [
-        event for event in facts["goals"] if event["minute"] <= 90
+        event for event in match_goals if event["minute"] <= 90
     ]
     first_half_goals = [
         event for event in regulation_goals if event["minute"] <= 45
@@ -523,8 +534,13 @@ def _fixture_facts(
             sum(event["team_index"] == index for event in regulation_goals)
             for index in (0, 1)
         ] if events is not None else None,
+        "match": [
+            sum(event["team_index"] == index for event in match_goals)
+            for index in (0, 1)
+        ] if events is not None else None,
     }
-    regulation_cards = [event for event in facts["cards"] if event["minute"] <= 90]
+    match_cards = list(facts["cards"])
+    regulation_cards = [event for event in match_cards if event["minute"] <= 90]
     facts["team_cards"] = {
         "1H": [
             sum(event["team_index"] == index for event in regulation_cards if event["minute"] <= 45)
@@ -538,10 +554,16 @@ def _fixture_facts(
             sum(event["team_index"] == index for event in regulation_cards)
             for index in (0, 1)
         ] if events is not None else None,
+        "match": [
+            sum(event["team_index"] == index for event in match_cards)
+            for index in (0, 1)
+        ] if events is not None else None,
     }
     ordered = sorted(regulation_goals, key=lambda event: (event["minute"], event["extra"]))
+    match_ordered = sorted(match_goals, key=lambda event: (event["minute"], event["extra"]))
     second_ordered = sorted(second_half_goals, key=lambda event: (event["minute"], event["extra"]))
     facts["first_goal_team"] = ordered[0]["team_index"] if ordered else None
+    facts["first_goal_match_team"] = match_ordered[0]["team_index"] if match_ordered else None
     facts["first_goal_2h_team"] = second_ordered[0]["team_index"] if second_ordered else None
     facts["events_available"] = events is not None
     facts["team_statistics"] = _team_statistics(statistics, team_ids)

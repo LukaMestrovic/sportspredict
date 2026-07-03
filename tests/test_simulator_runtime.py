@@ -172,6 +172,53 @@ class BundledSimulatorTests(unittest.TestCase):
         self.assertIn("likely attacking substitutes", scorer)
         self.assertIn("scorers/shooters", scorer)
 
+    def test_bridge_canonicalizes_team_codes_for_learned_ratings(self):
+        sys.path.insert(0, str(SIMULATOR / "src"))
+        from sphybrid.report import context_from_payload
+
+        ctx = context_from_payload({
+            "home": "NED",
+            "away": "MAR",
+            "kickoff": "2026-06-30T01:00:00Z",
+        })
+
+        self.assertEqual(ctx.team_a, "Netherlands")
+        self.assertEqual(ctx.team_b, "Morocco")
+        self.assertIn("NED", ctx.extra["aliases"]["A"])
+        self.assertIn("MAR", ctx.extra["aliases"]["B"])
+
+    def test_ninety_minute_wording_routes_to_regulation_contracts(self):
+        report = self._run_bridge({
+            "home": "France",
+            "away": "Sweden",
+            "kickoff": "2026-06-30T21:00:00Z",
+            "stage": "knockout",
+            "n_sims": 100,
+            "questions": [
+                {
+                    "market_id": "penalty",
+                    "question": (
+                        "Will a penalty kick be awarded "
+                        "(90 minutes + stoppage time)?"
+                    ),
+                },
+                {
+                    "market_id": "card",
+                    "question": (
+                        "Will France receive at least 1 card "
+                        "(90 minutes + stoppage time)?"
+                    ),
+                },
+            ],
+        })
+        by_id = {item["market_id"]: item for item in report["question_reports"]}
+
+        self.assertEqual(by_id["penalty"]["contract_key"], "penalty_awarded:reg")
+        self.assertEqual(
+            by_id["card"]["contract_key"],
+            "count:cards:team:full:>=:1:reg",
+        )
+
     def _run_bridge(self, payload):
         env = os.environ.copy()
         env["PYTHONPATH"] = str(SIMULATOR / "src")
