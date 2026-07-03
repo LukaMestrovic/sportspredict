@@ -7,8 +7,6 @@ we train the learned model on the other tournaments and score Brier out-of-sampl
 
 What this measures and what it does not:
 * It compares the **learned Layer-1 rates** against the **baseline** `RateModel`, per market family.
-* It does NOT measure the live **odds anchor** (there are no historical odds in the table) — that is
-  a live edge, validated live, and a no-op here.
 * It does NOT measure **API-Football lineup enrichment**: the question set is team-level only and
   excludes every player market, so lineups cannot move a single number here.
 
@@ -41,7 +39,7 @@ from sportspredict.validation.backtest import run_backtest
 from .engine import build_engine
 
 # Player and shootout/penalty markets are excluded: the StatsBomb table has no lineups, and the
-# penalty/red labels are unreliable. Keep this list in sync with the live market families we trust.
+# penalty/red labels are unreliable.
 _EXCLUDED_MARKETS = {
     MarketType.PLAYER_SCORE, MarketType.PLAYER_SCORE_OR_ASSIST, MarketType.PLAYER_STAT,
     MarketType.GOES_TO_ET, MarketType.GOES_TO_SHOOTOUT,
@@ -237,7 +235,7 @@ def _comparison(mode: str, tournaments: list[str], base: dict, learned: dict) ->
             for f in families
         },
         "scoring": {"brier": "(p - outcome)^2",
-                    "note": "odds anchor and lineup enrichment are live-only and not measured here"},
+                    "note": "lineup enrichment is not measured here"},
     }
 
 

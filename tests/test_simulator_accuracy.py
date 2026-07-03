@@ -54,21 +54,21 @@ class DixonColesAccuracyTests(unittest.TestCase):
 
 
 class SimulationCacheAccuracyTests(unittest.TestCase):
-    def test_odds_anchor_multiplier_changes_simulation_cache_key(self):
+    def test_context_extra_does_not_change_model_only_cache_key(self):
         settings = default_settings()
-        engine = Engine(settings=settings, rate_model=_TinyAnchoredRateModel())
+        engine = Engine(settings=settings, rate_model=_TinyRateModel())
         ctx = MatchContext("A", "B")
 
-        ctx.extra["rate_mult"] = {"goals": 0.5}
-        low = engine._simulate(ctx, 4000)
+        ctx.extra["external_hint"] = {"goals": 0.5}
+        first = engine._simulate(ctx, 4000)
 
-        ctx.extra["rate_mult"] = {"goals": 2.0}
-        high = engine._simulate(ctx, 4000)
+        ctx.extra["external_hint"] = {"goals": 2.0}
+        second = engine._simulate(ctx, 4000)
 
-        self.assertIsNot(low, high)
-        self.assertGreater(
-            float(high.match_total(GOALS, include_et=False).mean()),
-            float(low.match_total(GOALS, include_et=False).mean()) * 2.5,
+        self.assertIs(first, second)
+        self.assertAlmostEqual(
+            float(first.match_total(GOALS, include_et=False).mean()),
+            float(second.match_total(GOALS, include_et=False).mean()),
         )
 
 
@@ -119,13 +119,11 @@ class RareEventAccuracyTests(unittest.TestCase):
         self.assertGreater(float(draws[:n].mean()), float(draws[n:].mean()) * 3.0)
 
 
-class _TinyAnchoredRateModel:
+class _TinyRateModel:
     def build(self, ctx: MatchContext) -> MatchRates:
-        raw = (ctx.extra or {}).get("rate_mult", {}).get("goals", 1.0)
-        mult = float(raw[0] if isinstance(raw, (list, tuple)) else raw)
         lam = {}
         for stat in PER_HALF_STATS:
-            value = 0.9 * mult if stat == GOALS else 0.0
+            value = 0.9 if stat == GOALS else 0.0
             lam[stat] = np.full((2, 2), value / 2.0, dtype=float)
         return MatchRates(
             lam=lam,

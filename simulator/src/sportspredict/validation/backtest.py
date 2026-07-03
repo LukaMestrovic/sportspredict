@@ -1,9 +1,8 @@
 """Backtest harness.
 
-``run_backtest`` takes a frame of ``(fixture context, question, binary outcome[, odds])``,
+``run_backtest`` takes a frame of ``(fixture context, question, binary outcome)``,
 runs the engine (simulating each fixture once), and reports the Brier decomposition overall
-and per market family, against baselines (climatology, and model-without-shrink). It also
-writes reliability diagrams.
+and per market family against a climatology baseline. It also writes reliability diagrams.
 
 The same entry point serves the real backtest (StatsBomb-derived outcomes via
 :mod:`sportspredict.ingest`) and an offline, well-specified **synthetic** check produced by
@@ -116,7 +115,7 @@ def run_backtest(
     climatology = np.full(len(rows), outcomes.mean())
     baselines = {
         "climatology": brier_score(climatology, outcomes),
-        "model_only(no shrink)": brier_score(p_model, outcomes),
+        "model_only": brier_score(p_model, outcomes),
         "model_final": overall.brier,
     }
 

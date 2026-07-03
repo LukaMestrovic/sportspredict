@@ -6,13 +6,12 @@ JSON bridge in a child process and returns compact, auditable context for market
 the LLM cannot price from a direct bookmaker contract.
 
 The bridge accepts one JSON object on stdin with ``home``/``away``/``questions``
-and optional ``kickoff``/``stage``/
-``referee``/``lineups``/``market_odds``/``n_sims``. Schema 2.1 returns
+and optional ``kickoff``/``stage``/``referee``/``lineups``/``n_sims``. Schema 2.2 returns
 ``question_reports`` per supported question — a YES probability, the resolved
 ``family`` and stable ``contract_key``, a deterministic ``explanation`` and
-``adjustment_guidance``, ``historical_evidence`` (exact-contract empirical rates
-and family-level unseen Brier comparisons against 50/50 and empirical-rate
-baselines, with sample sizes for all-history and WC2026), and
+``historical_evidence`` (exact-contract empirical rates and family-level unseen
+Brier comparisons against 50/50 and empirical-rate baselines, with sample sizes
+for all-history and WC2026), and
 ``evidence_role=model_context`` — plus a separate ``unsupported_questions`` list,
 which we never turn into estimates. We do not duplicate the simulator's
 question-feasibility rules here: the report preflights its baseline and additive
@@ -29,7 +28,7 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
-from . import config, derive
+from . import config
 from .pricing import PriceCtx
 
 
@@ -120,7 +119,6 @@ def _payload(
         "referee": referee,
         "stage": stage,
         "questions": targets,
-        "market_odds": _market_odds_from_ctx(ctx),
         "n_sims": _n_sims_override(),
     }
     # The simulator understands the native API-Football lineups response and
@@ -167,10 +165,9 @@ def _reports_by_market(raw: dict) -> dict[str, dict]:
 
     Each value is exactly one report item (the simulator's per-question contract)
     plus compact model provenance and the not-an-anchor reminder. We carry the
-    schema-2.1 fields through verbatim: ``contract_key`` (the stable semantic
-    key), ``adjustment_guidance`` (deterministic pre-match directions), and
-    ``historical_evidence`` (exact-contract empirical rates plus family Brier
-    comparisons against both 50/50 and prior empirical-rate baselines, with
+    schema-2.2 fields through verbatim: ``contract_key`` (the stable semantic
+    key) and ``historical_evidence`` (exact-contract empirical rates plus family
+    Brier comparisons against both 50/50 and prior empirical-rate baselines, with
     sample sizes for all-history and WC2026, each scope possibly ``available:
     false``). The evidence builder later projects these internals into the small
     decision-only structure sent to the pricing LLM. Match-level internals, other
@@ -183,7 +180,6 @@ def _reports_by_market(raw: dict) -> dict[str, dict]:
         "engine": model_meta.get("engine"),
         "rate_model": model_meta.get("rate_model"),
         "n_sims": model_meta.get("n_sims"),
-        "odds_anchor_applied": model_meta.get("odds_anchor_applied"),
     }
     out: dict[str, dict] = {}
     for rep in raw.get("question_reports") or []:
@@ -198,9 +194,8 @@ def _reports_by_market(raw: dict) -> dict[str, dict]:
             "probability": round(prob, 6),
             "probability_pct": round(prob * 100.0, 2),
             "explanation": rep.get("explanation"),
-            "adjustment_guidance": rep.get("adjustment_guidance"),
+            "adjustment_guidance": _simulator_adjustment_guidance(rep),
             "historical_evidence": rep.get("historical_evidence"),
-            "conditioning_inputs": rep.get("conditioning_inputs") or {},
             "evidence_role": rep.get("evidence_role") or "model_context",
             "model": model,
             "note": (
@@ -210,6 +205,61 @@ def _reports_by_market(raw: dict) -> dict[str, dict]:
             ),
         }
     return out
+
+
+def _simulator_adjustment_guidance(rep: dict) -> str:
+    """Bot-side LLM directions for a simulator fallback estimate."""
+    family = str(rep.get("family") or "").lower()
+    question = str(rep.get("question") or "").lower()
+    key = str(rep.get("contract_key") or "").lower()
+    if "substitution_before_halftime" in family:
+        return (
+            "Lean toward WC2026 empirical rates; check whether either team has "
+            "made first-half substitutions in this tournament. Raise only for "
+            "concrete injury/fitness doubts, heat, tactical-disaster risk, "
+            "goalkeeper/defender injury risk, concussion concern, or a coach "
+            "with recent early changes; ignore normal 60'-75' substitutions."
+        )
+    if "substitute_score" in family:
+        return (
+            "Lean toward WC2026 empirical rates and modern five-sub context. "
+            "Identify each team's likely attacking substitutes and whether they "
+            "are real scorers/shooters from player_form or research."
+        )
+    if "card" in family or "card" in question:
+        return (
+            "Compare the simulator with direct card prices, referee discipline, "
+            "team foul/card profiles and match stakes. Preserve the stated "
+            "regulation or match scope."
+        )
+    if "penalt" in family or "penalty" in question:
+        return (
+            "Compare the simulator with direct penalty prices, box-entry volume, "
+            "dribblers, VAR-sensitive defending and referee penalty history."
+        )
+    if "player" in family:
+        return (
+            "Adjust primarily for confirmed start, expected minutes, role, "
+            "position, penalties/set pieces, recent involvement and direct player "
+            "prices when available."
+        )
+    if "shot" in family or "shot" in question:
+        return (
+            "Compare with direct shot prices, attacking lineups, territorial "
+            "dominance and tempo. Be stricter when the simulator has weak "
+            "contract-level Brier history."
+        )
+    if "goal_window" in family and "et" in key:
+        return (
+            "This simulator probability includes the contract's extra-time "
+            "exposure. Use live result and draw markets in the parent pricing "
+            "layer to sanity-check that exposure."
+        )
+    return (
+        "Use this as model context only. Prefer exact fresh odds when available, "
+        "then compare with lineups, injuries, tactics, referee and match-state "
+        "incentives while preserving the stated time scope."
+    )
 
 
 GOAL_METHOD_PRIORS = {
@@ -256,8 +306,8 @@ def _goal_method_estimates(
     p_any_goal = _as_probability(total.get("probability"))
     if p_any_goal is None:
         return {}
-    # Treat the simulator's bookmaker-anchored P(any regulation goal) as the
-    # zero-count probability of a Poisson-like goal process. Then thinning by a
+    # Treat the simulator's P(any regulation goal) as the zero-count probability
+    # of a Poisson-like goal process. Then thinning by a
     # per-goal method Bernoulli gives P(any method goal) = 1-exp(-lambda*p).
     p_any_goal = min(max(p_any_goal, 0.000001), 0.999999)
     goal_lambda = -math.log(1.0 - p_any_goal)
@@ -276,15 +326,16 @@ def _goal_method_estimates(
             "probability_pct": round(probability * 100.0, 2),
             "explanation": (
                 "Goal-method post-simulation estimate: condition on the "
-                "bookmaker-anchored simulated probability of at least one "
-                f"regulation goal, then thin each simulated regulation goal with "
+                "simulated probability of at least one regulation goal, then "
+                "thin each simulated regulation goal with "
                 f"a StatsBomb-calibrated per-goal probability for {prior['question_label']}."
             ),
             "adjustment_guidance": (
                 "Use as a conservative fallback when no direct odds exist. The "
                 "method label comes from 314 StatsBomb open-data tournament "
                 "matches, not the full API-Football learned-rate history; keep "
-                "the goal-total odds anchor as the main driver."
+                "the live goal-total evidence in the parent pricing layer as "
+                "the main driver."
             ),
             "historical_evidence": {
                 "empirical_rate": {
@@ -396,38 +447,6 @@ def _n_sims_override() -> int | None:
         return max(1, int(raw))
     except ValueError:
         return None
-
-
-def _market_odds_from_ctx(ctx: PriceCtx) -> dict:
-    """Extract no-extra-spend API-Football anchors for the bundled simulator."""
-    out: dict = {}
-    total_goals = derive._infer_total_rate(ctx.af_books, 5)
-    total_cards = derive._infer_total_rate(ctx.af_books, 80)
-    home_goals = derive._infer_total_rate(ctx.af_books, 16)
-    away_goals = derive._infer_total_rate(ctx.af_books, 17)
-    draw_probability = _regulation_draw_probability(ctx)
-    if total_goals is not None:
-        out["total_goals_mean"] = round(total_goals, 6)
-    if total_cards is not None:
-        out["total_cards"] = round(total_cards, 6)
-    if home_goals is not None and away_goals is not None:
-        out["team_goals"] = [round(home_goals, 6), round(away_goals, 6)]
-    if draw_probability is not None:
-        out["regulation_draw_probability"] = round(draw_probability, 6)
-    return out
-
-
-def _regulation_draw_probability(ctx: PriceCtx) -> float | None:
-    """Free API-Football same-book de-vigged draw consensus for ET exposure."""
-    from .matcher import match_intent
-    from .predictor import predict
-
-    spec = match_intent({
-        "market": "match_draw", "subject": "match", "player": None,
-        "comparator": "yes", "threshold": None, "period": "match",
-    }, ctx.home, ctx.away)
-    out = predict(ctx.af_books, spec) if spec else None
-    return float(out["probability"]) if out else None
 
 
 def _as_probability(value) -> float | None:

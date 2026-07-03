@@ -19,7 +19,7 @@ def _bridge_response(reports, *, unsupported=None, model=None):
         "match": {"team_a": "Brazil", "team_b": "Japan", "stage": "group"},
         "model": model or {
             "engine": "SimulatorEngine", "rate_model": "LearnedRateModel",
-            "n_sims": 8000, "odds_anchor_applied": True,
+            "n_sims": 8000,
         },
         "evidence_instruction": "Model context only: weigh against odds…",
         "question_reports": reports,
@@ -57,7 +57,7 @@ def _populated_evidence(key):
 
 
 def _report(market_id, question, family, probability, *, contract_key=None,
-            historical_evidence=None, adjustment_guidance=None):
+            historical_evidence=None):
     key = contract_key or f"{family}:reg"
     return {
         "market_id": market_id,
@@ -68,7 +68,6 @@ def _report(market_id, question, family, probability, *, contract_key=None,
         "probability": probability,
         "probability_pct": round(probability * 100, 2),
         "explanation": f"Deterministic basis for {family}.",
-        "adjustment_guidance": adjustment_guidance or f"Adjust {family} for lineups, referee and odds.",
         "historical_evidence": (
             historical_evidence if historical_evidence is not None else _unavailable_evidence(key)
         ),
@@ -102,10 +101,10 @@ class ReportParsingTests(unittest.TestCase):
         self.assertEqual(item["evidence_role"], "model_context")
         self.assertIn("Deterministic basis", item["explanation"])
         self.assertEqual(item["contract_key"], "goal_window:reg")
-        self.assertIn("Adjust goal_window", item["adjustment_guidance"])
+        self.assertIn("model context only", item["adjustment_guidance"])
         self.assertEqual(item["model"]["rate_model"], "LearnedRateModel")
         self.assertEqual(item["model"]["n_sims"], 8000)
-        self.assertTrue(item["model"]["odds_anchor_applied"])
+        self.assertNotIn("odds_anchor_applied", item["model"])
         self.assertIn("not a final anchor", item["note"])
 
     def test_schema2_evidence_fields_pass_through_unchanged(self):
@@ -114,13 +113,13 @@ class ReportParsingTests(unittest.TestCase):
         hist = _populated_evidence(key)
         resp = _bridge_response([_report(
             "brace", markets[0]["question"], "any_player_threshold", 0.2347,
-            contract_key=key, adjustment_guidance="Raise when team-goal odds concentrate.",
+            contract_key=key,
             historical_evidence=hist)])
         out, _ = self._run(markets, {"brace": []}, resp)
 
         item = out["brace"]
         self.assertEqual(item["contract_key"], key)
-        self.assertEqual(item["adjustment_guidance"], "Raise when team-goal odds concentrate.")
+        self.assertIn("expected minutes", item["adjustment_guidance"])
         # historical_evidence is carried through verbatim, populated AND unavailable scopes.
         self.assertEqual(item["historical_evidence"], hist)
         self.assertEqual(
@@ -154,7 +153,7 @@ class ReportParsingTests(unittest.TestCase):
         }
         out, _ = self._run(markets, {"m1": []}, _bridge_response([bare]))
         self.assertIsNone(out["m1"]["contract_key"])
-        self.assertIsNone(out["m1"]["adjustment_guidance"])
+        self.assertIn("Use this as model context only", out["m1"]["adjustment_guidance"])
         self.assertIsNone(out["m1"]["historical_evidence"])
 
     def test_unsupported_questions_are_omitted(self):
@@ -270,6 +269,7 @@ class TargetSelectionTests(unittest.TestCase):
         self.assertEqual(payload["stage"], "knockout")
         self.assertEqual(payload["home"], "Brazil")
         self.assertEqual(payload["away"], "Japan")
+        self.assertNotIn("market_odds", payload)
 
     def test_runtime_preserves_virtualenv_launcher(self):
         with patch.object(simulator.sys, "executable", "/tmp/example-venv/bin/python"), \

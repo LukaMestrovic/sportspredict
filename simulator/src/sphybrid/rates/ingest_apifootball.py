@@ -24,7 +24,7 @@ the half-time score and ``*_h2`` the rest of regulation (from ``score.fulltime``
 goal-half markets in the offline backtest honest. ``penalties`` is not in the statistics payload and
 is not a learned stat, so it is left 0.
 
-Elo is read from the same snapshot the live bot uses (``data/raw/elo.csv``); unknown teams fall back
+Elo is read from the same snapshot the parent bot uses (``data/raw/elo.csv``); unknown teams fall back
 to 1500. All ingested matches are treated as neutral-venue (``home_host``/``away_host`` False), the
 same convention the StatsBomb tournament table uses.
 """

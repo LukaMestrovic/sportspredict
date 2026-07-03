@@ -21,15 +21,12 @@ def cmd_predict(args) -> int:
     )
     pred = engine.predict(
         ctx, args.question,
-        market_odds=json.loads(args.odds_json) if args.odds_json else None,
         n_sims=args.n_sims,
     )
     print(f"[rate model: {type(engine.rate_model).__name__}]")
     print(f"Q: {pred.question}")
     print(f"  market : {pred.market}  {pred.params}")
     print(f"  p_model: {pred.p_model:.4f}")
-    if pred.p_market is not None:
-        print(f"  p_market: {pred.p_market:.4f}")
     print(f"  p_final: {pred.p_final:.4f}   ({pred.notes}; {pred.n_sims} sims)")
     return 0
 
@@ -108,7 +105,6 @@ def build_parser() -> argparse.ArgumentParser:
         (("--host-a",), {"dest": "host_a", "action": "store_true"}),
         (("--host-b",), {"dest": "host_b", "action": "store_true"}),
         (("--question",), {"required": True}),
-        (("--odds-json",), {"dest": "odds_json", "default": None}),
         (("--n-sims",), {"dest": "n_sims", "type": int, "default": None}),
     ])
     pr.set_defaults(func=cmd_predict)
@@ -165,7 +161,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sr = sub.add_parser(
         "simulation-report",
-        help="compact question-scoped simulator evidence JSON for an LLM pricing layer",
+        help="compact question-scoped simulator evidence JSON",
     )
     _add(sr, [
         (("--input",), {"default": "-", "help": "bridge JSON path, or - for stdin"}),

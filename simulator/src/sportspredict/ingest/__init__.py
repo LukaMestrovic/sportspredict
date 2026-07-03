@@ -10,8 +10,7 @@ Sources (see ``README.md``):
   * International results -> goals/results for the strength model                  [free]
   * Elo                   -> pre-match strength                                    [free]
   * soccerdata            -> club player rates (score/assist priors)               [free]
-  * API-Football          -> 2026 fixtures, lineups, referee, half splits, odds    [paid]
-  * The Odds API          -> vanilla de-vig target                                 [free tier]
+  * API-Football          -> fixtures, lineups, referee, half splits and events    [paid]
 """
 
 from __future__ import annotations
@@ -23,7 +22,7 @@ def build_feature_tables(sample: bool = False, out_dir: str | Path = "data/proce
     """Refresh cached feature tables from available sources.
 
     Returns a dict of {table_name: path}. Requires the ``[data]`` extra and (for the paid
-    sources) the ``APIFOOTBALL_KEY`` / ``ODDS_API_KEY`` environment variables. With
+    sources) the ``APIFOOTBALL_KEY`` environment variable. With
     ``sample=True`` only a single StatsBomb tournament is ingested for a quick smoke test.
     """
     from . import statsbomb

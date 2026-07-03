@@ -1,8 +1,8 @@
 # ---------------------------------------------------------------------------
 # Baseline model parameters + run settings.
 #
-# These men's-international priors let the simulator run without a live data
-# download. The tracked learned artifacts sharpen them when they load.
+# These men's-international priors let the simulator run from tracked artifacts.
+# The tracked learned artifacts sharpen them when they load.
 # ---------------------------------------------------------------------------
 
 simulation:
@@ -27,22 +27,6 @@ rates:
     max_ratio: 3.0
     learned_stats: [goals, shots_on_target, corners, fouls, offsides, yellows]
 
-# ---------------------------------------------------------------------------
-# Bundled simulator: live input-anchoring.
-#   Anchors the simulator's per-stat λ to sharp bookmaker totals (corners/cards/goals) so the EXOTIC
-#   families the bot competes on become market-consistent in one shot. A strict no-op without live
-#   odds (e.g. inside the offline gate), so the gate is unaffected; the edge is live-only by design.
-#   `anchor_weight` shrinks each correction toward the model (0 = ignore, 1 = match the market mean):
-#   deep goal markets are trusted more than thin 2-book corner/card lines.
-# ---------------------------------------------------------------------------
-adjust:
-  enabled: true
-  max_ratio: 2.0          # clamp any single λ multiplier to [1/2, 2] (defense in depth)
-  anchor_weight:
-    goals: 0.80
-    corners: 0.60
-    cards: 0.55
-
 # Additive post-simulation models for question families that need event timing or player ownership.
 # They never alter the learned team-rate path; unsupported inputs degrade to the frozen baseline.
 postsim:
@@ -50,8 +34,8 @@ postsim:
   et_minutes: 30.0
   event_model: data/processed/event_timing.json
   evidence_history: data/processed/simulation_evidence.json
-  # The LLM bridge runs beside the live bot on a ~4 GB/no-swap host. Keep its one-match report
-  # comfortably below the 50k general default; explicit bridge requests are capped as well.
+  # Keep one-match report simulations comfortably below the 50k general default;
+  # explicit bridge requests are capped as well.
   report_n_sims: 8000
   report_max_n_sims: 10000
   # Validated by leave-one-tournament-out player backtesting; unseen players fall back to position.
@@ -162,29 +146,6 @@ player_stat_lambda:
     GK: 0.02
 
 # Market layer.
-markets:
-  devig_method: shin             # one of: proportional | shin | power
-  # Logit-space shrink weight toward the de-vigged market price, by market family.
-  # 0 => pure model (concentrate edge on exotics); ~0.8 => trust the sharp market.
-  shrink_weight:
-    match_result: 0.80
-    total_goals: 0.75
-    btts: 0.75
-    team_vs_team_more: 0.0
-    count_threshold: 0.0
-    half_conditional: 0.0
-    player_score_or_assist: 0.0
-    player_score: 0.0
-    player_stat: 0.0
-    penalty_or_red: 0.0
-    penalty_awarded: 0.0
-    btts_and_total: 0.0
-    win_to_nil: 0.0
-    clean_sheet: 0.0
-    goes_to_extra_time: 0.0
-    goes_to_shootout: 0.0
-    total_goals_parity: 0.0
-
 # Match-context defaults used by the report bridge.
 tournament:
   host_teams: ["United States", "Canada", "Mexico"]

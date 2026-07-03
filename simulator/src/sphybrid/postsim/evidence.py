@@ -1,4 +1,4 @@
-"""Read the compact historical evidence table used by the LLM-facing report."""
+"""Read the compact historical evidence table used by simulator reports."""
 
 from __future__ import annotations
 

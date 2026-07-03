@@ -1,8 +1,8 @@
-"""API-Football (api-sports.io) client — the one paid source.
+"""API-Football (api-sports.io) client for offline training ingestion.
 
 Fills the gaps free data cannot: 2026 fixtures, confirmed lineups, the referee per fixture,
-and first/second-half statistic splits (plus pre-match odds). Responses are cached to disk to
-respect the request quota. Requires ``APIFOOTBALL_KEY`` in the environment.
+first/second-half statistic splits and match events. Responses are cached to disk
+to respect the request quota. Requires ``APIFOOTBALL_KEY`` in the environment.
 """
 
 from __future__ import annotations

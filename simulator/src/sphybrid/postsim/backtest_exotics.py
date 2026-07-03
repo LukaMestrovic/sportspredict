@@ -1,4 +1,4 @@
-"""Leakage-controlled rolling-origin backtest for the LLM-facing exotic markets.
+"""Leakage-controlled rolling-origin backtest for post-simulation markets.
 
 Each test year is genuinely unseen: the rate GBMs, team ratings, point-in-time Elo, event clocks,
 substitution base rate and player shares use only matches from earlier dates.  Labels come from the
@@ -668,7 +668,7 @@ def prepare_fold_artifacts(
 
 
 def _release_heap() -> None:
-    """Return completed sklearn/pandas scratch allocations to the OS on small live hosts."""
+    """Return completed sklearn/pandas scratch allocations to the OS on small hosts."""
     gc.collect()
     try:
         import ctypes

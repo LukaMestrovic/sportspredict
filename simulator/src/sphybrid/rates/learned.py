@@ -46,27 +46,9 @@ def build_features(ctx, ratings: TeamRatings) -> np.ndarray:
                       ctx.is_knockout, ctx.host_b, ctx.host_a, ratings),
     ])
 
-def apply_ctx_rate_mult(base_rates: MatchRates, ctx, max_ratio: float) -> MatchRates:
-    """Apply bounded per-stat lambda multipliers from ``ctx.extra['rate_mult']`` (odds anchors)."""
-    rm = getattr(ctx, "extra", {}).get("rate_mult") if hasattr(ctx, "extra") else None
-    if not rm:
-        return base_rates
-    new_lam = dict(base_rates.lam)
-    changed = False
-    for stat, mult in rm.items():
-        if stat not in new_lam or stat not in PER_HALF_STATS:
-            continue
-        pair = mult if isinstance(mult, (list, tuple)) else (mult, mult)
-        arr = np.clip(np.array([float(pair[0]), float(pair[1])]), 1.0 / max_ratio, max_ratio)
-        if np.allclose(arr, 1.0):
-            continue
-        new_lam[stat] = new_lam[stat] * arr[:, None]  # (2,1) broadcasts over halves
-        changed = True
-    return dataclasses.replace(base_rates, lam=new_lam) if changed else base_rates
-
 class LearnedRateModel(RateModel):
     """Gray-box Layer-1 rates: call the baseline RateModel, then blend each stat's per-match mean
-    toward a per-stat GBM correction (capped by ``alpha``/``max_ratio``), then apply odds anchors."""
+    toward a per-stat GBM correction (capped by ``alpha``/``max_ratio``)."""
 
     def __init__(
         self,
@@ -132,9 +114,8 @@ class LearnedRateModel(RateModel):
 
     def build(self, ctx) -> MatchRates:
         base_rates = super().build(ctx)
-        anchor_max = self._max_ratio or 3.0
         if not self._gbms:
-            return apply_ctx_rate_mult(base_rates, ctx, anchor_max)
+            return base_rates
 
         learned = self._learned_per_match(ctx)
         new_lam = dict(base_rates.lam)
@@ -153,5 +134,4 @@ class LearnedRateModel(RateModel):
             new_lam[stat] = base_rates.lam[stat] * (blended / base_total)[:, None]
             changed = True
 
-        rates = dataclasses.replace(base_rates, lam=new_lam) if changed else base_rates
-        return apply_ctx_rate_mult(rates, ctx, anchor_max)
+        return dataclasses.replace(base_rates, lam=new_lam) if changed else base_rates

@@ -52,7 +52,7 @@ class BundledSimulatorTests(unittest.TestCase):
 
         self.assertEqual(proc.returncode, 0, proc.stderr)
         report = json.loads(proc.stdout)
-        self.assertEqual(report["schema_version"], "2.1")
+        self.assertEqual(report["schema_version"], "2.2")
         self.assertEqual(report["model"]["rate_model"], "LearnedRateModel")
         by_id = {item["market_id"]: item for item in report["question_reports"]}
         self.assertEqual(set(by_id), {"penalty", "brace"})
@@ -99,16 +99,13 @@ class BundledSimulatorTests(unittest.TestCase):
                 "market_id": "late",
                 "question": "Will a goal be scored after the second hydration break?",
             }],
-            "market_odds": {"regulation_draw_probability": 0.306321},
             "n_sims": 100,
         }
         report = self._run_bridge(payload)
         item = report["question_reports"][0]
         self.assertEqual(item["contract_key"], "goal_window:after_second_hydration:et")
         self.assertIn("including extra time", item["explanation"])
-        self.assertEqual(
-            item["conditioning_inputs"]["regulation_draw_probability"], 0.306321,
-        )
+        self.assertNotIn("conditioning_inputs", item)
 
     def test_first_goal_scope_distinguishes_regulation_from_full_match(self):
         payload = {
@@ -127,7 +124,6 @@ class BundledSimulatorTests(unittest.TestCase):
                     ),
                 },
             ],
-            "market_odds": {"regulation_draw_probability": 0.31},
             "n_sims": 100,
         }
         report = self._run_bridge(payload)
@@ -153,24 +149,6 @@ class BundledSimulatorTests(unittest.TestCase):
         item = report["question_reports"][0]
         self.assertEqual(item["family"], "team_score_no_own")
         self.assertEqual(item["contract_key"], "team_score_no_own:reg")
-
-    def test_substitution_guidance_names_team_specific_checks(self):
-        sys.path.insert(0, str(SIMULATOR / "src"))
-        from sphybrid import report
-
-        early = report._market_adjustment_guidance(
-            "substitution_before_halftime", {},
-            "Will a substitution be made before halftime?",
-        )
-        self.assertIn("WC2026 empirical rates", early)
-        self.assertIn("first-half substitutions in this tournament", early)
-
-        scorer = report._market_adjustment_guidance(
-            "substitute_score", {},
-            "Will a substitute score?",
-        )
-        self.assertIn("likely attacking substitutes", scorer)
-        self.assertIn("scorers/shooters", scorer)
 
     def test_bridge_canonicalizes_team_codes_for_learned_ratings(self):
         sys.path.insert(0, str(SIMULATOR / "src"))

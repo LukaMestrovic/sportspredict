@@ -1,9 +1,8 @@
-"""Compact, question-scoped simulator evidence for an external LLM pricing layer.
+"""Compact, question-scoped simulator evidence.
 
-The report deliberately omits rate tensors, sampled outcomes and unrelated markets.  Each requested
-question receives one YES probability and one deterministic sentence describing the model basis.
-That is enough for the LLM to challenge the estimate against odds and live context without asking it
-to reverse-engineer the simulator.
+The report deliberately omits rate tensors, sampled outcomes and unrelated
+markets. Each requested question receives one YES probability and one
+deterministic sentence describing the model basis.
 """
 
 from __future__ import annotations
@@ -36,10 +35,9 @@ from .postsim.contracts import contract_key
 from .postsim.evidence import HistoricalEvidence
 from .teams import canonical_name
 
-SCHEMA_VERSION = "2.1"
+SCHEMA_VERSION = "2.2"
 EVIDENCE_ROLE = (
-    "Model context only: weigh this estimate against disclosed conditioning inputs, confirmed lineups, "
-    "tactics, game state, referee and information freshness."
+    "Model context only: this is a deterministic simulator estimate, not a final submission price."
 )
 
 
@@ -191,134 +189,15 @@ def _explanation(market: str, params: dict, notes: str | None) -> str:
     )
 
 
-def _adjustment_guidance(market: str, params: dict, question: str) -> str:
-    """Deterministic market-specific directions; calibration is structured separately."""
-    return _market_adjustment_guidance(market, params, question)
-
-
-def _market_adjustment_guidance(market: str, params: dict, question: str) -> str:
-    """Deterministic pre-match directions for the web-grounded LLM layer."""
-    lower = question.lower()
-    if market == FIRST_GOAL:
-        extra_time = (
-            " Include regulation draw odds because this contract also counts extra time."
-            if params.get("include_et") else " Do not add extra-time exposure."
-        )
-        return (
-            "Raise for stronger team goal odds and an aggressive starting attack; lower for a "
-            "defensive setup or missing attackers." + extra_time
-        )
-    if market == CARD_WINDOW and params.get("window") == "after_second_hydration":
-        if params.get("include_et"):
-            return (
-                "Nudge upward when regulation draw odds rise because extra time becomes more likely; "
-                "also raise for higher card-total odds, a card-prone referee, combative teams and a "
-                "close knockout, and lower for a lenient referee or low card totals."
-            )
-        return (
-            "Raise for higher regulation card totals, a card-prone referee, a close score expectation "
-            "and strong late-game stakes; do not add an extra-time uplift because this contract ends "
-            "after regulation stoppage time."
-        )
-    if market == GOAL_WINDOW:
-        window = params.get("window")
-        if window == "before_first_hydration":
-            return (
-                "Raise with higher goal-total odds, aggressive starting lineups, weak early defending "
-                "and fast-start tactical evidence; lower for conservative shapes or key-attacker absences."
-            )
-        if window == "after_second_hydration":
-            if params.get("include_et"):
-                return (
-                    "This contract includes regulation after minute 70 plus any extra time. "
-                    "Explicitly use the de-vigged regulation-draw probability: a higher draw probability "
-                    "raises extra-time exposure and therefore the chance of a later goal. Also "
-                    "raise for higher goal totals, attacking benches and likely late chasing; "
-                    "lower for low totals and defensive benches. Do not double-count draw odds "
-                    "if they are already reflected in the estimate."
-                )
-            return (
-                "Raise with higher goal totals, strong attacking benches, a close match that may require "
-                "late chasing, and vulnerable late defenses; lower for low totals and defensive benches."
-                " Do not use extra-time likelihood because this contract is explicitly regulation-only."
-            )
-        return (
-            "Raise with higher goal totals and evidence for long added time (VAR, injuries, time-wasting "
-            "or a likely late chase); do not treat the whole half as stoppage time."
-        )
-    if market == STAT_WINDOW and params.get("stat") == "offsides":
-        return (
-            "Raise for high defensive lines, direct runners and higher team-offside odds; lower for deep "
-            "blocks, slow buildup or absent pace forwards."
-        )
-    if market == STAT_WINDOW and params.get("stat") == "corners":
-        return (
-            "Raise for high corner totals, a territorial favorite and wing/cross-heavy tactics; lower for "
-            "central possession, low shot volume or a balanced territorial matchup."
-        )
-    if market == SUBSTITUTION_BEFORE_HALF:
-        return (
-            "Lean toward WC2026 empirical rates; check whether either team has made first-half "
-            "substitutions in this tournament. Raise only for concrete injury/fitness doubts, heat, "
-            "tactical-disaster risk, goalkeeper/defender injury risk, concussion concern, or a coach "
-            "with recent early changes; ignore normal 60'-75' substitutions."
-        )
-    if market == SUBSTITUTE_SCORE:
-        return (
-            "Lean toward WC2026 empirical rates and modern five-sub context. Identify each team's "
-            "likely attacking substitutes and whether they are real scorers/shooters from player_form "
-            "or research. Raise for high goal totals, chase state and strong scorer bench options; "
-            "lower for weak benches or low expected scoring."
-        )
-    if market == ANY_PLAYER_THRESHOLD and params.get("stat") == "goals":
-        return (
-            "Raise when team-goal odds are high and scorer probability is concentrated in one or two "
-            "90-minute penalty-taking forwards; lower when goals are spread across rotation risks."
-        )
-    if market in {RED_CARD, BOTH_TEAMS_CARD} or "card" in market or "card" in lower:
-        return (
-            "Raise for direct red-card evidence, a referee with "
-            "high red-card incidence, team red-card/foul profiles and genuine knockout tension; lower "
-            "for a lenient referee and low-contact matchup. For match-scope knockout contracts, higher "
-            "regulation-draw odds modestly raise extra-time exposure. Do not treat ordinary yellow-card "
-            "totals as equivalent to red-card risk."
-        )
-    if "penalt" in market or "penalty" in lower:
-        return (
-            "Raise for higher penalty odds, frequent box entries, dribblers, VAR-sensitive defending and "
-            "a penalty-prone referee; lower for low attacking volume and disciplined defenses."
-        )
-    if market in {FIRST_GOAL, COMPOUND_AND, WIN_MARGIN}:
-        return (
-            "Move with de-vigged team-goal and match-result odds, confirmed attacking lineups and tactical "
-            "mismatch; for conjunctions require evidence supporting every leg rather than multiplying nudges."
-        )
-    if "player" in market:
-        return (
-            "Adjust primarily for confirmed start, expected minutes, role, position, penalties/set pieces, "
-            "recent shot involvement and the player's direct odds; a confirmed bench role should lower sharply."
-        )
-    if market == TOTAL_SHOTS_THRESHOLD or "shot" in market or "shot" in lower:
-        return (
-            "Raise with disclosed shot-total conditioning, attacking lineups, territorial dominance and high-tempo "
-            "tactics; lower for low possession, missing creators or conservative game plans."
-        )
-    return (
-        "Use exact direct odds first when available; otherwise adjust for related de-vigged odds, confirmed "
-        "lineups, injuries, tactics, referee and match-state incentives while preserving the stated time scope."
-    )
-
-
 def build_simulation_report(
     ctx: MatchContext,
     questions: Iterable[str | dict[str, Any]],
     *,
     engine: SimulatorEngine | None = None,
     settings: Settings | None = None,
-    market_odds: dict | None = None,
     n_sims: int | None = None,
 ) -> dict[str, Any]:
-    """Price only ``questions`` and return the compact LLM-facing report contract."""
+    """Price only ``questions`` and return the compact simulator report."""
     settings = settings or (engine.settings if engine is not None else default_settings())
     engine = engine or build_engine(settings)
     items = _question_items(questions)
@@ -327,7 +206,6 @@ def build_simulation_report(
         {**item, "reason": "No simulator resolver for this exact question template."}
         for item in items if item not in eligible
     ]
-    before_adjust = len(engine.adjust_log)
     report_cfg = settings.raw.get("postsim", {})
     requested_sims = max(1, int(n_sims or report_cfg.get("report_n_sims", 8000)))
     effective_sims = min(requested_sims, int(report_cfg.get("report_max_n_sims", 10000)))
@@ -339,8 +217,7 @@ def build_simulation_report(
     try:
         if eligible:
             predictions = list(engine.predict_many(
-                ctx, [item["question"] for item in eligible], market_odds=market_odds,
-                n_sims=effective_sims,
+                ctx, [item["question"] for item in eligible], n_sims=effective_sims,
             ))
     except Exception:
         # One unsupported question must not erase the usable evidence for its neighbours.
@@ -348,7 +225,7 @@ def build_simulation_report(
         for item in eligible:
             try:
                 predictions.append(engine.predict(
-                    ctx, item["question"], market_odds=market_odds, n_sims=effective_sims,
+                    ctx, item["question"], n_sims=effective_sims,
                 ))
             except Exception:
                 predictions.append(None)
@@ -372,22 +249,6 @@ def build_simulation_report(
             "probability_pct": round(probability * 100.0, 2),
             "explanation": _explanation(str(pred.market), pred.params or {}, pred.notes),
             "historical_evidence": historical.get(key, family=str(pred.market)),
-            "conditioning_inputs": {
-                "regulation_draw_probability": market_odds.get("regulation_draw_probability"),
-                "interpretation": (
-                    "Same-book de-vigged regulation draw probability; for match-scope knockout "
-                    "contracts, higher values increase expected extra-time exposure."
-                ),
-            } if (
-                market_odds
-                and market_odds.get("regulation_draw_probability") is not None
-                and (bool((pred.params or {}).get("include_et"))
-                     or (str(pred.market) == RED_CARD
-                         and not bool((pred.params or {}).get("regulation"))))
-            ) else {},
-            "adjustment_guidance": _adjustment_guidance(
-                str(pred.market), pred.params or {}, item["question"],
-            ),
             "evidence_role": "model_context",
         })
 
@@ -399,7 +260,6 @@ def build_simulation_report(
             "engine": type(engine).__name__,
             "rate_model": type(engine.rate_model).__name__,
             "n_sims": used_sims,
-            "odds_anchor_applied": len(engine.adjust_log) > before_adjust,
         },
         "evidence_instruction": EVIDENCE_ROLE,
         "question_reports": reports,
@@ -488,7 +348,7 @@ def context_from_payload(payload: dict[str, Any], settings: Settings | None = No
             or lineups.get(canonical_away), ctx.team_b,
         )
     elif isinstance(lineups, list):
-        # Native API-Football fixtures/lineups response used by sportspredict-llm.
+        # Native API-Football fixtures/lineups response used by the parent bot.
         by_team: dict[str, list[dict]] = {}
         for entry in lineups:
             if not isinstance(entry, dict):
@@ -533,13 +393,12 @@ def _load_elo_table(path) -> dict[str, float]:
 def simulation_report_from_payload(
     payload: dict[str, Any], *, settings: Settings | None = None,
 ) -> dict[str, Any]:
-    """JSON bridge used by ``sportspredict-llm`` and the CLI."""
+    """JSON bridge used by the parent bot and the CLI."""
     settings = settings or default_settings()
     ctx = context_from_payload(payload, settings)
     return build_simulation_report(
         ctx,
         payload.get("questions") or [],
         settings=settings,
-        market_odds=payload.get("market_odds") or None,
         n_sims=payload.get("n_sims"),
     )

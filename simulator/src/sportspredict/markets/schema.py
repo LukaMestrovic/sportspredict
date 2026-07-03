@@ -2,7 +2,7 @@
 
 A :class:`MarketSpec` is the deterministic, machine-readable form of a question. The NL
 parser produces it and the resolvers consume it — the simulator never sees question text.
-``market.value`` doubles as the *family* key used for de-vig/shrink configuration.
+``market.value`` doubles as the family key used by validation summaries.
 """
 
 from __future__ import annotations
