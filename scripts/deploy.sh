@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # One-command deploy. Builds the immutable v1 image from the CURRENT source and
-# installs the per-minute cron schedule that runs it. After this the bot is
-# autonomous AND isolated: editing the working tree never affects a running tick
-# until you re-run this script. Re-running is safe and idempotent — it rebuilds
-# the image and rewrites only the sportspredict-llm cron block.
+# installs the settlement cron schedule. Submissions are manual-only: editing
+# the working tree never affects a live manual run until you re-run this script.
+# Re-running is safe and idempotent — it rebuilds the image and rewrites only the
+# sportspredict-llm cron block.
 #
 #   scripts/deploy.sh
 set -euo pipefail
@@ -136,10 +136,6 @@ begin="# >>> sportspredict-llm v1 >>>"
 end="# <<< sportspredict-llm v1 <<<"
 block="$(cat <<EOF
 $begin
-# Every minute: submit the next match's predictions at the 30-min mark.
-# Runs the immutable $IMAGE:$TAG image, so working-tree edits never affect a live
-# tick; it is a fast no-op until a match is within 30 minutes of kickoff.
-* * * * * $DEPLOYED_RUNNER >> $ROOT/logs/cron.log 2>&1
 # Every five minutes: settle explicit SportPredict outcomes, extend the
 # tournament-wide frozen-simulator replay, and refresh WC2026 empirical rates.
 2-59/5 * * * * $DEPLOYED_RUNNER --settle >> $ROOT/logs/settle.log 2>&1
@@ -149,7 +145,7 @@ EOF
 # Strip ANY existing versioned sportspredict-llm block so a tag bump never leaves two running.
 ( crontab -l 2>/dev/null | sed '/# >>> sportspredict-llm v.* >>>/,/# <<< sportspredict-llm v.* <<</d'; echo "$block" ) | crontab -
 
-echo ">> deployed: image $IMAGE:$TAG (alias $IMAGE:$ALIAS_TAG), cron installed (every minute)."
+echo ">> deployed: image $IMAGE:$TAG (alias $IMAGE:$ALIAS_TAG), cron installed (settle only; submissions manual)."
 echo "   logs:   tail -f $ROOT/logs/cron.log"
 echo "   check:  crontab -l"
 echo "   manual: $DEPLOYED_RUNNER manual status --next"
