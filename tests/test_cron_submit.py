@@ -98,13 +98,21 @@ class ProcessMatchTest(unittest.TestCase):
             cron_submit.submit_with_ledger, cron_submit.simulator_benchmark.refresh,
             cron_submit.lineup_fetcher.fetch_lineups,
             cron_submit.submission_state.submitted_run_with_lineups_exists,
+            cron_submit.submission_state.submitted_run_exists,
             cron_submit.submission_state.marker_with_lineups_exists,
+            cron_submit.submission_state.marker_exists,
         )
         cron_submit.simulator_benchmark.refresh = lambda *_a, **_k: {}
         cron_submit.submission_state.submitted_run_with_lineups_exists = (
             lambda *a, **k: False
         )
+        cron_submit.submission_state.submitted_run_exists = (
+            lambda *a, **k: False
+        )
         cron_submit.submission_state.marker_with_lineups_exists = (
+            lambda *a, **k: False
+        )
+        cron_submit.submission_state.marker_exists = (
             lambda *a, **k: False
         )
 
@@ -114,7 +122,9 @@ class ProcessMatchTest(unittest.TestCase):
             cron_submit.submit_with_ledger, cron_submit.simulator_benchmark.refresh,
             cron_submit.lineup_fetcher.fetch_lineups,
             cron_submit.submission_state.submitted_run_with_lineups_exists,
+            cron_submit.submission_state.submitted_run_exists,
             cron_submit.submission_state.marker_with_lineups_exists,
+            cron_submit.submission_state.marker_exists,
         ) = self._orig
 
     def test_cron_fire_refreshes_odds_lineups_and_llm_pricing(self):
@@ -164,7 +174,7 @@ class ProcessMatchTest(unittest.TestCase):
         self.assertTrue(seen["run_match_kwargs"]["llm_pricing_enabled"])
         self.assertTrue(seen["run_match_kwargs"]["llm_pricing_refresh"])
 
-    def test_submitted_lineup_ledger_run_skips_before_paid_work(self):
+    def test_submitted_ledger_run_skips_before_paid_work(self):
         calls = []
 
         class _AF:
@@ -181,7 +191,7 @@ class ProcessMatchTest(unittest.TestCase):
         cron_submit.lineup_fetcher.fetch_lineups = (
             lambda *a, **k: calls.append("lineups")
         )
-        cron_submit.submission_state.submitted_run_with_lineups_exists = (
+        cron_submit.submission_state.submitted_run_exists = (
             lambda *a, **k: True
         )
 
@@ -202,7 +212,7 @@ class ProcessMatchTest(unittest.TestCase):
 
         self.assertEqual(calls, [])
 
-    def test_lineup_backed_marker_skips_before_paid_work(self):
+    def test_submission_marker_skips_before_paid_work(self):
         calls = []
 
         class _AF:
@@ -219,10 +229,10 @@ class ProcessMatchTest(unittest.TestCase):
         cron_submit.lineup_fetcher.fetch_lineups = (
             lambda *a, **k: calls.append("lineups")
         )
-        cron_submit.submission_state.marker_with_lineups_exists = (
+        cron_submit.submission_state.marker_exists = (
             lambda *a, **k: True
         )
-        cron_submit.submission_state.submitted_run_with_lineups_exists = (
+        cron_submit.submission_state.submitted_run_exists = (
             lambda *a, **k: False
         )
 
@@ -241,7 +251,7 @@ class ProcessMatchTest(unittest.TestCase):
 
         self.assertEqual(calls, [])
 
-    def test_submitted_no_lineup_run_does_not_skip_paid_work(self):
+    def test_submitted_no_lineup_run_skips_before_paid_work(self):
         calls = []
 
         class _AF:
@@ -263,8 +273,8 @@ class ProcessMatchTest(unittest.TestCase):
         cron_submit.OddsAPI = _OA
         cron_submit.run_match = _run_match
         cron_submit.lineup_fetcher.fetch_lineups = lambda *a, **k: []
-        cron_submit.submission_state.submitted_run_with_lineups_exists = (
-            lambda *a, **k: False
+        cron_submit.submission_state.submitted_run_exists = (
+            lambda *a, **k: True
         )
 
         sp = SimpleNamespace(markets=lambda lobby_id, match_id: [])
@@ -280,9 +290,7 @@ class ProcessMatchTest(unittest.TestCase):
             SimpleNamespace(dry_run=True),
         )
 
-        self.assertIn("af", calls)
-        self.assertIn("oa", calls)
-        self.assertIn("run", calls)
+        self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":

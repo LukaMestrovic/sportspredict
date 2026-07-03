@@ -84,9 +84,9 @@ git-ignored; keep it that way).
   `cache/deployed/run.sh` pinned to that image, and installs cron to call that
   deployed runner. Cron/manual submissions must use the deployed runner so later
   working-tree edits cannot affect live submissions until the next deploy.
-- Cron/manual reruns are gated only by lineup-backed submissions. A prior
-  no-lineup submission may be updated later; once evidence includes confirmed
-  starting XIs, the marker/ledger state should stop both manual and API reruns.
+- Cron/manual reruns are gated by any verified submission. If lineups are still
+  unavailable, submit with explicit lineup uncertainty and let the marker/ledger
+  state stop both manual and API reruns.
 
 ## Keys / env
 `config.py` loads `.env`. Required: `SPORTSPREDICT_KEY`, `APIFOOTBALL_KEY`,

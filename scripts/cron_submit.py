@@ -129,7 +129,7 @@ def _dispatch(args) -> None:
         submitted = {
             m.get("name", m["id"]): [
                 w for w in WINDOWS
-                if submission_state.marker_with_lineups_exists(
+                if submission_state.marker_exists(
                     m["id"], k, w, state_dir=STATE_DIR,
                 )
             ]
@@ -161,16 +161,16 @@ def _process_match(
     # Pick the tightest un-fired window we've reached. Marking every window at or
     # above the one we fire collapses a missed earlier mark into a single submit.
     window = next((w for w in sorted(WINDOWS) if mins <= w
-                   and not submission_state.marker_with_lineups_exists(
+                   and not submission_state.marker_exists(
                        sp_match["id"], kickoff, w, state_dir=STATE_DIR,
                    )), None)
     if window is None:
-        _log(f"{head} in {mins:.1f} min — lineup-backed window already submitted")
+        _log(f"{head} in {mins:.1f} min — window already submitted")
         return
-    if submission_state.submitted_run_with_lineups_exists(
+    if submission_state.submitted_run_exists(
         sp_match["id"], kickoff=sp_match["opening_time"], lobby_id=lobby["id"],
     ):
-        _log(f"{head} in {mins:.1f} min — submitted lineup-backed ledger run exists; skip")
+        _log(f"{head} in {mins:.1f} min — submitted ledger run exists; skip")
         return
 
     _log(f"FIRING {window}-min window for {head} (kickoff in {mins:.1f} min)")
@@ -253,11 +253,12 @@ def _non_blocking_submission_status(match: dict, kickoff: datetime, lobby_id: st
         match["id"], kickoff=match["opening_time"], lobby_id=lobby_id,
     ):
         return "ledger-with-lineups"
-    has_marker = any(_marker(match["id"], kickoff, w).exists() for w in WINDOWS)
-    if has_marker or submission_state.submitted_run_exists(
+    if submission_state.submitted_run_exists(
         match["id"], kickoff=match["opening_time"], lobby_id=lobby_id,
     ):
-        return "submitted-no-lineups"
+        return "ledger-submitted"
+    if any(_marker(match["id"], kickoff, w).exists() for w in WINDOWS):
+        return "marker-submitted"
     return "none"
 
 

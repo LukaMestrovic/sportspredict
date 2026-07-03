@@ -262,7 +262,7 @@ def _submit(args) -> None:
         _print_predictions(result)
         print(f"CRON_MARKER_PATH={_host_path(marker)}")
         print(f"CRON_MARKER_WITH_LINEUPS={str(submitted_with_lineups).lower()}")
-        print(f"CRON_BLOCKED={str(submitted_with_lineups).lower()}")
+        print("CRON_BLOCKED=true")
 
 
 def _next_match():
@@ -284,16 +284,14 @@ def _next_match():
 
 def _refuse_if_already_done(match: dict, kickoff: datetime, lobby_id: str) -> None:
     marker = submission_state.marker_path(match["id"], kickoff, CRON_WINDOW)
-    if submission_state.marker_with_lineups_exists(
-        match["id"], kickoff, CRON_WINDOW,
-    ):
+    if submission_state.marker_exists(match["id"], kickoff, CRON_WINDOW):
         raise SystemExit(
-            f"lineup-backed submission marker already exists: {_host_path(marker)}"
+            f"submission marker already exists: {_host_path(marker)}"
         )
-    if submission_state.submitted_run_with_lineups_exists(
+    if submission_state.submitted_run_exists(
         match["id"], kickoff=match["opening_time"], lobby_id=lobby_id,
     ):
-        raise SystemExit("submitted lineup-backed ledger run already exists")
+        raise SystemExit("submitted ledger run already exists")
 
 
 def _confirmed_lineups(lineups: list[dict] | None) -> bool:

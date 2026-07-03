@@ -42,6 +42,11 @@ class SubmissionStateTests(unittest.TestCase):
                     "match", kickoff, 30, state_dir=state_dir,
                 )
             )
+            self.assertTrue(
+                submission_state.marker_exists(
+                    "match", kickoff, 30, state_dir=state_dir,
+                )
+            )
 
     def test_marker_with_lineups_blocks(self):
         with tempfile.TemporaryDirectory() as tmp:

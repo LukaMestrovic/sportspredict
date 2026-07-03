@@ -157,7 +157,7 @@ tail -f logs/cron.log
    settlement/benchmark refresh cron entries through that runner.
 
 The dispatcher is normally a fast no-op. At T−30 it refreshes provider odds
-once, fetches current lineups, forces a fresh cached pricing/web-search call for
+once, fetches current lineups when available, forces a fresh cached pricing/web-search call for
 that submission window, and refreshes exact WC2026 empirical rates from every
 labelable final API-Football fixture strictly before the target kickoff. Team
 contracts contribute two observations per match where appropriate. Final
@@ -165,9 +165,9 @@ event/stat/player responses and the compact tournament snapshot live in
 bind-mounted `cache/`, so this stays current across short-lived containers
 without rebuilding the frozen image after every match. It then submits through
 the ledger and writes its audit. A file lock prevents overlapping ticks; the
-per-match marker/ledger gate prevents duplicate fires only after a
-lineup-backed submission exists, so an earlier no-lineup submission can still be
-updated once confirmed XIs arrive.
+per-match marker/ledger gate prevents duplicate fires after any verified
+submission, including a submission made with explicit lineup uncertainty when
+confirmed XIs are unavailable.
 
 A second cron tick runs settlement every five minutes. It accepts only explicit
 SportPredict `current_value` outcomes, refreshes the exact-contract tournament
