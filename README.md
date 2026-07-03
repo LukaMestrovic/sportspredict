@@ -2,8 +2,8 @@
 
 A self-contained bot for the SportPredict × Jump Trading Probability Cup
 (FIFA World Cup 2026). It converts bookmaker odds and match context into one
-auditable evidence bundle, makes one web-grounded LLM pricing call per match,
-and submits integer YES probabilities from 1–99.
+auditable evidence bundle, makes one staged web-grounded LLM pricing call per
+match, and submits integer YES probabilities from 1–99.
 
 ## Architecture
 
@@ -22,6 +22,9 @@ deterministic parser ──▶ provider market mapping
           └────────────┼────────────┘
                        ▼
           one cached web-grounded LLM call
+          ├─ base prices from evidence
+          ├─ match-read research markdown
+          └─ per-question language adjustments
                        ▼
             audited 1–99 submissions + ledger
 ```
@@ -37,14 +40,15 @@ The main boundaries are:
    match context in one JSON file. Unsupported goal-method props are left
    explicitly empty for audited web research rather than matched approximately.
    Each market also carries a stable `Qn` label, a starting-price
-   `decision_basis`, and a `subagent_brief` so manual runs can split
-   question-specific research cleanly.
+   `decision_basis`, and a `subagent_brief` so the prompt-only LLM workflow can
+   split match-read and question-specific research cleanly.
 4. `simulator/` contains the learned-rate simulator source, lean training
    pipeline, compact training tables, configuration, and fitted artifacts.
    `bot/simulator.py` invokes it through a JSON child-process boundary so
    numerical dependencies never leak into the lightweight bot.
-5. `bot/llm_pricing.py` makes one cached web-grounded call and requires a
-   complete per-market audit. Incomplete markets are skipped.
+5. `bot/llm_pricing.py` makes one cached web-grounded call that first computes
+   base prices, writes a markdown match read, then applies bounded language
+   adjustments. Incomplete markets or invalid moves are skipped.
 6. `bot/pipeline.py` records every submission through the SQLite ledger before
    upserting it to SportPredict.
 
@@ -106,6 +110,7 @@ Useful optional settings:
 | `PARSER_MODEL` | `gpt-5.4-mini` | unfamiliar question parsing |
 | `LLM_PRICING_MODEL` | `gpt-5.5` | final per-match pricing |
 | `LLM_PRICING_REASONING_EFFORT` | `high` | API fallback reasoning effort |
+| `LLM_PRICING_SEARCH_CONTEXT_SIZE` | `medium` | Responses web-search context size |
 | `LLM_PRICING_ENABLED` | `1` | set `0` for deterministic local checks |
 | `ODDS_REGIONS` | `eu,uk,us` | Odds API breadth and credit use |
 | `SPORTSPREDICT_SIMULATOR_N_SIMS` | `8000` | simulator draws; capped at 10000 |
@@ -202,9 +207,12 @@ provenance, repeated refresh metadata, unavailable scopes, derived deltas,
 confidence intervals, and legacy performance blocks remain in the retained
 artifacts/snapshots but are not repeated in every question sent to the LLM.
 
-The pricing model must return `probability_int`, odds used, independent online
+The pricing model must return top-level `match_read_markdown` and
+`match_read_sources`, then for every submitted market a `base_probability_int`,
+final `probability_int`, `language_adjustment`, odds used, independent online
 odds, non-odds factors, downweighted evidence, sources, and a concise reasoning
-summary for every submitted market. The prompt is
+summary. Movement from the base is validator-capped by evidence type, and
+invalid moves are skipped rather than corrected silently. The prompt is
 `prompts/llm_pricing_prompt.md`; its hash is part of the cache key. Pricing
 refuses to run after kickoff, and repeat manual runs reuse the frozen pre-match
 audit.
@@ -296,7 +304,7 @@ parts are:
 | Parser fallback | known templates cost $0; unfamiliar wording is one cached batch |
 | Compound fallback | local for known forms; otherwise one cached batch |
 | Odds API | requested markets × configured regions; one deliberate T−30 refresh |
-| LLM pricing | one cached multi-market call with web research |
+| LLM pricing | one cached multi-market call with match-read research and adjustment audit |
 
 Changing parser behavior can change per-match spend and must be reflected here.
 
