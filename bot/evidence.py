@@ -762,7 +762,11 @@ def _special_market_guidance(question: str) -> str | None:
             "substitute-to-score prices as direct online odds for this contract, "
             "with an own-goal caveat when the SportPredict wording excludes own goals."
         )
-    if "stoppage" in lower or "added time" in lower:
+    if (
+        ("stoppage" in lower or "added time" in lower)
+        and ("goal" in lower or "score" in lower)
+        and "90 minutes + stoppage time" not in lower
+    ):
         parts.append(
             "Search for exact stoppage/added-time goal specials first. If unavailable, "
             "late-window prices such as \"45:00 - half time\", \"80:00 - Full time\", "
@@ -776,7 +780,11 @@ def _special_market_guidance(question: str) -> str | None:
             "to simulator/base-rate evidence."
         )
     if "any player" in lower and (
-        "more than 1 goal" in lower or "2 or more shots on target" in lower
+        "more than 1 goal" in lower
+        or "2 or more goals" in lower
+        or "2+ goals" in lower
+        or "brace" in lower
+        or "2 or more shots on target" in lower
     ):
         parts.append(
             "Search match specials and player-prop tabs for \"any player to score 2+\", "

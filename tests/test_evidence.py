@@ -766,6 +766,23 @@ class ContextEvidenceTests(unittest.TestCase):
 
             self.assertIn(expected, evidence["question_evidence"][0]["adjustment_guidance"])
 
+    def test_any_player_brace_guidance_ignores_regulation_stoppage_clause(self):
+        result = _result({
+            "brace": {"market": "none", "subject": "match", "player": None,
+                      "comparator": "yes", "threshold": None, "period": "match"},
+        }, question=(
+            "Will any player score 2 or more goals in regulation "
+            "(90 minutes + stoppage time)?"
+        ))
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+
+        with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
+            evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+        guidance = evidence["question_evidence"][0]["adjustment_guidance"]
+        self.assertIn("to score a brace", guidance)
+        self.assertNotIn("stoppage/added-time", guidance)
+
     def test_btts_and_goals_compound_gets_combined_market_guidance(self):
         result = _result({
             "compound": {"market": "none", "subject": "match", "player": None,

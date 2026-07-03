@@ -11,6 +11,21 @@ def _number(value) -> str:
     return str(int(number)) if number.is_integer() else f"{number:g}"
 
 
+def _count_threshold(comparator, threshold) -> tuple[str, str]:
+    """Canonicalize equivalent integer count thresholds for stable evidence keys."""
+    try:
+        number = float(threshold)
+    except (TypeError, ValueError):
+        return str(comparator), _number(threshold)
+    if (
+        str(comparator) == ">="
+        and number.is_integer()
+        and number > 0
+    ):
+        return ">", _number(number - 1)
+    return str(comparator), _number(number)
+
+
 def contract_key(market: str, params: dict | None, *, stage: str | None = None) -> str:
     params = params or {}
     market = str(market)
@@ -39,6 +54,11 @@ def contract_key(market: str, params: dict | None, *, stage: str | None = None) 
         return f"first_goal:{period}{scope}:team"
     if market == "compound_and":
         return "compound:first_goal_and_other_team_scores_2h"
+    if market == "any_player_threshold" and params.get("stat") == "goals":
+        comparator, threshold = _count_threshold(
+            params.get("comparator"), params.get("threshold"),
+        )
+        return f"{market}:goals:{comparator}:{threshold}:reg"
     if market in {"any_player_threshold", "total_shots_threshold"}:
         return (
             f"{market}:{params.get('stat', 'shots_total')}:"

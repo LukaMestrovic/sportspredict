@@ -64,6 +64,33 @@ class BundledSimulatorTests(unittest.TestCase):
         self.assertTrue(family["all_history"]["available"])
         self.assertIn("empirical_rate", family["all_history"]["brier"])
 
+    def test_any_player_two_or_more_goals_uses_historical_brace_key(self):
+        payload = {
+            "home": "Switzerland",
+            "away": "Algeria",
+            "kickoff": "2026-07-03T03:00:00Z",
+            "stage": "knockout",
+            "n_sims": 100,
+            "questions": [{
+                "market_id": "brace",
+                "question": (
+                    "Will any player score 2 or more goals in regulation "
+                    "(90 minutes + stoppage time)?"
+                ),
+            }],
+        }
+
+        report = self._run_bridge(payload)
+        item = report["question_reports"][0]
+        self.assertEqual(item["contract_key"], "any_player_threshold:goals:>:1:reg")
+        history = item["historical_evidence"]
+        self.assertTrue(history["empirical_rate"]["all_history"]["available"])
+        self.assertEqual(history["empirical_rate"]["all_history"]["observations"], 2974)
+        comparison = history["contract_performance"]["all_history"]["brier"]
+        self.assertIn("simulator", comparison)
+        self.assertIn("empirical_rate", comparison)
+        self.assertIn("always_50", comparison)
+
     def test_late_goal_template_includes_extra_time_by_default(self):
         payload = {
             "home": "Netherlands", "away": "Morocco",
