@@ -36,7 +36,7 @@ def normalize_team(name: str) -> str:
     # Providers disagree about the word order for DR Congo.
     if text in ("dr congo", "congo dr"):
         return "congo dr"
-    if text == "cape verde islands":
+    if text in ("cabo verde", "cape verde islands"):
         return "cape verde"
     if text == "bosnia and herzegovina":
         return "bosnia herzegovina"

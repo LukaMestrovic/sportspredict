@@ -15,6 +15,7 @@ class TeamNormalizationTests(unittest.TestCase):
         self.assertEqual(normalize_team("DR Congo"), normalize_team("Congo DR"))
         self.assertEqual(normalize_team("Curaçao"), normalize_team("Curacao"))
         self.assertEqual(normalize_team("Cape Verde Islands"), normalize_team("CPV"))
+        self.assertEqual(normalize_team("Cabo Verde"), normalize_team("CPV"))
 
     def test_player_names_tolerate_accents_and_abbreviations(self):
         self.assertTrue(player_matches("L. Sucic", "Luka Sučić"))

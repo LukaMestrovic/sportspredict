@@ -1,9 +1,26 @@
 import unittest
 
-from bot.fifa import _parse_lineups
+from bot.fifa import FIFA, _parse_lineups
 
 
 class FifaLineupTests(unittest.TestCase):
+    def test_find_match_accepts_cabo_verde_official_name(self):
+        client = FIFA()
+        client.calendar = lambda: [{
+            "IdMatch": "400021521",
+            "Date": "2026-07-03T22:00:00Z",
+            "Home": _calendar_team("Argentina", "ARG"),
+            "Away": _calendar_team("Cabo Verde", "CPV"),
+        }]
+
+        found = client.find_match(
+            "2026-07-03T22:00:00+00:00",
+            "Argentina",
+            "Cape Verde Islands",
+        )
+
+        self.assertEqual(found["IdMatch"], "400021521")
+
     def test_parse_live_match_lineups_to_api_football_shape(self):
         payload = {
             "IdMatch": "400",
@@ -49,6 +66,13 @@ def _team(name, code, starters=11):
             "Role": 0,
             "Alias": [{"Locale": "en-GB", "Description": f"{name} Coach"}],
         }],
+    }
+
+
+def _calendar_team(name, code):
+    return {
+        "TeamName": [{"Locale": "en-GB", "Description": name}],
+        "Abbreviation": code,
     }
 
 
