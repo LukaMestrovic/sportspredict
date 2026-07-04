@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Cron entrypoint: run one tick of the autonomous submitter inside the immutable
-# v1 image. Because the code is baked into the image, the live bot is a frozen
-# snapshot — editing the working tree never affects a running tick until the next
-# scripts/deploy.sh rebuild. Installed into cron by scripts/deploy.sh; you
-# normally never call this by hand.
+# Cron/deployed entrypoint: run one dispatcher, settlement, or manual command
+# inside the immutable v1 image. Because the code is baked into the image, the
+# live bot is a frozen snapshot — editing the working tree never affects a
+# running tick or manual flow until the next scripts/deploy.sh rebuild.
 #
 #   scripts/run.sh [--status|--dry-run|--settle]
 set -uo pipefail

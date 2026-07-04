@@ -84,9 +84,12 @@ git-ignored; keep it that way).
   `cache/deployed/run.sh` pinned to that image, and installs cron to call that
   deployed runner. Cron/manual submissions must use the deployed runner so later
   working-tree edits cannot affect live submissions until the next deploy.
-- Cron/manual reruns are gated by any verified submission. If lineups are still
-  unavailable, submit with explicit lineup uncertainty and let the marker/ledger
-  state stop both manual and API reruns.
+- Lineup-backed manual Codex prepare/submit owns the T-30 slot by writing the
+  cron marker as soon as confirmed XIs are present and the manual flow starts,
+  before SportPredict verification. Manual submissions without confirmed lineups
+  do not create the cron marker automatically, and a no-lineups manual ledger
+  row alone must not suppress the later T-30 lineup-backed cron refresh. Cron's
+  own markers still prevent repeat automated fires.
 
 ## Keys / env
 `config.py` loads `.env`. Required: `SPORTSPREDICT_KEY`, `APIFOOTBALL_KEY`,

@@ -47,6 +47,11 @@ class SubmissionStateTests(unittest.TestCase):
                     "match", kickoff, 30, state_dir=state_dir,
                 )
             )
+            self.assertFalse(
+                submission_state.marker_blocks_cron(
+                    "match", kickoff, 30, state_dir=state_dir,
+                )
+            )
 
     def test_marker_with_lineups_blocks(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -60,6 +65,27 @@ class SubmissionStateTests(unittest.TestCase):
             )
             self.assertTrue(
                 submission_state.marker_with_lineups_exists(
+                    "match", kickoff, 30, state_dir=state_dir,
+                )
+            )
+            self.assertTrue(
+                submission_state.marker_blocks_cron(
+                    "match", kickoff, 30, state_dir=state_dir,
+                )
+            )
+
+    def test_cron_marker_blocks_even_without_lineups(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state_dir = Path(tmp)
+            kickoff = datetime(2099, 6, 22, 17, tzinfo=timezone.utc)
+            submission_state.write_marker(
+                "match", kickoff, 30,
+                source="cron",
+                metadata={"lineups_available": False},
+                state_dir=state_dir,
+            )
+            self.assertTrue(
+                submission_state.marker_blocks_cron(
                     "match", kickoff, 30, state_dir=state_dir,
                 )
             )

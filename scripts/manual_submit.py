@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Manual GPT submission bridge.
+"""Manual Codex submission bridge.
 
 The manual path deliberately uses the same deployed container as cron. It builds
 fresh evidence without calling OpenAI, accepts an audited GPT JSON response over
-stdin, submits through the normal ledger/platform path, verifies SportPredict,
-then writes the cron-skip marker.
+stdin, submits through the normal ledger/platform path, and verifies
+SportPredict. A lineup-backed manual prepare/submit writes the cron-skip marker
+as soon as the lineup-backed manual flow is underway, so the T-30 automated
+OpenAI path cannot fire while Codex is still researching or submitting.
 """
 from __future__ import annotations
 
@@ -41,11 +43,11 @@ from bot.sportspredict import SportPredict
 
 MANUAL_DIR = config.ROOT / "logs" / "manual_submissions"
 CRON_WINDOW = 30
-MODEL_LABEL = "manual-chatgpt-gpt-5.5-extra-high"
+MODEL_LABEL = "manual-codex"
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Manual GPT-5.5 submission flow")
+    ap = argparse.ArgumentParser(description="Manual Codex submission flow")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     status = sub.add_parser("status")
@@ -127,8 +129,20 @@ def _prepare(args) -> None:
         if args.require_lineups and not lineups_available:
             lineup_warning = (
                 "confirmed API-Football/FIFA lineups are unavailable; "
-                "evidence will omit lineups and the manual GPT run must research "
+                "evidence will omit lineups and the manual Codex run must research "
                 "official/published lineup or team-news context on the web"
+            )
+        started_marker = None
+        if lineups_available:
+            started_marker = submission_state.write_marker(
+                match["id"], kickoff, CRON_WINDOW,
+                source="manual-chatgpt-started",
+                metadata={
+                    "phase": "manual_prepare_started",
+                    "lineups_available": True,
+                    "minutes_before": round(minutes_before, 1),
+                    "fixture_id": (fixture.get("fixture") or {}).get("id"),
+                },
             )
 
         oa = OddsAPI(refresh_odds=args.fresh)
@@ -163,12 +177,35 @@ def _prepare(args) -> None:
             _chatgpt_request(result.evidence_json, result.evidence_path),
             encoding="utf-8",
         )
+        if lineups_available:
+            started_marker = submission_state.write_marker(
+                match["id"], kickoff, CRON_WINDOW,
+                source="manual-chatgpt-started",
+                metadata={
+                    "phase": "manual_prepare_ready",
+                    "lineups_available": True,
+                    "minutes_before": round(minutes_before, 1),
+                    "fixture_id": (fixture.get("fixture") or {}).get("id"),
+                    "session_path": _container_path(session_path),
+                    "evidence_hash": result.evidence_hash,
+                    "evidence_path": _container_path(result.evidence_path),
+                    "chatgpt_request_path": _container_path(chatgpt_path),
+                    "response_path": _container_path(response_path),
+                },
+            )
 
         print(f"MATCH={match.get('name', match['id'])}")
         print(f"MATCH_ID={match['id']}")
         print(f"KICKOFF={kickoff.isoformat()}")
         print(f"MINUTES_TO_KICKOFF={minutes_before:.1f}")
         print(f"LINEUPS_AVAILABLE={str(lineups_available).lower()}")
+        if started_marker:
+            print(f"CRON_MARKER_PATH={_host_path(started_marker)}")
+            print("CRON_MARKER_WITH_LINEUPS=true")
+            print("CRON_BLOCKED=true")
+        else:
+            print("CRON_MARKER_WITH_LINEUPS=false")
+            print("CRON_BLOCKED=false")
         if lineup_warning:
             print(f"LINEUP_WARNING={lineup_warning}")
         print(f"SESSION_PATH={_container_path(session_path)}")
@@ -190,6 +227,22 @@ def _submit(args) -> None:
         kickoff = _parse_kickoff(session["match"]["opening_time"])
         if (kickoff - datetime.now(timezone.utc)).total_seconds() <= 0:
             raise SystemExit("kickoff has passed; refusing manual submit")
+
+        lineup_backed = _session_has_lineups(session)
+        started_marker = None
+        if lineup_backed:
+            started_marker = submission_state.write_marker(
+                session["match"]["id"], kickoff, CRON_WINDOW,
+                source="manual-chatgpt-started",
+                metadata={
+                    "phase": "manual_submit_started",
+                    "lineups_available": True,
+                    "session_path": str(session_path),
+                    "evidence_hash": session.get("evidence_hash"),
+                    "evidence_path": session.get("evidence_path"),
+                    "response_path": session.get("response_path"),
+                },
+            )
 
         response_text = (
             sys.stdin.read() if args.response_stdin
@@ -224,22 +277,26 @@ def _submit(args) -> None:
         verification = outcome.get("platform_verification")
         if not verification or not verification.get("ok"):
             raise SystemExit(
-                "SportPredict platform verification did not succeed; marker not written"
+                "SportPredict platform verification did not succeed; "
+                "lineup-backed start marker was not finalized"
             )
 
         run_id = run_ids[0]
-        submitted_with_lineups = bool(session.get("lineups_available")) or _result_has_lineups(result)
-        marker = submission_state.write_marker(
-            session["match"]["id"], kickoff, CRON_WINDOW,
-            source="manual-chatgpt",
-            metadata={
-                "ledger_run_id": run_id,
-                "evidence_hash": result.evidence_hash,
-                "evidence_path": result.evidence_path,
-                "lineups_available": submitted_with_lineups,
-                "platform_verification": verification,
-            },
-        )
+        submitted_with_lineups = lineup_backed or _result_has_lineups(result)
+        marker = None
+        if submitted_with_lineups:
+            marker = submission_state.write_marker(
+                session["match"]["id"], kickoff, CRON_WINDOW,
+                source="manual-chatgpt",
+                metadata={
+                    "phase": "manual_submitted",
+                    "ledger_run_id": run_id,
+                    "evidence_hash": result.evidence_hash,
+                    "evidence_path": result.evidence_path,
+                    "lineups_available": True,
+                    "platform_verification": verification,
+                },
+            )
         print(f"MATCH={session['match'].get('name', session['match']['id'])}")
         print(f"KICKOFF={kickoff.isoformat()}")
         print(f"EVIDENCE_PATH={_host_path(result.evidence_path)}")
@@ -258,9 +315,17 @@ def _submit(args) -> None:
             + json.dumps(verification, sort_keys=True)
         )
         _print_predictions(result)
-        print(f"CRON_MARKER_PATH={_host_path(marker)}")
-        print(f"CRON_MARKER_WITH_LINEUPS={str(submitted_with_lineups).lower()}")
-        print("CRON_BLOCKED=true")
+        if marker:
+            print(f"CRON_MARKER_PATH={_host_path(marker)}")
+            print("CRON_MARKER_WITH_LINEUPS=true")
+            print("CRON_BLOCKED=true")
+        elif started_marker:
+            print(f"CRON_MARKER_PATH={_host_path(started_marker)}")
+            print("CRON_MARKER_WITH_LINEUPS=true")
+            print("CRON_BLOCKED=true")
+        else:
+            print("CRON_MARKER_WITH_LINEUPS=false")
+            print("CRON_BLOCKED=false")
 
 
 def _next_match():
@@ -379,9 +444,9 @@ def _chatgpt_request(evidence_json: dict, evidence_path: str) -> str:
         "available, and otherwise price with explicit lineup uncertainty."
     )
     return (
-        "# Manual SportPredict GPT-5.5 request\n\n"
-        "Use GPT-5.5 with extra-high reasoning for your own research and "
-        "judgement. Do not call the OpenAI API. Return only the JSON object "
+        "# Manual SportPredict Codex request\n\n"
+        "Use Codex on this machine for your own research and judgement. Do not "
+        "call the OpenAI API. Return only the JSON object "
         "specified by the pricing prompt.\n\n"
         f"- Evidence container path: `{_container_path(evidence_path)}`\n"
         f"- Evidence host path: `{_host_path(evidence_path)}`\n\n"
@@ -472,6 +537,12 @@ def _result_has_lineups(result: MatchResult) -> bool:
         getattr(result, "evidence_path", None)
     ) or submission_state.evidence_lineups_available(
         (evidence_json.get("match") or {}).get("lineups")
+    )
+
+
+def _session_has_lineups(session: dict) -> bool:
+    return bool(session.get("lineups_available")) or submission_state.evidence_has_lineups(
+        session.get("evidence_path")
     )
 
 

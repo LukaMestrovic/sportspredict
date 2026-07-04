@@ -7,7 +7,9 @@ Design
 Cron can't fire "30 min before a variable kickoff", so this is a *dispatcher*:
 run it once a minute and let it decide. Each tick it finds the soonest open
 match and submits once at the 30-minute window using a marker file so it never
-re-submits on the intervening ticks. A file lock prevents overlapping ticks
+re-submits on the intervening ticks. A lineup-backed manual Codex submission
+writes the same marker when it starts, before SportPredict verification, so the
+automated OpenAI path cannot race it. A file lock prevents overlapping ticks
 (a fire calls the LLM/odds and can outlast one minute) from double-submitting.
 
 At T-30 the lineups are out and there is ~1800s of headroom, so the auditable
@@ -129,7 +131,7 @@ def _dispatch(args) -> None:
         submitted = {
             m.get("name", m["id"]): [
                 w for w in WINDOWS
-                if submission_state.marker_exists(
+                if submission_state.marker_blocks_cron(
                     m["id"], k, w, state_dir=STATE_DIR,
                 )
             ]
@@ -161,16 +163,16 @@ def _process_match(
     # Pick the tightest un-fired window we've reached. Marking every window at or
     # above the one we fire collapses a missed earlier mark into a single submit.
     window = next((w for w in sorted(WINDOWS) if mins <= w
-                   and not submission_state.marker_exists(
+                   and not submission_state.marker_blocks_cron(
                        sp_match["id"], kickoff, w, state_dir=STATE_DIR,
                    )), None)
     if window is None:
         _log(f"{head} in {mins:.1f} min — window already submitted")
         return
-    if submission_state.submitted_run_exists(
+    if submission_state.submitted_run_with_lineups_exists(
         sp_match["id"], kickoff=sp_match["opening_time"], lobby_id=lobby["id"],
     ):
-        _log(f"{head} in {mins:.1f} min — submitted ledger run exists; skip")
+        _log(f"{head} in {mins:.1f} min — submitted lineup-backed ledger run exists; skip")
         return
 
     _log(f"FIRING {window}-min window for {head} (kickoff in {mins:.1f} min)")
@@ -249,6 +251,10 @@ def _result_has_lineups(result) -> bool:
 
 
 def _non_blocking_submission_status(match: dict, kickoff: datetime, lobby_id: str):
+    if any(submission_state.marker_with_lineups_exists(
+        match["id"], kickoff, w, state_dir=STATE_DIR,
+    ) for w in WINDOWS):
+        return "marker-with-lineups"
     if submission_state.submitted_run_with_lineups_exists(
         match["id"], kickoff=match["opening_time"], lobby_id=lobby_id,
     ):

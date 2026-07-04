@@ -24,8 +24,39 @@ class ManualSubmitTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_marker_written_only_after_platform_verification(self):
-        session_path, response_path = self._files()
+    def test_lineup_marker_written_before_platform_submission(self):
+        session_path, response_path = self._files(lineups_available=True)
+        verification = {"ok": True, "checked": 1, "expected": 1,
+                        "missing": [], "mismatched": [], "ignored_closed": []}
+        outcome = {"submitted": 1, "updated": 0, "unchanged": 0, "failed": 0,
+                   "platform_verification": verification}
+        events = []
+        with self._patched_submit(outcome, events=events) as patched:
+            with redirect_stdout(StringIO()) as out:
+                manual_submit._submit(SimpleNamespace(
+                    session=str(session_path),
+                    response=str(response_path),
+                    response_stdin=False,
+                ))
+
+        patched["submit"].assert_called_once()
+        self.assertEqual(events, ["marker", "submit", "marker"])
+        self.assertEqual(patched["marker"].call_count, 2)
+        first_kwargs = patched["marker"].call_args_list[0].kwargs
+        self.assertEqual(first_kwargs["source"], "manual-chatgpt-started")
+        self.assertEqual(first_kwargs["metadata"]["phase"], "manual_submit_started")
+        self.assertTrue(first_kwargs["metadata"]["lineups_available"])
+        marker_kwargs = patched["marker"].call_args.kwargs
+        self.assertEqual(marker_kwargs["source"], "manual-chatgpt")
+        self.assertEqual(marker_kwargs["metadata"]["phase"], "manual_submitted")
+        self.assertTrue(marker_kwargs["metadata"]["lineups_available"])
+        self.assertIn("PREDICTIONS_JSON=", out.getvalue())
+        self.assertIn("PREDICTIONS:", out.getvalue())
+        self.assertIn("Will Home win?", out.getvalue())
+        self.assertIn("CRON_BLOCKED=true", out.getvalue())
+
+    def test_no_lineup_manual_submit_does_not_write_marker(self):
+        session_path, response_path = self._files(lineups_available=False)
         verification = {"ok": True, "checked": 1, "expected": 1,
                         "missing": [], "mismatched": [], "ignored_closed": []}
         outcome = {"submitted": 1, "updated": 0, "unchanged": 0, "failed": 0,
@@ -39,13 +70,9 @@ class ManualSubmitTests(unittest.TestCase):
                 ))
 
         patched["submit"].assert_called_once()
-        patched["marker"].assert_called_once()
-        marker_kwargs = patched["marker"].call_args.kwargs
-        self.assertFalse(marker_kwargs["metadata"]["lineups_available"])
-        self.assertIn("PREDICTIONS_JSON=", out.getvalue())
-        self.assertIn("PREDICTIONS:", out.getvalue())
-        self.assertIn("Will Home win?", out.getvalue())
-        self.assertIn("CRON_BLOCKED=true", out.getvalue())
+        patched["marker"].assert_not_called()
+        self.assertIn("CRON_MARKER_WITH_LINEUPS=false", out.getvalue())
+        self.assertIn("CRON_BLOCKED=false", out.getvalue())
 
     def test_marker_not_written_when_platform_verification_missing(self):
         session_path, response_path = self._files()
@@ -118,9 +145,80 @@ class ManualSubmitTests(unittest.TestCase):
         session = json.loads(Path(session_line.split("=", 1)[1]).read_text())
         self.assertFalse(session["lineups_available"])
         self.assertIn("unavailable", session["lineup_warning"])
+        self.assertIn("CRON_MARKER_WITH_LINEUPS=false", out.getvalue())
+        self.assertIn("CRON_BLOCKED=false", out.getvalue())
+
+    def test_prepare_with_lineups_writes_cron_marker(self):
+        evidence_path = self.root / "evidence.json"
+        lineups = {
+            "Home": {"starting_xi": [f"H{i}" for i in range(11)], "bench": []},
+            "Away": {"starting_xi": [f"A{i}" for i in range(11)], "bench": []},
+        }
+        evidence_json = {
+            "evidence_hash": "hash",
+            "match": {"match_id": "match", "home": "Home", "away": "Away",
+                      "kickoff": "2099-06-22T17:00:00Z", "lineups": lineups},
+            "question_evidence": [{"market_id": "m", "direct_odds": []}],
+        }
+        evidence_path.write_text(json.dumps(evidence_json))
+        result = MatchResult(
+            sp_match={"id": "match", "name": "Home vs Away",
+                      "opening_time": "2099-06-22T17:00:00Z"},
+            fixture={"fixture": {"id": 42}},
+            home="Home",
+            away="Away",
+            markets=[{"id": "m", "question": "Will Home win?"}],
+            evidence_json=evidence_json,
+            evidence_path=str(evidence_path),
+            evidence_hash="hash",
+        )
+        sp = SimpleNamespace(markets=lambda _lobby, _match: result.markets)
+        kickoff = manual_submit._parse_kickoff("2099-06-22T17:00:00Z")
+
+        class _AF:
+            def __init__(self, *, refresh_odds=False):
+                pass
+
+            def find_fixture(self, *_args):
+                return {"fixture": {"id": 42}}
+
+        events = []
+
+        def write_marker(*_args, **kwargs):
+            events.append(kwargs["metadata"]["phase"])
+            return self.root / "marker.done"
+
+        with patch.object(manual_submit, "MANUAL_DIR", self.root / "manual"), \
+             patch.object(manual_submit, "_nonblocking_lock", return_value=_no_lock()), \
+             patch.object(manual_submit, "_next_match",
+                          return_value=(sp, {"id": "event"}, {"id": "lobby"},
+                                        result.sp_match, kickoff)), \
+             patch.object(manual_submit, "APIFootball", _AF), \
+             patch.object(manual_submit, "OddsAPI", lambda **_kw: object()), \
+             patch.object(manual_submit.lineup_fetcher, "fetch_lineups",
+                          return_value=[
+                              {"team": {"name": "Home"},
+                               "startXI": [{"player": {"name": f"H{i}"}} for i in range(11)]},
+                              {"team": {"name": "Away"},
+                               "startXI": [{"player": {"name": f"A{i}"}} for i in range(11)]},
+                          ]), \
+             patch.object(manual_submit.submission_state, "write_marker",
+                          side_effect=write_marker) as marker, \
+             patch.object(manual_submit, "run_match", return_value=result), \
+             redirect_stdout(StringIO()) as out:
+            manual_submit._prepare(SimpleNamespace(
+                next=True, fresh=True, require_lineups=True,
+            ))
+
+        self.assertEqual(events, ["manual_prepare_started", "manual_prepare_ready"])
+        self.assertEqual(marker.call_count, 2)
+        self.assertIn("LINEUPS_AVAILABLE=true", out.getvalue())
+        self.assertIn("CRON_MARKER_PATH=", out.getvalue())
+        self.assertIn("CRON_MARKER_WITH_LINEUPS=true", out.getvalue())
+        self.assertIn("CRON_BLOCKED=true", out.getvalue())
 
     def test_manual_submit_allows_repeated_submission_attempts(self):
-        session_path, response_path = self._files()
+        session_path, response_path = self._files(lineups_available=True)
         verification = {"ok": True, "checked": 1, "expected": 1,
                         "missing": [], "mismatched": [], "ignored_closed": []}
         outcome = {"submitted": 0, "updated": 1, "unchanged": 0, "failed": 0,
@@ -137,14 +235,21 @@ class ManualSubmitTests(unittest.TestCase):
                 ))
 
         patched["submit"].assert_called_once()
-        patched["marker"].assert_called_once()
+        self.assertEqual(patched["marker"].call_count, 2)
 
-    def _files(self):
+    def _files(self, *, lineups_available: bool = False):
         evidence_path = self.root / "evidence.json"
+        lineups = (
+            {
+                "Home": {"starting_xi": [f"H{i}" for i in range(11)]},
+                "Away": {"starting_xi": [f"A{i}" for i in range(11)]},
+            }
+            if lineups_available else None
+        )
         evidence_path.write_text(json.dumps({
             "evidence_hash": "hash",
             "match": {"match_id": "match", "home": "Home", "away": "Away",
-                      "kickoff": "2099-06-22T17:00:00Z"},
+                      "kickoff": "2099-06-22T17:00:00Z", "lineups": lineups},
             "question_evidence": [{"market_id": "m", "direct_odds": []}],
         }))
         response_path = self.root / "response.json"
@@ -172,6 +277,7 @@ class ManualSubmitTests(unittest.TestCase):
             "home": "Home",
             "away": "Away",
             "minutes_before": 60.0,
+            "lineups_available": lineups_available,
             "markets": [{"id": "m", "question": "Will Home win?"}],
             "intents": {"m": {"market": "match_winner"}},
             "market_specs": {"m": None},
@@ -185,7 +291,7 @@ class ManualSubmitTests(unittest.TestCase):
         return session_path, response_path
 
     @contextmanager
-    def _patched_submit(self, outcome):
+    def _patched_submit(self, outcome, *, events: list[str] | None = None):
         def apply_response(result, *_args, **_kwargs):
             result.predictions = [
                 Prediction("m", "Will Home win?", 0.5, 50, 0, "manual")
@@ -194,13 +300,24 @@ class ManualSubmitTests(unittest.TestCase):
             result.llm_pricing_report_path = str(self.root / "audit.md")
             return result
 
+        def submit_side_effect(*_args, **_kwargs):
+            if events is not None:
+                events.append("submit")
+            return outcome, ["run"]
+
+        def marker_side_effect(*_args, **_kwargs):
+            if events is not None:
+                events.append("marker")
+            return self.root / "marker.done"
+
         with patch.object(manual_submit, "_nonblocking_lock", return_value=_no_lock()), \
              patch.object(manual_submit, "SportPredict", return_value=object()), \
              patch.object(manual_submit.llm_pricing, "apply_pricing_response",
                           side_effect=apply_response), \
              patch.object(manual_submit, "submit_with_ledger",
-                          return_value=(outcome, ["run"])) as submit, \
-             patch.object(manual_submit.submission_state, "write_marker") as marker:
+                          side_effect=submit_side_effect) as submit, \
+             patch.object(manual_submit.submission_state, "write_marker",
+                          side_effect=marker_side_effect) as marker:
             yield {"submit": submit, "marker": marker}
 
 

@@ -51,6 +51,30 @@ def marker_with_lineups_exists(
     return evidence_has_lineups(evidence_path) if evidence_path else False
 
 
+def marker_blocks_cron(
+    match_id: str,
+    kickoff: datetime,
+    window: int,
+    *,
+    state_dir: Path = STATE_DIR,
+) -> bool:
+    """Return whether an existing marker should suppress the automated run.
+
+    Cron's own markers always block repeat cron fires. Manual markers block only
+    when they are lineup-backed; this lets an older/manual no-lineups submission
+    be improved by the T-30 automated run once confirmed XIs exist.
+    """
+    path = marker_path(match_id, kickoff, window, state_dir=state_dir)
+    if not path.exists():
+        return False
+    metadata = _read_marker(path)
+    if metadata.get("source") in {"manual-chatgpt", "manual-chatgpt-started"}:
+        return marker_with_lineups_exists(
+            match_id, kickoff, window, state_dir=state_dir,
+        )
+    return True
+
+
 def write_marker(
     match_id: str,
     kickoff: datetime,

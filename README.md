@@ -134,6 +134,34 @@ Useful optional settings:
 .venv/bin/python -m scripts.settle_ledger
 ```
 
+The live manual path is the deployed Codex workflow, not an OpenAI API pricing
+call. Around T−75, run the deployed prepare command and require confirmed
+lineups:
+
+```bash
+cache/deployed/run.sh manual status --next
+cache/deployed/run.sh manual prepare --next --fresh --require-lineups
+```
+
+If `LINEUPS_AVAILABLE=true`, prepare writes the T−30 cron marker immediately
+after confirmed XIs are detected and refreshes that marker with the generated
+session/evidence paths before returning. That marker is the handoff that tells
+cron a lineup-backed Codex submission owns the match. If
+`LINEUPS_AVAILABLE=false`, prepare does not write the cron marker; do not submit
+as a lineup-backed manual run.
+
+After Codex writes the required JSON response to `RESPONSE_PATH`, submit through
+the deployed runner:
+
+```bash
+cache/deployed/run.sh manual submit --session SESSION_PATH --response RESPONSE_PATH
+```
+
+For lineup-backed sessions, submit refreshes the same marker before reading or
+validating the response, so a long manual submit started around T−45 cannot race
+the T−30 automated OpenAI cron path. Manual sessions without confirmed lineups
+do not create the cron marker automatically.
+
 ## Deployment
 
 Prerequisites are Docker, a running Docker daemon, `crontab`, and a completed
@@ -156,18 +184,24 @@ tail -f logs/cron.log
    idempotently installs the per-minute T−30 dispatcher and five-minute
    settlement/benchmark refresh cron entries through that runner.
 
-The dispatcher is normally a fast no-op. At T−30 it refreshes provider odds
-once, fetches current lineups when available, forces a fresh cached pricing/web-search call for
-that submission window, and refreshes exact WC2026 empirical rates from every
-labelable final API-Football fixture strictly before the target kickoff. Team
-contracts contribute two observations per match where appropriate. Final
-event/stat/player responses and the compact tournament snapshot live in
-bind-mounted `cache/`, so this stays current across short-lived containers
-without rebuilding the frozen image after every match. It then submits through
-the ledger and writes its audit. A file lock prevents overlapping ticks; the
-per-match marker/ledger gate prevents duplicate fires after any verified
-submission, including a submission made with explicit lineup uncertainty when
-confirmed XIs are unavailable.
+The dispatcher is normally a fast no-op. At T−30 it first checks the per-match
+cron marker. A lineup-backed manual Codex prepare/submit writes that marker as
+soon as the manual flow is underway, before SportPredict verification, so cron
+does not start a competing automated OpenAI submission. Cron's own markers also
+block repeat fires. A manual run without confirmed lineups does not create the
+marker automatically, and a no-lineups manual ledger row alone does not suppress
+the T−30 lineup-backed cron refresh.
+
+When no blocking marker or lineup-backed submitted ledger row exists, cron
+refreshes provider odds once, fetches current lineups when available, forces a
+fresh cached pricing/web-search call for that submission window, and refreshes
+exact WC2026 empirical rates from every labelable final API-Football fixture
+strictly before the target kickoff. Team contracts contribute two observations
+per match where appropriate. Final event/stat/player responses and the compact
+tournament snapshot live in bind-mounted `cache/`, so this stays current across
+short-lived containers without rebuilding the frozen image after every match. It
+then submits through the ledger and writes its audit. A file lock prevents
+overlapping ticks.
 
 A second cron tick runs settlement every five minutes. It accepts only explicit
 SportPredict `current_value` outcomes, refreshes the exact-contract tournament
