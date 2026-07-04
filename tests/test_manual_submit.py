@@ -96,7 +96,10 @@ class ManualSubmitTests(unittest.TestCase):
              patch.object(manual_submit, "_next_match",
                           return_value=(sp, {"id": "event"}, {"id": "lobby"},
                                         result.sp_match, kickoff)), \
-             patch.object(manual_submit, "_refuse_if_already_done"), \
+             patch.object(manual_submit.submission_state, "marker_exists",
+                          side_effect=AssertionError("manual prepare checked marker")), \
+             patch.object(manual_submit.submission_state, "submitted_run_exists",
+                          side_effect=AssertionError("manual prepare checked ledger")), \
              patch.object(manual_submit, "APIFootball", _AF), \
              patch.object(manual_submit, "OddsAPI", lambda **_kw: object()), \
              patch.object(manual_submit.lineup_fetcher, "fetch_lineups",
@@ -116,25 +119,25 @@ class ManualSubmitTests(unittest.TestCase):
         self.assertFalse(session["lineups_available"])
         self.assertIn("unavailable", session["lineup_warning"])
 
-    def test_existing_submission_marker_blocks_manual(self):
-        match = {"id": "match", "opening_time": "2099-06-22T17:00:00Z"}
-        kickoff = manual_submit._parse_kickoff(match["opening_time"])
-        with patch.object(manual_submit.submission_state,
-                          "marker_exists", return_value=True), \
-             patch.object(manual_submit.submission_state,
-                          "submitted_run_exists", return_value=False):
-            with self.assertRaises(SystemExit):
-                manual_submit._refuse_if_already_done(match, kickoff, "lobby")
+    def test_manual_submit_allows_repeated_submission_attempts(self):
+        session_path, response_path = self._files()
+        verification = {"ok": True, "checked": 1, "expected": 1,
+                        "missing": [], "mismatched": [], "ignored_closed": []}
+        outcome = {"submitted": 0, "updated": 1, "unchanged": 0, "failed": 0,
+                   "platform_verification": verification}
+        with self._patched_submit(outcome) as patched:
+            with patch.object(manual_submit.submission_state, "marker_exists",
+                              side_effect=AssertionError("manual submit checked marker")), \
+                 patch.object(manual_submit.submission_state, "submitted_run_exists",
+                              side_effect=AssertionError("manual submit checked ledger")):
+                manual_submit._submit(SimpleNamespace(
+                    session=str(session_path),
+                    response=str(response_path),
+                    response_stdin=False,
+                ))
 
-    def test_existing_ledger_submission_blocks_manual(self):
-        match = {"id": "match", "opening_time": "2099-06-22T17:00:00Z"}
-        kickoff = manual_submit._parse_kickoff(match["opening_time"])
-        with patch.object(manual_submit.submission_state,
-                          "marker_exists", return_value=False), \
-             patch.object(manual_submit.submission_state,
-                          "submitted_run_exists", return_value=True):
-            with self.assertRaises(SystemExit):
-                manual_submit._refuse_if_already_done(match, kickoff, "lobby")
+        patched["submit"].assert_called_once()
+        patched["marker"].assert_called_once()
 
     def _files(self):
         evidence_path = self.root / "evidence.json"
@@ -192,7 +195,6 @@ class ManualSubmitTests(unittest.TestCase):
             return result
 
         with patch.object(manual_submit, "_nonblocking_lock", return_value=_no_lock()), \
-             patch.object(manual_submit, "_refuse_if_already_done"), \
              patch.object(manual_submit, "SportPredict", return_value=object()), \
              patch.object(manual_submit.llm_pricing, "apply_pricing_response",
                           side_effect=apply_response), \

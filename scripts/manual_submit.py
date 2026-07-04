@@ -112,7 +112,6 @@ def _status(_args) -> None:
 def _prepare(args) -> None:
     with _nonblocking_lock():
         sp, event, lobby, match, kickoff = _next_match()
-        _refuse_if_already_done(match, kickoff, lobby["id"])
         now = datetime.now(timezone.utc)
         minutes_before = (kickoff - now).total_seconds() / 60.0
         if minutes_before <= 0:
@@ -189,7 +188,6 @@ def _submit(args) -> None:
         session_path = Path(args.session)
         session = json.loads(session_path.read_text(encoding="utf-8"))
         kickoff = _parse_kickoff(session["match"]["opening_time"])
-        _refuse_if_already_done(session["match"], kickoff, session["lobby_id"])
         if (kickoff - datetime.now(timezone.utc)).total_seconds() <= 0:
             raise SystemExit("kickoff has passed; refusing manual submit")
 
@@ -280,18 +278,6 @@ def _next_match():
         raise SystemExit("no upcoming open matches")
     match, kickoff = upcoming[0]
     return sp, event, lobby, match, kickoff
-
-
-def _refuse_if_already_done(match: dict, kickoff: datetime, lobby_id: str) -> None:
-    marker = submission_state.marker_path(match["id"], kickoff, CRON_WINDOW)
-    if submission_state.marker_exists(match["id"], kickoff, CRON_WINDOW):
-        raise SystemExit(
-            f"submission marker already exists: {_host_path(marker)}"
-        )
-    if submission_state.submitted_run_exists(
-        match["id"], kickoff=match["opening_time"], lobby_id=lobby_id,
-    ):
-        raise SystemExit("submitted ledger run already exists")
 
 
 def _confirmed_lineups(lineups: list[dict] | None) -> bool:
