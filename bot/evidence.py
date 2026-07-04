@@ -110,7 +110,9 @@ def build_match_evidence(
             "direct_market_spec": spec_by_market[mid],
         }
         item["direct_odds"] = direct_compact
-        online = [] if direct else public_odds.online_odds(intent, result.home, result.away)
+        online = [] if direct else public_odds.online_odds(
+            intent, result.home, result.away, question=question,
+        )
         if online:
             item["online_odds_candidates"] = online
         simulator_estimate = None

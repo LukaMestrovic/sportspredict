@@ -50,6 +50,48 @@ class PublicOddsTests(unittest.TestCase):
                          "USA (shots on target) (5.5) over 2.08")
         self.assertAlmostEqual(candidate["probability_pct"], 44.68)
 
+    def test_hydration_goal_special_single_sided_price_is_extracted(self):
+        page = """
+        <div>Match Specials</div>
+        <div>Goal scored before the 1st half hydration break</div><span>2.25</span>
+        """
+        intent = {"market": "goal_window", "subject": "match", "period": "match"}
+        with patch("bot.public_odds.SPECIAL_PAGES", [
+                ("BetVictor", "betvictor_match_specials", "https://example.test/specials")
+        ]), patch("bot.public_odds._fetch", return_value=page):
+            odds = public_odds.online_odds(
+                intent, "Canada", "Morocco",
+                question="Will a goal be scored before the first hydration break?",
+            )
+
+        self.assertEqual(len(odds), 1)
+        candidate = odds[0]
+        self.assertEqual(candidate["bookmaker"], "BetVictor")
+        self.assertEqual(candidate["contract"],
+                         "Goal scored before the 1st half hydration break")
+        self.assertEqual(candidate["devig_method"], "raw single-sided implied probability")
+        self.assertAlmostEqual(candidate["probability_pct"], 44.44)
+
+    def test_penalty_or_red_yes_no_special_is_extracted_with_question_text(self):
+        page = """
+        <div>Penalty or Red card</div>
+        <div>Yes</div><span>1.80</span>
+        <div>No</div><span>1.95</span>
+        """
+        with patch("bot.public_odds.SPECIAL_PAGES", [
+                ("BetOlimp", "betolimp_match_specials", "https://example.test/match")
+        ]), patch("bot.public_odds._fetch", return_value=page):
+            odds = public_odds.online_odds(
+                {"market": "none"}, "Canada", "Morocco",
+                question="Will there be a penalty kick OR red card?",
+            )
+
+        self.assertEqual(len(odds), 1)
+        candidate = odds[0]
+        self.assertEqual(candidate["contract"], "Penalty or Red card")
+        self.assertEqual(candidate["devig_method"], "same-book special yes/no de-vig")
+        self.assertAlmostEqual(candidate["probability_pct"], 52.0, places=1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -18,10 +18,24 @@ from . import cache
 BETOLIMP_STAT_URL = (
     "https://betolimp.co.za/sports/soccer-betting/world-cup-2026-statistics"
 )
+SPECIAL_PAGES = [
+    (
+        "BetVictor",
+        "betvictor_world_cup_match_specials",
+        "https://www.betvictor.com/en-en/sports/240",
+    ),
+    (
+        "BetOlimp",
+        "betolimp_world_cup_2026_match_specials",
+        "https://betolimp.co.za/sports/soccer-betting/world-cup-2026-usa-canada-mexico-1-8-finals",
+    ),
+]
 TIMEOUT = 20
 
 
-def online_odds(intent: dict | None, home: str, away: str) -> list[dict]:
+def online_odds(
+    intent: dict | None, home: str, away: str, *, question: str | None = None
+) -> list[dict]:
     """Return deterministic public online odds candidates for one market."""
     intent = intent or {}
     if _synthetic_team(home) or _synthetic_team(away):
@@ -31,6 +45,10 @@ def online_odds(intent: dict | None, home: str, away: str) -> list[dict]:
             return _betolimp_sot_odds(intent, home, away)
         except Exception:
             return []
+    try:
+        return _special_market_odds(intent, question or "", home, away)
+    except Exception:
+        return []
     return []
 
 
@@ -159,9 +177,102 @@ def _sot_compare_candidate(
     )]
 
 
+def _special_market_odds(
+    intent: dict, question: str, home: str, away: str
+) -> list[dict]:
+    labels = _special_labels(intent, question)
+    if not labels:
+        return []
+    out = []
+    for bookmaker, market_key, url in SPECIAL_PAGES:
+        lines = _text_lines(_fetch(url))
+        for label in labels:
+            candidate = _special_candidate_from_lines(
+                lines, label, url=url, bookmaker=bookmaker, market_key=market_key,
+                home=home, away=away,
+            )
+            if candidate:
+                out.append(candidate)
+                break
+    return out
+
+
+def _special_labels(intent: dict, question: str) -> list[str]:
+    market = intent.get("market")
+    lower = question.lower()
+    if market == "goal_window" and "before" in lower and "hydration break" in lower:
+        return [
+            "Goal scored before the 1st half hydration break",
+            "Goal scored before the first half hydration break",
+            "Goal before first hydration break",
+        ]
+    if market == "substitute_score" or (
+        "substitute" in lower and ("score" in lower or "goal" in lower)
+    ):
+        return [
+            "A substitute to score",
+            "Substitute to score",
+            "A substitute will score",
+        ]
+    if "penalty" in lower and "red card" in lower and re.search(r"\bor\b", lower):
+        return [
+            "Penalty or Red card",
+            "Penalty or Red Card",
+            "Penalty or red card - yes or no",
+        ]
+    return []
+
+
+def _special_candidate_from_lines(
+    lines: list[str],
+    label: str,
+    *,
+    url: str,
+    bookmaker: str,
+    market_key: str,
+    home: str,
+    away: str,
+) -> dict | None:
+    yes_no = _yes_no_after(lines, label)
+    if yes_no:
+        yes, no = yes_no
+        probability = _devig_two_way(yes, no)
+        return _candidate(
+            url=url,
+            bookmaker=bookmaker,
+            market_key=market_key,
+            contract=label,
+            quoted=f"{label} Yes {yes:g}; No {no:g}",
+            probability=probability,
+            devig_method="same-book special yes/no de-vig",
+            why=(
+                f"Exact public match-special price for {home} vs {away}: "
+                f"{label}."
+            ),
+        )
+    price = _decimal_after(lines, label)
+    if price is None:
+        return None
+    return _candidate(
+        url=url,
+        bookmaker=bookmaker,
+        market_key=market_key,
+        contract=label,
+        quoted=f"{label} {price:g}",
+        probability=min(0.99, 1.0 / price),
+        devig_method="raw single-sided implied probability",
+        why=(
+            f"Exact public match-special single-sided price for {home} vs {away}: "
+            f"{label}. No coherent No leg was visible on the page."
+        ),
+    )
+
+
 def _candidate(
     *,
     url: str,
+    bookmaker: str = "BetOlimp",
+    market_key: str = "betolimp_world_cup_2026_statistics",
     contract: str,
     quoted: str,
     probability: float,
@@ -170,8 +281,8 @@ def _candidate(
 ) -> dict:
     return {
         "source": "public-web",
-        "bookmaker": "BetOlimp",
-        "market_key": "betolimp_world_cup_2026_statistics",
+        "bookmaker": bookmaker,
+        "market_key": market_key,
         "url": url,
         "contract": contract,
         "quoted_price_or_odds": quoted,
@@ -243,6 +354,31 @@ def _decimal_after(lines: list[str], label: str) -> float | None:
         for candidate in lines[index + 1:index + 5]:
             if re.match(r"^\d+(?:\.\d+)?$", candidate):
                 return float(candidate)
+    return None
+
+
+def _yes_no_after(lines: list[str], label: str) -> tuple[float, float] | None:
+    target = _norm_label(label)
+    for index, line in enumerate(lines):
+        if _norm_label(line) != target:
+            continue
+        yes = no = None
+        window = lines[index + 1:index + 10]
+        for offset, candidate in enumerate(window):
+            normalized = _norm_label(candidate)
+            if normalized == "yes":
+                yes = _first_decimal(window[offset + 1:offset + 4])
+            elif normalized == "no":
+                no = _first_decimal(window[offset + 1:offset + 4])
+        if yes is not None and no is not None:
+            return yes, no
+    return None
+
+
+def _first_decimal(lines: list[str]) -> float | None:
+    for line in lines:
+        if re.match(r"^\d+(?:\.\d+)?$", line):
+            return float(line)
     return None
 
 
