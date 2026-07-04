@@ -767,11 +767,12 @@ def _special_market_guidance(question: str) -> str | None:
             "Search bookmaker Match Specials / Market Specials for hydration-break "
             "props. Exact phrases include \"Goal scored before the 1st half hydration "
             "break\" and \"goal before first hydration break\". For after-second-"
-            "hydration goal questions, exact after-break props are best; otherwise "
-            "nearby late-window prices such as \"Goal scored 80:00 - Full time\" or "
-            "\"Goal scored 85:00 - Full time\" are only labeled proxies. For card, "
-            "corner, offside, or substitution hydration questions, use a special only "
-            "when both the event type and time window match closely."
+            "hydration goal questions, search exact labels such as \"Goal scored "
+            "after the 2nd half hydration break\" or \"Goal after second hydration "
+            "break\" first. Nearby late-window prices such as \"Goal scored 80:00 - "
+            "Full time\" or \"Goal scored 85:00 - Full time\" are only labeled "
+            "proxies. For card, corner, offside, or substitution hydration questions, "
+            "use a special only when both the event type and time window match closely."
         )
     if "substitute" in lower and ("score" in lower or "goal" in lower):
         parts.append(
@@ -815,6 +816,32 @@ def _special_market_guidance(question: str) -> str | None:
             "Search match specials for first-substitution timing / substitution before "
             "halftime. If no exact timing market is found, do not treat generic "
             "substitution or lineup news as direct odds."
+        )
+    if "hold a lead at any point" in lower:
+        parts.append(
+            "Search exact team-to-lead-at-any-time specials first. If none are found, "
+            "derive a proxy from first-team-to-score, no-goal, and 90-minute/advance "
+            "prices: first scoring is the strongest positive component, but a team can "
+            "also take its first lead after conceding, and first-scoring teams can later "
+            "draw or lose. Treat this derivation as related context, then compare it "
+            "with the simulator lead_any_time baseline and expected game state."
+        )
+    if "more total cards than total goals" in lower:
+        parts.append(
+            "Search exact cards-versus-goals specials first. If absent, use direct "
+            "total-cards and total-goals distributions as components: cards and goals "
+            "are not independent, so avoid a naive product and use the simulator "
+            "cards_more_than_goals baseline as the contract-specific base unless an "
+            "exact online special is found. Referee strictness and match tempo are the "
+            "main adjustment levers."
+        )
+    if "play the entire match" in lower:
+        parts.append(
+            "Search player minutes / to-play-full-match specials first. If no exact "
+            "price exists, treat confirmed starting XI status, position, expected "
+            "minutes, substitution patterns, fitness/news, and knockout extra-time "
+            "risk as the core evidence. Use the simulator player_full_match estimate "
+            "as model context rather than a bookmaker quote."
         )
     return "\n\n".join(parts) if parts else None
 

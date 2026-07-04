@@ -768,6 +768,10 @@ class ContextEvidenceTests(unittest.TestCase):
                 "Goal scored before the 1st half hydration break",
             ),
             (
+                "Will a goal be scored after the second hydration break?",
+                "Goal scored after the 2nd half hydration break",
+            ),
+            (
                 "Will a substitute score a goal in regulation?",
                 "Substitute to come on and score",
             ),
@@ -787,6 +791,48 @@ class ContextEvidenceTests(unittest.TestCase):
                 evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
             self.assertIn(expected, evidence["question_evidence"][0]["adjustment_guidance"])
+
+    def test_special_proxy_families_get_derivation_guidance(self):
+        cases = [
+            (
+                "lead",
+                {
+                    "market": "lead_any_time", "subject": "home", "player": None,
+                    "comparator": "yes", "threshold": None, "period": "match",
+                },
+                "Will Home hold a lead at any point in the match?",
+                "derive a proxy from first-team-to-score",
+            ),
+            (
+                "cards_goals",
+                {
+                    "market": "cards_more_than_goals", "subject": "match",
+                    "player": None, "comparator": "yes", "threshold": None,
+                    "period": "match",
+                },
+                "Will there be more total cards than total goals in regulation?",
+                "direct total-cards and total-goals distributions",
+            ),
+            (
+                "full_match",
+                {
+                    "market": "player_full_match", "subject": "player",
+                    "player": "Christian Pulisic", "comparator": "yes",
+                    "threshold": None, "period": "match",
+                },
+                "Will Christian Pulisic play the entire match in regulation?",
+                "confirmed starting XI status",
+            ),
+        ]
+        for market_id, intent, question, expected in cases:
+            result = _result({market_id: intent}, question=question)
+            ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+
+            with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
+                evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+            guidance = evidence["question_evidence"][0]["adjustment_guidance"]
+            self.assertIn(expected, guidance)
 
     def test_any_player_brace_guidance_ignores_regulation_stoppage_clause(self):
         result = _result({
