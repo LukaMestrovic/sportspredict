@@ -403,6 +403,58 @@ class KnockoutWordingTests(unittest.TestCase):
             self.assertEqual(intent["market"], "none", msg=q)
             self.assertEqual(intent["period"], "match", msg=q)
 
+    def test_current_round_of_16_specials_are_deterministic(self):
+        cases = [
+            (
+                "Will Morocco advance to the quarterfinals?",
+                "Canada", "Morocco", "to_advance", "away",
+            ),
+            (
+                "Will Brazil advance to the quarterfinals?",
+                "Brazil", "Norway", "to_advance", "home",
+            ),
+            (
+                "Will the match be decided by a penalty shootout?",
+                "Canada", "Morocco", "none", "match",
+            ),
+            (
+                "Will exactly 1 goal be scored in regulation "
+                "(90 minutes + stoppage time)?",
+                "Canada", "Morocco", "none", "match",
+            ),
+            (
+                "Will the match finish with exactly 2 total goals in regulation "
+                "(90 minutes + stoppage time)?",
+                "Brazil", "Norway", "none", "match",
+            ),
+            (
+                "Will Paraguay hold a lead at any point in the match "
+                "(excluding a penalty shootout)?",
+                "Paraguay", "France", "none", "match",
+            ),
+            (
+                "Will there be more total cards than total goals in regulation "
+                "(90 minutes + stoppage time)?",
+                "Mexico", "England", "none", "match",
+            ),
+            (
+                "Will Christian Pulisic (United States) play the entire match "
+                "in regulation (90 minutes + stoppage time)?",
+                "USA", "Belgium", "none", "match",
+            ),
+            (
+                "Will at least one goal be scored in each half in regulation "
+                "(90 minutes + stoppage time)?",
+                "USA", "Belgium", "none", "match",
+            ),
+        ]
+        for q, home, away, market, subject in cases:
+            intent = self._parse(q, home, away)
+            self.assertEqual((intent["market"], intent["subject"]),
+                             (market, subject), msg=q)
+            if "decided by a penalty shootout" in q:
+                self.assertEqual(intent["time_scope"], "penalty_shootout")
+
 
 if __name__ == "__main__":
     unittest.main()

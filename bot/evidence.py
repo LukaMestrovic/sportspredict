@@ -823,6 +823,11 @@ def _contract_scope(intent: dict | None) -> dict:
     time_scope = intent.get("time_scope") or "unknown"
     if intent.get("market") == "to_advance":
         interpretation = "Qualification outcome after extra time and penalties if required."
+    elif time_scope == "penalty_shootout":
+        interpretation = (
+            "Penalty shootout occurrence: the match must remain tied after extra time "
+            "and then be decided by penalties."
+        )
     elif time_scope == "regulation":
         interpretation = "Regulation only: 90 minutes plus stoppage time; exclude extra time."
     elif time_scope == "full_match":

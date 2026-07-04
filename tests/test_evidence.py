@@ -3,7 +3,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from bot.evidence import _compact_simulator_estimate, build_match_evidence, write_evidence
+from bot.evidence import (
+    _compact_simulator_estimate,
+    _contract_scope,
+    build_match_evidence,
+    write_evidence,
+)
 from bot.simulator import model_estimate_kind
 from bot.pipeline import MatchResult
 from bot.pricing import PriceCtx
@@ -508,6 +513,15 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(question["contract_scope"], {
             "time_scope": "full_match",
             "interpretation": "Full match: include extra time if played; exclude shootout events.",
+        })
+
+    def test_penalty_shootout_scope_is_explicit(self):
+        self.assertEqual(_contract_scope({"time_scope": "penalty_shootout"}), {
+            "time_scope": "penalty_shootout",
+            "interpretation": (
+                "Penalty shootout occurrence: the match must remain tied after "
+                "extra time and then be decided by penalties."
+            ),
         })
 
     def test_cards_compare_uses_labeled_yellow_card_proxy(self):

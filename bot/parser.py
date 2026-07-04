@@ -267,8 +267,16 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
     # break is NOT a half (the boundaries are 22' and 70'), so these stay
     # market="none", period="match" — never a 1H/2H line.
     if ("hydration break" in lower
+            or "penalty shootout" in lower or "shootout" in lower
             or "stoppage time" in lower or "added time" in lower
             or "substitution be made before" in lower
+            or "hold a lead at any point" in lower
+            or "play the entire match" in lower
+            or "more total cards than total goals" in lower
+            or re.search(r"\bexactly\s+\d+\s+(?:total\s+)?goals?\b", lower)
+            or re.search(r"\bexactly\s+\d+\s+goals?\s+be scored\b", lower)
+            or "goal be scored in each half" in lower
+            or "goal be scored in every half" in lower
             or lower.startswith(("will any player", "will a substitute",
                                  "will a player"))):
         return _intent("none")
@@ -331,7 +339,11 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
             return _intent("match_winner", side, "win")
         if "ahead at halftime" in lower or "winning at halftime" in lower:
             return _intent("match_winner", side, "win", period="1H")
-        if "advance to the round of 16" in lower or "advance to round of 16" in lower:
+        if re.search(
+            r"\b(?:advance|qualify|progress|go through|reach)\b.*\b(?:"
+            r"round of 16|quarter-?finals?|semi-?finals?|final|next round)\b",
+            lower,
+        ):
             return _intent("to_advance", side)
         if "keep a clean sheet" in lower:
             return _intent("team_clean_sheet", side)
@@ -491,9 +503,21 @@ def _repair_intent(
         or "stoppage time" in raw_lower
         or "stoppage (added) time" in raw_lower
     )
-    intent["time_scope"] = (
-        "regulation" if explicit_regulation or fixed_regulation_window else "full_match"
+    shootout_occurrence = (
+        "penalty shootout" in raw_lower
+        and "excluding a penalty shootout" not in raw_lower
+        and re.search(
+            r"decided by|go(?:es|ing)? to|head to|reach|require|there be|end in",
+            raw_lower,
+        )
     )
+    if shootout_occurrence:
+        intent["time_scope"] = "penalty_shootout"
+    else:
+        intent["time_scope"] = (
+            "regulation" if explicit_regulation or fixed_regulation_window
+            else "full_match"
+        )
     intent["excludes_own_goals"] = "excluding own goals" in raw_lower
 
     # "At halftime, will the match be tied/level/a draw" -> 1st-half draw.
