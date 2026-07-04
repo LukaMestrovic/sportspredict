@@ -70,12 +70,12 @@ class DirectContractTests(unittest.TestCase):
         )
         self.assertEqual((spec["bet_id"], spec["side"], spec["line"]), (87, "Over", 7.5))
 
-    def test_team_shots_on_target_total_has_no_catalog_contract(self):
+    def test_team_shots_on_target_total_uses_team_sot_contract(self):
         spec = self.match(
             market="team_shots_on_target", subject="home", comparator="gte",
             threshold=4, period="match",
         )
-        self.assertIsNone(spec)
+        self.assertEqual((spec["bet_id"], spec["side"], spec["line"]), (88, "Over", 3.5))
 
     def test_first_team_to_score_is_not_team_to_score(self):
         spec = self.match(
@@ -127,7 +127,10 @@ class KnockoutMarketMappingTests(unittest.TestCase):
             (_I("team_score_both_halves", "home"), {"type": "select", "bet_id": 111, "value": "Yes"}),
             (_I("both_teams_card"), {"type": "select", "bet_id": 252, "value": "Yes"}),
             (_I("penalty_awarded"), {"type": "select", "bet_id": 163, "value": "Yes"}),
+            (_I("penalty_shootout"), {"type": "select", "bet_id": 224, "value": "Yes"}),
+            (_I("goal_in_each_half"), {"type": "select", "bet_id": 184, "value": "Yes"}),
             (_I("red_card"), {"type": "ou", "bet_id": 335, "side": "Over", "line": 0.5}),
+            (_I("total_goals", "match", "eq", 2), {"type": "select", "bet_id": 38, "value": 2}),
             (_I("total_shots", "match", "gte", 22), {"type": "ou", "bet_id": 211, "side": "Over", "line": 21.5}),
             (_I("team_shots", "home", "gte", 10), {"type": "ou", "bet_id": 221, "side": "Over", "line": 9.5}),
         ]
@@ -136,6 +139,13 @@ class KnockoutMarketMappingTests(unittest.TestCase):
             self.assertIsNotNone(spec, msg=intent)
             for key, value in expected.items():
                 self.assertEqual(spec[key], value, msg=f"{intent} -> {key}")
+
+    def test_penalty_shootout_has_method_of_victory_fallback(self):
+        spec = match_intent(_I("penalty_shootout"), "Home FC", "Away FC")
+        self.assertEqual((spec["bet_id"], spec["value"]), (224, "Yes"))
+        fallback = spec["fallback_specs"][0]
+        self.assertEqual((fallback["type"], fallback["bet_id"]), ("select_sum", 298))
+        self.assertIn("Penalties", fallback["value_patterns"][0])
 
     def test_win_margin_maps_to_asian_handicap_pair(self):
         spec = match_intent(_I("win_margin", "home", "gte", 2), "Home FC", "Away FC")
@@ -192,6 +202,43 @@ class AsianHandicapDevigTests(unittest.TestCase):
     def test_missing_pair_returns_no_price(self):
         spec = {"type": "ah", "bet_id": 4, "side": "Home", "line": 2.5, "label": "x"}
         self.assertIsNone(afpred.predict([self._book()], spec))
+
+
+class CategoricalDevigTests(unittest.TestCase):
+    def test_numeric_exact_goal_labels_are_supported(self):
+        book = {"name": "b", "bets": [{"id": 38, "values": [
+            {"value": 0, "odd": "9.00"},
+            {"value": 1, "odd": "4.50"},
+            {"value": 2, "odd": "3.50"},
+            {"value": "more 3", "odd": "4.00"},
+        ]}]}
+        spec = {"type": "select", "bet_id": 38, "value": 2, "label": "exact 2"}
+        out = afpred.predict([book], spec)
+        self.assertIsNotNone(out)
+        self.assertAlmostEqual(
+            out["probability"],
+            (1 / 3.5) / (1 / 9.0 + 1 / 4.5 + 1 / 3.5 + 1 / 4.0),
+            places=4,
+        )
+
+    def test_select_sum_prices_method_of_victory_fallback(self):
+        book = {"name": "b", "bets": [{"id": 298, "values": [
+            {"value": "1/Extra Time", "odd": "19.00"},
+            {"value": "2/Extra Time", "odd": "9.50"},
+            {"value": "1/90 Mins", "odd": "5.25"},
+            {"value": "1/Penalties", "odd": "11.00"},
+            {"value": "2/90 Mins", "odd": "1.75"},
+            {"value": "2/Penalties", "odd": "10.00"},
+        ]}]}
+        spec = {"type": "select", "bet_id": 224, "value": "Yes", "label": "pens",
+                "fallback_specs": [{"type": "select_sum", "bet_id": 298,
+                                    "value_patterns": [r"/\s*Penalties\b"],
+                                    "label": "method pens"}]}
+        out = afpred.predict([book], spec)
+        self.assertIsNotNone(out)
+        target = 1 / 11.0 + 1 / 10.0
+        total = target + 1 / 19.0 + 1 / 9.5 + 1 / 5.25 + 1 / 1.75
+        self.assertAlmostEqual(out["probability"], target / total, places=4)
 
 
 if __name__ == "__main__":

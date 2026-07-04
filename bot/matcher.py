@@ -21,6 +21,7 @@ _TEAM_OU = {
     "team_offsides": (167, 168),      # Offsides Home/Away Total
     "team_fouls": (171, 170),         # Fouls. Home/Away Total
     "team_shots": (221, 220),         # Shots. Home/Away Total (on+off target)
+    "team_shots_on_target": (88, 89), # Home/Away Total ShotOnGoal
 }
 
 # Match-level over/under markets: bet id
@@ -47,6 +48,8 @@ _TEAM_YESNO = {
 _MATCH_YESNO = {
     "both_teams_card": 252,    # Both Teams to Receive a Card
     "penalty_awarded": 163,    # Penalty Awarded
+    "penalty_shootout": 224,   # Game Decided After Penalties
+    "goal_in_each_half": 184,  # To Score in Both Halves
 }
 
 # Two-way select markets that pick the named team: bet id, value Home/Away.
@@ -93,6 +96,15 @@ MARKET_KEYS = (
     + list(_TEAM_SELECT)
     + list(_COMPARE)
     + _PLAYER_MARKETS
+    + [
+        "penalty_shootout",
+        "goal_in_each_half",
+        "goal_window",
+        "substitute_score",
+        "lead_any_time",
+        "cards_more_than_goals",
+        "player_full_match",
+    ]
     + ["none"]
 )
 
@@ -270,6 +282,20 @@ def match_intent(
                 "value": "Home" if subject == "home" else "Away",
                 "label": f"{market} {subject}"}
 
+    if market == "penalty_shootout":
+        return {
+            "type": "select", "bet_id": _MATCH_YESNO[market], "value": "Yes",
+            "label": "match decided by penalties",
+            "fallback_specs": [{
+                "type": "select_sum", "bet_id": 298,
+                "value_patterns": [r"/\s*Penalties\b", r"\bPenalties\b"],
+                "label": "method of victory by penalties",
+                "fallback_reason": (
+                    "method-of-victory sum of both teams' penalties outcomes"
+                ),
+            }],
+        }
+
     if market in _MATCH_YESNO:
         return {"type": "select", "bet_id": _MATCH_YESNO[market], "value": "Yes",
                 "label": market}
@@ -297,6 +323,16 @@ def match_intent(
         return {"type": "ah", "bet_id": 4,
                 "side": "Home" if subject == "home" else "Away", "line": n - 0.5,
                 "label": f"{subject} win by {n}+"}
+
+    if market == "total_goals" and comp in ("eq", "exact"):
+        if period != "match" or threshold is None:
+            return None
+        try:
+            n = int(threshold)
+        except (TypeError, ValueError):
+            return None
+        return {"type": "select", "bet_id": 38, "value": n,
+                "label": f"exactly {n} total goals"}
 
     if market in _MATCH_OU:
         ou = _line_from_threshold(comp, threshold)

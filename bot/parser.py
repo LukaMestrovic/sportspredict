@@ -18,7 +18,7 @@ from .matcher import MARKET_KEYS
 from .teams import normalize_team
 
 # Bump to invalidate cached intents after a prompt/model semantics change.
-PROMPT_VERSION = "p5-explicit-time-scope"
+PROMPT_VERSION = "p6-familiar-specials"
 
 SYSTEM = """You convert soccer betting questions into structured JSON intents.
 Each question is a YES/NO question about a single match. Output ONLY the
@@ -36,6 +36,7 @@ Field rules:
     "yes"             a yes/no event happens (btts, team_score, etc.)
     "gte"             a count is >= threshold ("N or more", "at least N")
     "lte"             a count is <= threshold ("N or fewer", "N or less")
+    "eq"              a count is exactly threshold
     "more"            subject team has strictly MORE than the other team
     "second_half_more" second half has more goals than first half
 - threshold: the integer N from the question for gte/lte (else null).
@@ -77,6 +78,13 @@ Knockout markets (emit when the wording fits):
   threshold=N (never team_total_goals).
 - both teams to receive a card -> both_teams_card; a penalty awarded ->
   penalty_awarded; a red card shown -> red_card.
+- a penalty shootout occurrence -> penalty_shootout.
+- at least one match goal in each half -> goal_in_each_half.
+- hydration-break goal windows -> goal_window.
+- a substitute to score -> substitute_score.
+- a team to hold a lead at any point -> lead_any_time.
+- more total cards than goals -> cards_more_than_goals.
+- a named player to play the entire match -> player_full_match.
 A name written "Player (Country)" is ALWAYS that player, never the country's team.
 "in regulation (90 minutes + stoppage time)" means period=match and
 time_scope=regulation. A match-scoped question without that qualifier has
@@ -262,23 +270,44 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
             or "score the first goal of the game and" in lower):
         return _intent("none")
 
-    # Time-window / match-state questions with no single pre-match contract: the
-    # web-grounded LLM layer prices them from the simulator fallback. A hydration
-    # break is NOT a half (the boundaries are 22' and 70'), so these stay
-    # market="none", period="match" — never a 1H/2H line.
-    if ("hydration break" in lower
-            or "penalty shootout" in lower or "shootout" in lower
-            or "stoppage time" in lower or "added time" in lower
+    # Time-window / match-state questions. A hydration break is NOT a half (the
+    # boundaries are 22' and 70'), so these stay period="match" — never a 1H/2H
+    # line. Several have no provider contract but are still familiar simulator or
+    # online-special markets.
+    if ("penalty shootout" in lower or "shootout" in lower) and (
+        "excluding a penalty shootout" not in lower
+    ):
+        return _intent("penalty_shootout")
+    if "hydration break" in lower and "goal" in lower:
+        return _intent("goal_window")
+    if "hydration break" in lower:
+        return _intent("none")
+    if "hold a lead at any point" in lower:
+        return _intent("lead_any_time", subject[0] if subject else "match")
+    if "more total cards than total goals" in lower:
+        return _intent("cards_more_than_goals")
+    exact_goals = (
+        re.search(r"\bexactly\s+(\d+)\s+(?:total\s+)?goals?\b", lower)
+        or re.search(r"\bexactly\s+(\d+)\s+goals?\s+be scored\b", lower)
+    )
+    if exact_goals:
+        return _intent("total_goals", comparator="eq",
+                       threshold=int(exact_goals.group(1)))
+    if "goal be scored in each half" in lower or "goal be scored in every half" in lower:
+        return _intent("goal_in_each_half")
+    if "play the entire match" in lower:
+        player_match = re.fullmatch(
+            r"will (.+?) play the entire match\?", question.strip(), re.IGNORECASE,
+        )
+        return _intent(
+            "player_full_match", "player",
+            player=player_match.group(1) if player_match else None,
+        )
+    if lower.startswith("will a substitute") and ("score" in lower or "goal" in lower):
+        return _intent("substitute_score")
+    if ("stoppage time" in lower or "added time" in lower
             or "substitution be made before" in lower
-            or "hold a lead at any point" in lower
-            or "play the entire match" in lower
-            or "more total cards than total goals" in lower
-            or re.search(r"\bexactly\s+\d+\s+(?:total\s+)?goals?\b", lower)
-            or re.search(r"\bexactly\s+\d+\s+goals?\s+be scored\b", lower)
-            or "goal be scored in each half" in lower
-            or "goal be scored in every half" in lower
-            or lower.startswith(("will any player", "will a substitute",
-                                 "will a player"))):
+            or lower.startswith(("will any player", "will a player"))):
         return _intent("none")
 
     # Goal-method templates. Own goal has an exact API-Football Yes/No contract;
@@ -441,6 +470,7 @@ def _threshold_in(lower: str) -> tuple[str, int] | None:
         ("gte", r"at least\s+(\d+)"),
         ("lte", r"(?:at most\s+)?(\d+)\s+or (?:fewer|less)"),
         ("lte", r"at most\s+(\d+)"),
+        ("eq", r"exactly\s+(\d+)"),
     )
     for comparator, pattern in patterns:
         match = re.search(pattern, lower)

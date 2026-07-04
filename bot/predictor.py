@@ -44,10 +44,30 @@ def _devig_select(values: list[dict], target: str) -> float | None:
         except (ValueError, ZeroDivisionError):
             continue
         implied.append(imp)
-        if v["value"].strip().lower() == target.strip().lower():
+        if str(v.get("value", "")).strip().lower() == str(target).strip().lower():
             target_imp = imp
     total = sum(implied)
     if target_imp is None or total <= 0:
+        return None
+    return target_imp / total
+
+
+def _devig_select_sum(values: list[dict], patterns: list[str]) -> float | None:
+    """Normalize a categorical set, summing outcomes whose labels match patterns."""
+    implied = []
+    target_imp = 0.0
+    compiled = [re.compile(pattern, re.IGNORECASE) for pattern in patterns]
+    for v in values:
+        try:
+            imp = 1.0 / float(v["odd"])
+        except (ValueError, ZeroDivisionError):
+            continue
+        implied.append(imp)
+        label = str(v.get("value", "")).strip()
+        if any(pattern.search(label) for pattern in compiled):
+            target_imp += imp
+    total = sum(implied)
+    if target_imp <= 0 or total <= 0:
         return None
     return target_imp / total
 
@@ -149,6 +169,14 @@ def _price_player_threshold(
 
 def predict(bookmakers: list[dict], spec: dict) -> dict | None:
     """Return {probability: float 0-1, n_books: int, label} or None to skip."""
+    for candidate in _candidate_specs(spec):
+        out = _predict_one(bookmakers, candidate)
+        if out:
+            return out
+    return None
+
+
+def _predict_one(bookmakers: list[dict], spec: dict) -> dict | None:
     probs: list[float] = []
     for bm in bookmakers:
         bet = _bets_by_id(bm, spec["bet_id"])
@@ -156,6 +184,8 @@ def predict(bookmakers: list[dict], spec: dict) -> dict | None:
             continue
         if spec["type"] == "select":
             p = _devig_select(bet["values"], spec["value"])
+        elif spec["type"] == "select_sum":
+            p = _devig_select_sum(bet["values"], spec.get("value_patterns") or [])
         elif spec["type"] == "ou":
             p = _devig_ou(bet["values"], spec["side"], spec["line"])
         elif spec["type"] == "ah":
@@ -191,6 +221,14 @@ def observations(bookmakers: list[dict], spec: dict | None) -> list[dict]:
     """
     if not spec:
         return []
+    for candidate in _candidate_specs(spec):
+        out = _observations_one(bookmakers, candidate)
+        if out:
+            return out
+    return []
+
+
+def _observations_one(bookmakers: list[dict], spec: dict) -> list[dict]:
     out: list[dict] = []
     for bm in bookmakers:
         bet = _bets_by_id(bm, spec["bet_id"])
@@ -201,6 +239,10 @@ def observations(bookmakers: list[dict], spec: dict | None) -> list[dict]:
             p = _devig_select(values, spec["value"])
             raw = _raw_select(values, spec["value"])
             method = "same-book categorical de-vig"
+        elif spec["type"] == "select_sum":
+            p = _devig_select_sum(values, spec.get("value_patterns") or [])
+            raw = _raw_select_sum(values, spec.get("value_patterns") or [])
+            method = "same-book categorical sum de-vig"
         elif spec["type"] == "ou":
             p = _devig_ou(values, spec["side"], spec["line"])
             raw = _raw_ou(values, spec["line"])
@@ -237,10 +279,30 @@ def observations(bookmakers: list[dict], spec: dict | None) -> list[dict]:
     return out
 
 
+def _candidate_specs(spec: dict) -> list[dict]:
+    """Primary spec plus optional same-contract fallback specs."""
+    candidates = [dict(spec)]
+    candidates[0].pop("fallback_specs", None)
+    for fallback in spec.get("fallback_specs") or []:
+        item = dict(fallback)
+        item.setdefault("fallback_from_bet_id", spec.get("bet_id"))
+        candidates.append(item)
+    return candidates
+
+
 def _raw_select(values: list[dict], target: str) -> list[dict]:
     return [
         {"name": v.get("value"), "decimal_odds": _float_or_none(v.get("odd")),
-         "is_target": v.get("value", "").strip().lower() == target.strip().lower()}
+         "is_target": str(v.get("value", "")).strip().lower() == str(target).strip().lower()}
+        for v in values
+    ]
+
+
+def _raw_select_sum(values: list[dict], patterns: list[str]) -> list[dict]:
+    compiled = [re.compile(pattern, re.IGNORECASE) for pattern in patterns]
+    return [
+        {"name": v.get("value"), "decimal_odds": _float_or_none(v.get("odd")),
+         "is_target": any(pattern.search(str(v.get("value", ""))) for pattern in compiled)}
         for v in values
     ]
 
@@ -295,6 +357,8 @@ def _raw_player_threshold(
 def _contract_label(spec: dict) -> str:
     if spec["type"] == "select":
         return str(spec.get("value"))
+    if spec["type"] == "select_sum":
+        return " + ".join(spec.get("value_patterns") or [])
     if spec["type"] == "ou":
         return f"{spec.get('side')} {spec.get('line')}"
     if spec["type"] == "ah":

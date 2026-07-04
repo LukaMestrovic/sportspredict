@@ -389,15 +389,12 @@ class KnockoutWordingTests(unittest.TestCase):
     def test_no_market_families_route_to_none_without_a_half_period(self):
         # Hydration breaks are at 22'/70' boundaries — never a 45' half boundary.
         for q in (
-            "Will a goal be scored before the first hydration break?",
             "Will a card be shown after the second hydration break, including "
             "any extra time?",
             "Will either team be ruled offside before the first hydration break?",
             "Will a goal be scored in second-half stoppage time?",
             "Will any player score more than 1 goal (excluding own goals) in "
             "regulation (90 minutes + stoppage time)?",
-            "Will a substitute score a goal in regulation "
-            "(90 minutes + stoppage time)?",
         ):
             intent = self._parse(q, "South Africa", "Canada")
             self.assertEqual(intent["market"], "none", msg=q)
@@ -415,37 +412,37 @@ class KnockoutWordingTests(unittest.TestCase):
             ),
             (
                 "Will the match be decided by a penalty shootout?",
-                "Canada", "Morocco", "none", "match",
+                "Canada", "Morocco", "penalty_shootout", "match",
             ),
             (
                 "Will exactly 1 goal be scored in regulation "
                 "(90 minutes + stoppage time)?",
-                "Canada", "Morocco", "none", "match",
+                "Canada", "Morocco", "total_goals", "match",
             ),
             (
                 "Will the match finish with exactly 2 total goals in regulation "
                 "(90 minutes + stoppage time)?",
-                "Brazil", "Norway", "none", "match",
+                "Brazil", "Norway", "total_goals", "match",
             ),
             (
                 "Will Paraguay hold a lead at any point in the match "
                 "(excluding a penalty shootout)?",
-                "Paraguay", "France", "none", "match",
+                "Paraguay", "France", "lead_any_time", "home",
             ),
             (
                 "Will there be more total cards than total goals in regulation "
                 "(90 minutes + stoppage time)?",
-                "Mexico", "England", "none", "match",
+                "Mexico", "England", "cards_more_than_goals", "match",
             ),
             (
                 "Will Christian Pulisic (United States) play the entire match "
                 "in regulation (90 minutes + stoppage time)?",
-                "USA", "Belgium", "none", "match",
+                "USA", "Belgium", "player_full_match", "player",
             ),
             (
                 "Will at least one goal be scored in each half in regulation "
                 "(90 minutes + stoppage time)?",
-                "USA", "Belgium", "none", "match",
+                "USA", "Belgium", "goal_in_each_half", "match",
             ),
         ]
         for q, home, away, market, subject in cases:
@@ -454,6 +451,27 @@ class KnockoutWordingTests(unittest.TestCase):
                              (market, subject), msg=q)
             if "decided by a penalty shootout" in q:
                 self.assertEqual(intent["time_scope"], "penalty_shootout")
+            if "exactly 1 goal" in q:
+                self.assertEqual((intent["comparator"], intent["threshold"]), ("eq", 1))
+            if "exactly 2 total goals" in q:
+                self.assertEqual((intent["comparator"], intent["threshold"]), ("eq", 2))
+            if "Christian Pulisic" in q:
+                self.assertEqual(intent["player"], "Christian Pulisic")
+
+    def test_special_familiar_model_families(self):
+        hydration = self._parse(
+            "Will a goal be scored before the first hydration break?",
+            "South Africa", "Canada",
+        )
+        substitute = self._parse(
+            "Will a substitute score a goal in regulation "
+            "(90 minutes + stoppage time)?",
+            "South Africa", "Canada",
+        )
+        self.assertEqual((hydration["market"], hydration["period"]),
+                         ("goal_window", "match"))
+        self.assertEqual((substitute["market"], substitute["period"]),
+                         ("substitute_score", "match"))
 
 
 if __name__ == "__main__":
