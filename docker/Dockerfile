@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 #
-# Immutable image for the sportspredict-llm autonomous submitter. The CURRENT
+# Immutable image for the sportspredict-llm deployed runner. The CURRENT
 # source is baked in, so once deployed the running bot is a frozen snapshot:
-# editing the working tree never affects a live cron tick until the next
+# editing the working tree never affects a live manual/settle run until the next
 # scripts/deploy.sh rebuild. Secrets are NEVER baked — the API keys are passed
 # at `docker run` via -e (see scripts/run.sh). Build context = repo root.
 FROM python:3.14-slim AS runtime
@@ -24,7 +24,7 @@ COPY simulator/ /app/simulator/
 
 # Bake the source. No .env, no secrets (enforced by .dockerignore). cache/ and
 # logs/ are intentionally absent — they are bind-mounted at run time so state
-# (paid odds cache, parser cache, cron markers, ledger) persists across ticks.
+# (paid odds cache, parser cache, markers, ledger) persists across runs.
 COPY bot/ /app/bot/
 COPY scripts/ /app/scripts/
 COPY prompts/ /app/prompts/
@@ -32,5 +32,5 @@ COPY run.py validate.py /app/
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# One cron tick of the dispatcher; args (--status, --dry-run) pass through.
+# Deployed entrypoint; args (--status, --dry-run, --settle, manual ...) pass through.
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

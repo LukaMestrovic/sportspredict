@@ -20,7 +20,7 @@ from . import cache, config
 from .pipeline import Prediction
 
 
-LLM_PRICING_VERSION = "lp7"
+LLM_PRICING_VERSION = "lp8"
 MODEL = os.environ.get("LLM_PRICING_MODEL", "gpt-5.5")
 REASONING_EFFORT = os.environ.get("LLM_PRICING_REASONING_EFFORT", "high")
 SEARCH_CONTEXT_SIZE = os.environ.get("LLM_PRICING_SEARCH_CONTEXT_SIZE", "medium")
@@ -28,9 +28,9 @@ PROMPT_PATH = config.ROOT / "prompts" / "llm_pricing_prompt.md"
 ENABLED = os.environ.get("LLM_PRICING_ENABLED", "1") != "0"
 # Read timeout (seconds) for the single per-match OpenAI call. This model does
 # web search + medium reasoning over a large evidence payload, which has been
-# observed to exceed 300s; a timeout makes the T-30 cron skip every market for
-# that match. 600s is comfortably above the observed need, and even the two
-# internal retries (worst case 2x) stay inside the 30-minute (1800s) T-30 window.
+# observed to exceed 300s. 600s is comfortably above the observed need, and even
+# the two internal retries (worst case 2x) stay inside a typical manual
+# pre-kickoff work window.
 TIMEOUT = int(os.environ.get("LLM_PRICING_TIMEOUT", "600"))
 
 _PRICES = {
@@ -49,6 +49,16 @@ REQUIRED_AUDIT_FIELDS = (
     "reasoning_summary",
     "sources",
 )
+MATCH_READ_ASPECTS = (
+    "tactics_tempo_game_state",
+    "lineups_minutes_availability",
+    "attacking_defensive_profile",
+    "stat_market_shape",
+    "set_pieces_goal_methods",
+    "referee_cards_penalties",
+    "venue_weather_rest_motivation",
+    "broad_market_consensus",
+)
 
 _prompt_cache: str | None = None
 
@@ -59,8 +69,10 @@ only JSON with match_read_markdown, match_read_sources, and a market entry for
 every market_id. Include base_probability_int, probability_int 1-99, a complete
 language_adjustment audit, provided_odds_used, online_odds_found,
 non_odds_factors_used, ignored_or_downweighted_evidence, reasoning_summary, and
-sources. When no direct odds exist, use simulator_estimate.calibrated_baseline
-as the base when present. Do not mention hidden reasoning or chain-of-thought."""
+sources. Include subagent_memos with base-pricing, match-read aspect, and
+question-adjustment public memos. When no direct odds exist, use
+simulator_estimate.calibrated_baseline as the base when present. Do not mention
+hidden reasoning or chain-of-thought."""
 
 
 def _load_prompt() -> str:
@@ -73,7 +85,7 @@ def _load_prompt() -> str:
     return _prompt_cache
 
 
-def _cache_key(match_id: str) -> str:
+def _cache_key(match_id: str, evidence_hash: str | None) -> str:
     prompt_sha = _prompt_sha()
     return json.dumps({
         "v": LLM_PRICING_VERSION,
@@ -81,6 +93,7 @@ def _cache_key(match_id: str) -> str:
         "reasoning_effort": REASONING_EFFORT,
         "search_context_size": SEARCH_CONTEXT_SIZE,
         "match_id": match_id,
+        "evidence_hash": evidence_hash,
         "prompt_sha": prompt_sha,
     }, sort_keys=True)
 
@@ -156,7 +169,9 @@ def _call_llm(evidence: dict) -> dict:
 
 
 def _ask(evidence: dict, *, refresh: bool = False) -> dict:
-    key = _cache_key(evidence["match"]["match_id"])
+    key = _cache_key(
+        evidence["match"]["match_id"], evidence.get("evidence_hash"),
+    )
     return cache.get_or_fetch(
         "llm_pricing", key, lambda: _call_llm(evidence), ttl=0, refresh=refresh,
     )
@@ -210,6 +225,12 @@ def apply_pricing_response(
         _skip_all(result, "LLM pricing returned no markets list")
         if require_all_markets:
             raise ValueError("LLM pricing returned no markets list")
+        return result
+    ok, reason = validate_response_audit(response, evidence, markets)
+    if not ok:
+        _skip_all(result, reason)
+        if require_all_markets:
+            raise ValueError(reason)
         return result
 
     result.llm_pricing_briefing = response.get("briefing")
@@ -268,6 +289,108 @@ def apply_pricing_response(
     return result
 
 
+def validate_response_audit(
+    response: dict, evidence: dict, markets: list[dict]
+) -> tuple[bool, str]:
+    """Validate top-level public audit scaffolding."""
+    for field in ("sources", "match_read_sources"):
+        value = response.get(field)
+        if not isinstance(value, list) or not value:
+            return False, f"LLM pricing {field} must be a non-empty list"
+    return _validate_subagent_memos(response.get("subagent_memos"), evidence, markets)
+
+
+def _validate_subagent_memos(
+    memos, evidence: dict, markets: list[dict]
+) -> tuple[bool, str]:
+    if not isinstance(memos, dict):
+        return False, "LLM pricing missing subagent_memos object"
+    expected = _expected_market_keys(evidence)
+    market_audits = {
+        item.get("market_id"): item for item in markets
+        if isinstance(item, dict) and item.get("market_id") is not None
+    }
+    for section in ("base_pricing", "question_adjustments"):
+        rows = memos.get(section)
+        if not isinstance(rows, list):
+            return False, f"LLM pricing subagent_memos.{section} must be a list"
+        seen = set()
+        for row in rows:
+            if not isinstance(row, dict):
+                return False, f"LLM pricing subagent_memos.{section} contains non-object memo"
+            mid = row.get("market_id")
+            if mid is None:
+                return False, f"LLM pricing subagent_memos.{section} missing market_id"
+            seen.add(mid)
+            audit = market_audits.get(mid)
+            if not audit:
+                return False, f"LLM pricing subagent_memos.{section} references unknown market"
+            if section == "base_pricing":
+                value = row.get("base_probability_int")
+                field = "base_probability_int"
+                expected_value = audit.get("base_probability_int")
+            else:
+                value = row.get("recommended_probability_int")
+                field = "recommended_probability_int"
+                expected_value = audit.get("probability_int")
+            ok, reason, parsed = _probability_int(value, field)
+            if not ok:
+                return False, reason
+            ok, reason, expected_parsed = _probability_int(expected_value, field)
+            if not ok:
+                return False, reason
+            if parsed != expected_parsed:
+                return False, (
+                    f"LLM pricing subagent_memos.{section} {field} "
+                    "does not match market audit"
+                )
+            if not str(row.get("memo") or row.get("summary") or "").strip():
+                return False, f"LLM pricing subagent_memos.{section} missing public memo"
+        missing = expected - seen
+        if missing:
+            return False, (
+                f"LLM pricing subagent_memos.{section} missing markets: "
+                f"{sorted(missing)[:3]}"
+            )
+
+    aspects = memos.get("match_read_aspects")
+    if not isinstance(aspects, list):
+        return False, "LLM pricing subagent_memos.match_read_aspects must be a list"
+    expected_aspects = _expected_aspects(evidence)
+    seen_aspects = set()
+    for row in aspects:
+        if not isinstance(row, dict):
+            return False, "LLM pricing subagent_memos.match_read_aspects contains non-object memo"
+        aspect = row.get("aspect")
+        if aspect:
+            seen_aspects.add(aspect)
+        if not str(row.get("memo") or row.get("summary") or "").strip():
+            return False, "LLM pricing subagent_memos.match_read_aspects missing public memo"
+        sources = row.get("sources")
+        if not isinstance(sources, list) or not sources:
+            return False, "LLM pricing subagent_memos.match_read_aspects missing sources"
+    missing_aspects = expected_aspects - seen_aspects
+    if missing_aspects:
+        return False, (
+            "LLM pricing subagent_memos.match_read_aspects missing aspects: "
+            f"{sorted(missing_aspects)[:3]}"
+        )
+    return True, ""
+
+
+def _expected_market_keys(evidence: dict) -> set:
+    return {
+        item["market_id"] for item in evidence.get("question_evidence", [])
+        if isinstance(item, dict) and item.get("market_id") is not None
+    }
+
+
+def _expected_aspects(evidence: dict) -> set:
+    workflow = evidence.get("agent_workflow") or {}
+    aspects = workflow.get("match_read_aspect_subagents") or MATCH_READ_ASPECTS
+    return {str(aspect) for aspect in aspects if aspect}
+
+
 def validate_market_audit(
     audit: dict, question_evidence: dict | None = None
 ) -> tuple[bool, str, int]:
@@ -289,6 +412,8 @@ def validate_market_audit(
             return False, "LLM pricing missing reasoning summary", 0
         if field != "reasoning_summary" and not isinstance(value, list):
             return False, f"LLM pricing audit field must be a list: {field}", 0
+        if field == "sources" and not value:
+            return False, "LLM pricing sources must be a non-empty list", 0
     ok, reason = _validate_language_adjustment(
         audit, probability_int, base_probability_int, question_evidence or {},
     )
@@ -482,6 +607,7 @@ def _markdown_report(
     if response.get("sources"):
         lines.extend(["", "## Match sources", ""])
         lines.extend(f"- {src}" for src in response.get("sources", []))
+    _append_subagent_memos(lines, response.get("subagent_memos"))
 
     context_avail = _context_available(evidence)
     lines.extend(_context_section(evidence, context_avail))
@@ -651,6 +777,28 @@ def _append_audit_list(lines: list[str], title: str, items) -> None:
             lines.append(f"  - {item}")
         else:
             lines.append(f"  - {json.dumps(item, ensure_ascii=False, sort_keys=True)}")
+
+
+def _append_subagent_memos(lines: list[str], memos) -> None:
+    if not isinstance(memos, dict):
+        return
+    lines.extend(["", "## Subagent memos", ""])
+    for title, key in (
+        ("Base pricing", "base_pricing"),
+        ("Match-read aspects", "match_read_aspects"),
+        ("Question adjustments", "question_adjustments"),
+    ):
+        rows = memos.get(key) or []
+        lines.append(f"### {title}")
+        if not rows:
+            lines.append("- none")
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            label = row.get("question_id") or row.get("aspect") or row.get("market_id") or "memo"
+            memo = row.get("memo") or row.get("summary") or ""
+            lines.append(f"- {label}: {memo}")
 
 
 def _append_language_adjustment(lines: list[str], adjustment) -> None:

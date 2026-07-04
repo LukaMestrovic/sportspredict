@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-command deploy. Builds the immutable v1 image from the CURRENT source and
-# installs the T-30 dispatcher and settlement cron schedules. Editing the
+# installs the settlement cron schedule. Editing the
 # working tree never affects a live manual or cron run until you re-run this
 # script.
 # Re-running is safe and idempotent — it rebuilds the image and rewrites only the
@@ -137,9 +137,6 @@ begin="# >>> sportspredict-llm v1 >>>"
 end="# <<< sportspredict-llm v1 <<<"
 block="$(cat <<EOF
 $begin
-# Every minute: T-30 dispatcher. It no-ops unless a match is due and no
-# lineup-backed manual marker / cron marker blocks the slot.
-* * * * * $DEPLOYED_RUNNER >> $ROOT/logs/cron.log 2>&1
 # Every five minutes: settle explicit SportPredict outcomes, extend the
 # tournament-wide frozen-simulator replay, and refresh WC2026 empirical rates.
 2-59/5 * * * * $DEPLOYED_RUNNER --settle >> $ROOT/logs/settle.log 2>&1
@@ -149,7 +146,7 @@ EOF
 # Strip ANY existing versioned sportspredict-llm block so a tag bump never leaves two running.
 ( crontab -l 2>/dev/null | sed '/# >>> sportspredict-llm v.* >>>/,/# <<< sportspredict-llm v.* <<</d'; echo "$block" ) | crontab -
 
-echo ">> deployed: image $IMAGE:$TAG (alias $IMAGE:$ALIAS_TAG), cron installed (T-30 dispatcher + settle)."
-echo "   logs:   tail -f $ROOT/logs/cron.log"
+echo ">> deployed: image $IMAGE:$TAG (alias $IMAGE:$ALIAS_TAG), settlement cron installed."
+echo "   logs:   tail -f $ROOT/logs/settle.log"
 echo "   check:  crontab -l"
 echo "   manual: $DEPLOYED_RUNNER manual status --next"

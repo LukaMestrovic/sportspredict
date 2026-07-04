@@ -5,7 +5,8 @@ probabilities as integers 1-99. These are submitted directly.
 
 Auditability is mandatory. We cannot inspect private chain-of-thought, so every
 market must include a public audit: odds used, online odds found, non-odds
-factors used, evidence ignored or downweighted, reasoning summary, and sources.
+factors used, evidence ignored or downweighted, reasoning summary, sources, and
+public subagent memo summaries.
 
 ## Workflow
 
@@ -16,7 +17,8 @@ isolated passes and keep the same public audit outputs.
 1. Read this prompt and the full evidence JSON.
 2. Spawn one base-pricing subagent per `question_evidence` item. Each subagent
    prices only its assigned YES contract from the Pricing Hierarchy and returns
-   `base_probability_int` plus a public odds/proxy memo.
+   `base_probability_int` plus a public odds/proxy memo. Preserve those memos in
+   `subagent_memos.base_pricing`.
 3. Spawn eight match-read subagents in parallel:
    - tactics, tempo, game state, pressing, transitions;
    - lineups, minutes, roles, injuries, suspensions;
@@ -29,11 +31,13 @@ isolated passes and keep the same public audit outputs.
    - venue, pitch, roof, weather, travel/rest, motivation, match state;
    - broad market consensus from liquid match, team, player, and specials odds.
 4. Synthesize those notes into one extensive public `match_read_markdown` with
-   sections, source links, and pricing implications.
+   sections, source links, and pricing implications. Preserve the eight aspect
+   notes in `subagent_memos.match_read_aspects`.
 5. Spawn one question-adjustment subagent per market. Give it the original
    evidence item, the base-pricing memo, and `match_read_markdown`. It may do
    extra targeted research only for that exact settlement contract and must
-   recommend a hold/move versus the base using `language_adjustment`.
+   recommend a hold/move versus the base using `language_adjustment`. Preserve
+   those memos in `subagent_memos.question_adjustments`.
 6. Reconcile all recommendations, enforce cross-market coherence and movement
    caps, then emit the final JSON only.
 
@@ -200,9 +204,16 @@ The evidence JSON may include:
 - `simulator_estimate`: deterministic fallback context. `calibrated_baseline` is
   the required no-direct starting point when present and may choose simulator,
   empirical rate, or 50/50 depending on exact-contract Brier.
+- `compound_component_evidence`: locally parsed component odds for recurring
+  compound questions. Use exact combined online specials first; if absent, use
+  these components as derivation inputs and state the correlation assumption.
 
 When provided context materially moves a market, cite it in
 `non_odds_factors_used` with source "provided evidence".
+
+Top-level `sources`, `match_read_sources`, every market `sources`, and each
+match-read aspect memo `sources` must be non-empty. Use `"provided evidence"` as
+a source only when the finding truly comes from the evidence JSON.
 
 ## Coherence Rules
 
@@ -227,6 +238,34 @@ object when present.
   "sources": ["match-level source URL", "..."],
   "match_read_markdown": "# Match read: Team A vs Team B\n\nExtensive public markdown...",
   "match_read_sources": ["match-read source URL", "..."],
+  "subagent_memos": {
+    "base_pricing": [
+      {
+        "question_id": "Q1",
+        "market_id": "<id>",
+        "base_probability_int": <integer 1..99>,
+        "method": "direct_odds / online_odds / simulator / compound / researched_base",
+        "memo": "Public memo: base source, scope, conversion, and uncertainty.",
+        "sources": ["URL or provided evidence"]
+      }
+    ],
+    "match_read_aspects": [
+      {
+        "aspect": "tactics_tempo_game_state",
+        "memo": "Public aspect memo with pricing implications.",
+        "sources": ["URL or provided evidence"]
+      }
+    ],
+    "question_adjustments": [
+      {
+        "question_id": "Q1",
+        "market_id": "<id>",
+        "recommended_probability_int": <integer 1..99>,
+        "memo": "Public memo: hold/move versus base and exact contract mechanism.",
+        "sources": ["URL or provided evidence"]
+      }
+    ]
+  },
   "markets": [
     {
       "question_id": "Q1",

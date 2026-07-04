@@ -69,6 +69,22 @@ def _af_team_score_books():
     }]
 
 
+def _af_btts_total_books():
+    return [{
+        "name": "Bet365",
+        "bets": [
+            {"id": 8, "values": [
+                {"value": "Yes", "odd": "1.83"},
+                {"value": "No", "odd": "1.95"},
+            ]},
+            {"id": 5, "values": [
+                {"value": "Over 2.5", "odd": "2.05"},
+                {"value": "Under 2.5", "odd": "1.80"},
+            ]},
+        ],
+    }]
+
+
 class _OA:
     def __init__(self):
         self.requested = []
@@ -97,7 +113,10 @@ class EvidenceTests(unittest.TestCase):
         )
         self.assertEqual(q["question_id"], "Q1")
         self.assertEqual(q["market_id"], "win")
-        self.assertEqual(evidence["agent_workflow"]["subagent_count"], 1)
+        self.assertEqual(evidence["agent_workflow"]["base_pricing_subagent_count"], 1)
+        self.assertEqual(evidence["agent_workflow"]["question_adjustment_subagent_count"], 1)
+        self.assertEqual(evidence["agent_workflow"]["match_read_aspect_subagent_count"], 8)
+        self.assertEqual(evidence["agent_workflow"]["subagent_count"], 10)
         self.assertEqual(evidence["agent_workflow"]["question_ids"], ["Q1"])
         self.assertEqual(
             evidence["agent_workflow"]["mode"],
@@ -436,7 +455,7 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(estimates.call_args.kwargs["intents"], result.intents)
         q = evidence["question_evidence"][0]
-        self.assertEqual(evidence["schema_version"], 21)
+        self.assertEqual(evidence["schema_version"], 22)
         self.assertEqual(q["simulator_estimate"], {"probability_pct": 24.1})
         self.assertLess(
             list(q).index("direct_odds"),
@@ -504,7 +523,7 @@ class EvidenceTests(unittest.TestCase):
             )
 
         question = bundle["question_evidence"][0]
-        self.assertEqual(bundle["schema_version"], 21)
+        self.assertEqual(bundle["schema_version"], 22)
         self.assertEqual(question["direct_market_spec"]["bet_id"], 14)
         self.assertEqual(len(question["direct_odds"]), 1)
         self.assertIn("regulation first-team-to-score proxy",
@@ -597,7 +616,7 @@ class ContextEvidenceTests(unittest.TestCase):
         with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
-        self.assertEqual(evidence["schema_version"], 21)
+        self.assertEqual(evidence["schema_version"], 22)
         self.assertEqual(
             list(evidence),
             [
@@ -864,6 +883,24 @@ class ContextEvidenceTests(unittest.TestCase):
         guidance = evidence["question_evidence"][0]["adjustment_guidance"]
         self.assertIn("BTTS & Over 2.5", guidance)
         self.assertIn("exact combined odds", guidance)
+
+    def test_compound_question_includes_component_odds_evidence(self):
+        result = _result({
+            "compound": {"market": "none", "subject": "match", "player": None,
+                         "comparator": "yes", "threshold": None, "period": "match"},
+        }, question="Will both teams score AND the match have 3 or more total goals?")
+        ctx = PriceCtx("Home", "Away", _af_btts_total_books(), None, None)
+
+        with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
+            evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+        component = evidence["question_evidence"][0]["compound_component_evidence"]
+        self.assertEqual(component["operator"], "AND")
+        self.assertEqual(
+            [part["intent"]["market"] for part in component["components"]],
+            ["btts", "total_goals"],
+        )
+        self.assertTrue(all(part["direct_odds"] for part in component["components"]))
 
     def test_non_player_market_has_no_player_form_key(self):
         result = _result({

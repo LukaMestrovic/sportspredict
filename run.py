@@ -3,7 +3,7 @@
 
 Usage:
   python run.py predict            # predict all open matches, print results
-  python run.py predict --submit   # ... and submit them to SportPredict
+  python run.py predict --submit   # legacy direct submit; use deployed manual in production
   python run.py predict --limit 1  # only the first open match (cheap test)
   python run.py predict --limit 1 --no-llm     # deterministic backtest-style preview
 """
@@ -16,7 +16,10 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("predict", help="predict open matches")
-    p.add_argument("--submit", action="store_true", help="submit to SportPredict")
+    p.add_argument(
+        "--submit", action="store_true",
+        help="legacy direct submit; production submissions use cache/deployed/run.sh manual",
+    )
     p.add_argument("--limit", type=int, default=None, help="limit number of matches")
     p.add_argument("--no-llm", action="store_true",
                    help="disable final LLM pricing and use deterministic cascade")

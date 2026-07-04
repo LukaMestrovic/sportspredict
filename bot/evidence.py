@@ -15,7 +15,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
-from . import config, public_odds, simulator, simulator_benchmark, wc2026_evidence
+from . import (
+    config,
+    derive,
+    parser as question_parser,
+    public_odds,
+    simulator,
+    simulator_benchmark,
+    wc2026_evidence,
+)
 from . import oddsapi as oapi
 from . import predictor as afpred
 from .matcher import (
@@ -30,8 +38,18 @@ from .pricing import PriceCtx
 
 
 EVIDENCE_DIR = config.ROOT / "logs" / "llm_pricing_runs"
-EVIDENCE_SCHEMA_VERSION = 21
+EVIDENCE_SCHEMA_VERSION = 22
 MIN_BASELINE_COMPARISON_OBSERVATIONS = 30
+MATCH_READ_ASPECTS = [
+    "tactics_tempo_game_state",
+    "lineups_minutes_availability",
+    "attacking_defensive_profile",
+    "stat_market_shape",
+    "set_pieces_goal_methods",
+    "referee_cards_penalties",
+    "venue_weather_rest_motivation",
+    "broad_market_consensus",
+]
 
 
 def build_match_evidence(
@@ -121,6 +139,11 @@ def build_match_evidence(
                 simulator_by_market[mid], stage=stage,
             )
             item["simulator_estimate"] = simulator_estimate
+        component_evidence = _compound_component_evidence(
+            question, result.home, result.away, ctx,
+        )
+        if component_evidence:
+            item["compound_component_evidence"] = component_evidence
         guidance = _adjustment_guidance(intent, question, result.home, result.away)
         if guidance:
             item["adjustment_guidance"] = guidance
@@ -215,6 +238,40 @@ def _match_meta(result, lineups, minutes_before: float | None) -> dict:
     }
 
 
+def _compound_component_evidence(
+    question: str,
+    home: str,
+    away: str,
+    ctx: PriceCtx,
+) -> dict | None:
+    """Deterministic component odds for recurring compound questions."""
+    split = derive.split_compound_template(question)
+    if not split:
+        return None
+    components = []
+    for label, component_question in (("A", split["a"]), ("B", split["b"])):
+        intent = question_parser.parse_question_template(component_question, home, away)
+        direct, spec = _direct_odds(intent, ctx)
+        direct_compact = [_compact_direct_odd(obs) for obs in direct]
+        components.append({
+            "label": label,
+            "question": component_question,
+            "intent": intent,
+            "direct_market_spec": spec,
+            "direct_odds": direct_compact,
+            "decision_basis": _decision_basis(direct_compact, [], None),
+        })
+    return {
+        "operator": split["op"],
+        "components": components,
+        "note": (
+            "Use exact combined online odds first. If none exist, use these "
+            "locally parsed component odds as transparent derivation inputs and "
+            "state the correlation assumption."
+        ),
+    }
+
+
 def _adjustment_guidance(
     intent: dict | None, question: str, home: str, away: str
 ) -> str | None:
@@ -254,17 +311,11 @@ def _agent_workflow(question_evidence: list[dict]) -> dict:
             "Synthesize final probabilities, enforce cross-market coherence, and "
             "emit base_probability_int, language_adjustment, and probability_int.",
         ],
-        "match_read_aspect_subagents": [
-            "tactics_tempo_game_state",
-            "lineups_minutes_availability",
-            "attacking_defensive_profile",
-            "stat_market_shape",
-            "set_pieces_goal_methods",
-            "referee_cards_penalties",
-            "venue_weather_rest_motivation",
-            "broad_market_consensus",
-        ],
-        "subagent_count": len(question_evidence),
+        "match_read_aspect_subagents": MATCH_READ_ASPECTS,
+        "base_pricing_subagent_count": len(question_evidence),
+        "match_read_aspect_subagent_count": len(MATCH_READ_ASPECTS),
+        "question_adjustment_subagent_count": len(question_evidence),
+        "subagent_count": len(question_evidence) * 2 + len(MATCH_READ_ASPECTS),
         "question_ids": [
             item.get("question_id") for item in question_evidence
             if item.get("question_id")
@@ -423,10 +474,7 @@ def _subagent_brief(
     if focused_context:
         brief["focused_context"] = focused_context
     if guidance:
-        brief["adjustment_guidance_priority"] = (
-            "Treat question.adjustment_guidance as the mandatory market-specific "
-            "research checklist."
-        )
+        brief["market_specific_research_notes"] = guidance
     return brief
 
 
@@ -499,7 +547,7 @@ def _research_focus(
             "qualification prices with 90-minute odds only as related context."
         )
     if guidance:
-        focus.append("Follow adjustment_guidance exactly for search terms and levers.")
+        focus.append("Follow the market-specific research notes for search terms and levers.")
     return focus
 
 

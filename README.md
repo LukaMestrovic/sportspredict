@@ -127,9 +127,6 @@ Useful optional settings:
 # Deterministic preview without web-grounded pricing
 .venv/bin/python run.py predict --limit 1 --no-llm
 
-# Manual submission; always recorded in the ledger
-.venv/bin/python run.py predict --submit
-
 # Settle new ledger rows from explicit SportPredict outcomes
 .venv/bin/python -m scripts.settle_ledger
 ```
@@ -143,12 +140,16 @@ cache/deployed/run.sh manual status --next
 cache/deployed/run.sh manual prepare --next --fresh --require-lineups
 ```
 
-If `LINEUPS_AVAILABLE=true`, prepare writes the T−30 cron marker immediately
-after confirmed XIs are detected and refreshes that marker with the generated
-session/evidence paths before returning. That marker is the handoff that tells
-cron a lineup-backed Codex submission owns the match. If
-`LINEUPS_AVAILABLE=false`, prepare does not write the cron marker; do not submit
-as a lineup-backed manual run.
+If `LINEUPS_AVAILABLE=true`, prepare writes the retained manual marker
+immediately after confirmed XIs are detected and refreshes that marker with the
+generated session/evidence paths before returning. If `LINEUPS_AVAILABLE=false`,
+prepare does not write that marker; `--require-lineups` is intentionally a
+warning, so the operator decides whether to wait or continue.
+
+Prepare prints host-first `SESSION_PATH`, `EVIDENCE_PATH`,
+`CHATGPT_REQUEST_PATH`, and `RESPONSE_PATH` values for Codex to read/write. It
+also prints `*_CONTAINER_PATH` aliases. `manual submit` accepts either form and
+normalizes paths inside the deployed container.
 
 After Codex writes the required JSON response to `RESPONSE_PATH`, submit through
 the deployed runner:
@@ -158,9 +159,8 @@ cache/deployed/run.sh manual submit --session SESSION_PATH --response RESPONSE_P
 ```
 
 For lineup-backed sessions, submit refreshes the same marker before reading or
-validating the response, so a long manual submit started around T−45 cannot race
-the T−30 automated OpenAI cron path. Manual sessions without confirmed lineups
-do not create the cron marker automatically.
+validating the response. Manual sessions without confirmed lineups do not create
+the marker automatically.
 
 ## Deployment
 
@@ -171,7 +171,7 @@ Prerequisites are Docker, a running Docker daemon, `crontab`, and a completed
 scripts/deploy.sh
 cache/deployed/run.sh --status
 crontab -l
-tail -f logs/cron.log
+tail -f logs/settle.log
 ```
 
 `scripts/deploy.sh` performs the whole deployment:
@@ -181,39 +181,23 @@ tail -f logs/cron.log
 2. smoke-tests the bundled learned model and its audit artifacts without keys;
 3. runs a read-only SportPredict status check with keys passed at runtime; and
 4. writes `cache/deployed/run.sh` pinned to that immutable image and
-   idempotently installs the per-minute T−30 dispatcher and five-minute
-   settlement/benchmark refresh cron entries through that runner.
+   idempotently installs only the five-minute settlement/benchmark refresh cron
+   entry through that runner.
 
-The dispatcher is normally a fast no-op. At T−30 it first checks the per-match
-cron marker. A lineup-backed manual Codex prepare/submit writes that marker as
-soon as the manual flow is underway, before SportPredict verification, so cron
-does not start a competing automated OpenAI submission. Cron's own markers also
-block repeat fires. A manual run without confirmed lineups does not create the
-marker automatically, and a no-lineups manual ledger row alone does not suppress
-the T−30 lineup-backed cron refresh.
+Prediction submission is manual Codex only for the rest of the competition. The
+deployed runner still exposes `--status`/`--dry-run` utilities, but deploy no
+longer installs an automated T−30 prediction cron.
 
-When no blocking marker or lineup-backed submitted ledger row exists, cron
-refreshes provider odds once, fetches current lineups when available, forces a
-fresh cached pricing/web-search call for that submission window, and refreshes
-exact WC2026 empirical rates from every labelable final API-Football fixture
-strictly before the target kickoff. Team contracts contribute two observations
-per match where appropriate. Final event/stat/player responses and the compact
-tournament snapshot live in bind-mounted `cache/`, so this stays current across
-short-lived containers without rebuilding the frozen image after every match. It
-then submits through the ledger and writes its audit. A file lock prevents
-overlapping ticks.
-
-A second cron tick runs settlement every five minutes. It accepts only explicit
+The settlement cron runs every five minutes. It accepts only explicit
 SportPredict `current_value` outcomes, refreshes the exact-contract tournament
-rates, and extends a simulator-only WC2026 benchmark. The benchmark starts from
-a tracked 73-match replay and prices each newly settled match once with the
+rates, and extends a simulator-only WC2026 benchmark. The benchmark starts from a
+tracked 73-match replay and prices each newly settled match once with the
 unchanged pre-2026 simulator artifacts; no LLM probabilities or reasoning enter
-it. The T−30 tick refreshes this retained snapshot again before pricing, so each
-new LLM evidence bundle sees every result settled so far.
+it.
 
 The active image is immutable between deploys. Re-run `scripts/deploy.sh` to
 ship new code. `cache/deployed/run.sh` bind-mounts this checkout's `cache/` and
-`logs/`, so paid responses, parser/pricing caches, cron markers, evidence, audits, and the ledger
+`logs/`, so paid responses, parser/pricing caches, markers, evidence, audits, and the ledger
 survive image rebuilds. Never delete those directories during deployment.
 
 ## Evidence and pricing contract
@@ -241,15 +225,15 @@ provenance, repeated refresh metadata, unavailable scopes, derived deltas,
 confidence intervals, and legacy performance blocks remain in the retained
 artifacts/snapshots but are not repeated in every question sent to the LLM.
 
-The pricing model must return top-level `match_read_markdown` and
-`match_read_sources`, then for every submitted market a `base_probability_int`,
-final `probability_int`, `language_adjustment`, odds used, independent online
-odds, non-odds factors, downweighted evidence, sources, and a concise reasoning
-summary. Movement from the base is validator-capped by evidence type, and
-invalid moves are skipped rather than corrected silently. The prompt is
-`prompts/llm_pricing_prompt.md`; its hash is part of the cache key. Pricing
-refuses to run after kickoff, and repeat manual runs reuse the frozen pre-match
-audit.
+The pricing model must return top-level `match_read_markdown`,
+`match_read_sources`, and `subagent_memos`, then for every submitted market a
+`base_probability_int`, final `probability_int`, `language_adjustment`, odds
+used, independent online odds, non-odds factors, downweighted evidence, non-empty
+sources, and a concise reasoning summary. Movement from the base is
+validator-capped by evidence type, and invalid moves are skipped rather than
+corrected silently. The prompt is `prompts/llm_pricing_prompt.md`; its hash and
+the evidence hash are part of the cache key. Pricing refuses to run after
+kickoff, and repeat manual runs reuse the frozen pre-match audit.
 
 ## Market catalog
 
@@ -264,7 +248,7 @@ contracts.
 
 `logs/prediction_ledger.sqlite3` records real questions, provider snapshots,
 intent and market mapping, evidence/audit paths and hashes, submitted values,
-errors, and eventual outcomes. All user-facing and scheduled submissions use
+errors, and eventual outcomes. All submission paths use
 `pipeline.submit_with_ledger`.
 
 Settlement is idempotent and joins by SportPredict `market_id`. It accepts only
@@ -295,16 +279,17 @@ small-sample warning.
   `markets × regions`.
 - API-Football fixtures and odds have TTLs; settled statistics are permanent.
 - Final API-Football event, team-stat and player-stat responses are fetched once
-  and retained permanently; settlement and T−30 fires rebuild
+  and retained permanently; settlement refreshes rebuild
   `cache/wc2026_empirical.json` with a strict target-time cutoff and separate
   all-stage/knockout coverage counts.
 - Settled frozen predictions rebuild `cache/simulator_family_benchmark.json`
-  every five minutes and immediately before each T−30 evidence handoff.
-- The T−30 job deliberately refreshes odds once, with identical requests
-  deduplicated inside the run.
+  every five minutes.
+- Manual prepare with `--fresh` deliberately refreshes odds once, with identical
+  requests deduplicated inside the run.
 - Parser and compound fallback calls are cached by prompt version, model, and
-  messages. The first pricing call is web-grounded and non-deterministic, but
-  its result is cached permanently for repeatability.
+  messages. The first pricing call for a match/evidence-hash pair is
+  web-grounded and non-deterministic, but its result is cached permanently for
+  repeatability.
 
 Pre-match odds may disappear from providers a few days after kickoff. Retained
 local cache entries are therefore part of the audit record, not disposable
@@ -337,8 +322,8 @@ parts are:
 |---|---|
 | Parser fallback | known templates cost $0; unfamiliar wording is one cached batch |
 | Compound fallback | local for known forms; otherwise one cached batch |
-| Odds API | requested markets × configured regions; one deliberate T−30 refresh |
-| LLM pricing | one cached multi-market call with match-read research and adjustment audit |
+| Odds API | requested markets × configured regions; one deliberate manual `--fresh` refresh |
+| LLM pricing | one cached multi-market call with match-read research, subagent memos, and adjustment audit |
 
 Changing parser behavior can change per-match spend and must be reflected here.
 
@@ -353,7 +338,7 @@ simulator/
   requirements.txt      numerical dependencies only
 prompts/                 audited pricing prompt
 scripts/
-  cron_submit.py         T−30 dispatcher
+  cron_submit.py         status/dry-run dispatcher utility (not scheduled by deploy)
   deploy.sh              build, smoke-test, and install cron
   run.sh                 cron-safe container runner
   settle_ledger.py       explicit-outcome settlement and Brier reporting

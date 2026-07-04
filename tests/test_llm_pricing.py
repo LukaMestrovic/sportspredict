@@ -20,6 +20,7 @@ class LLMFinalPricingTests(unittest.TestCase):
             "sources": ["https://example.com/preview"],
             "match_read_markdown": "# Match read\n\nHome should control territory.",
             "match_read_sources": ["https://example.com/preview"],
+            "subagent_memos": _memos([_audit("m1", 57)]),
             "markets": [_audit("m1", 57)],
         }
         with tempfile.TemporaryDirectory() as tmp:
@@ -45,7 +46,8 @@ class LLMFinalPricingTests(unittest.TestCase):
 
     def test_report_surfaces_provided_context(self):
         llm_pricing._ask = lambda evidence, **_kw: {
-            **_response([_audit("m1", 57)]), "briefing": "b", "sources": [],
+            **_response([_audit("m1", 57)]), "briefing": "b",
+            "sources": ["https://example.com/preview"],
         }
         with tempfile.TemporaryDirectory() as tmp:
             result = llm_pricing.price_match(
@@ -65,7 +67,8 @@ class LLMFinalPricingTests(unittest.TestCase):
 
     def test_report_surfaces_simulator_estimate(self):
         llm_pricing._ask = lambda evidence, **_kw: {
-            **_response([_audit("m1", 57)]), "briefing": "b", "sources": [],
+            **_response([_audit("m1", 57)]), "briefing": "b",
+            "sources": ["https://example.com/preview"],
         }
         with tempfile.TemporaryDirectory() as tmp:
             result = llm_pricing.price_match(
@@ -188,7 +191,40 @@ def _response(markets):
         "sources": ["https://example.com/preview"],
         "match_read_markdown": "# Match read\n\nHome should control territory.",
         "match_read_sources": ["https://example.com/preview"],
+        "subagent_memos": _memos(markets),
         "markets": markets,
+    }
+
+
+def _memos(markets):
+    return {
+        "base_pricing": [
+            {
+                "market_id": market["market_id"],
+                "base_probability_int": market["base_probability_int"],
+                "method": "direct_odds",
+                "memo": "Base priced from provided direct odds.",
+                "sources": ["provided evidence"],
+            }
+            for market in markets
+        ],
+        "match_read_aspects": [
+            {
+                "aspect": aspect,
+                "memo": f"{aspect} reviewed for public audit.",
+                "sources": ["https://example.com/preview"],
+            }
+            for aspect in llm_pricing.MATCH_READ_ASPECTS
+        ],
+        "question_adjustments": [
+            {
+                "market_id": market["market_id"],
+                "recommended_probability_int": market["probability_int"],
+                "memo": "Question adjustment memo supports the final price.",
+                "sources": ["https://example.com/preview"],
+            }
+            for market in markets
+        ],
     }
 
 

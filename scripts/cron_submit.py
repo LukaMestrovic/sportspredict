@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
-"""Autonomous submitter: cron runs this every minute; it submits the next
-match's predictions at the 30-minute mark before kickoff.
+"""Manual/status dispatcher for the former automated submitter.
+
+Deploy no longer schedules this module for prediction submission; production
+submissions are manual Codex runs through ``scripts.manual_submit``. The
+dispatcher remains available for explicit ``--status``/``--dry-run`` checks and
+for deliberate manual invocation of the old T-30 flow.
 
 Design
 ------
-Cron can't fire "30 min before a variable kickoff", so this is a *dispatcher*:
-run it once a minute and let it decide. Each tick it finds the soonest open
-match and submits once at the 30-minute window using a marker file so it never
-re-submits on the intervening ticks. A lineup-backed manual Codex submission
-writes the same marker when it starts, before SportPredict verification, so the
-automated OpenAI path cannot race it. A file lock prevents overlapping ticks
-(a fire calls the LLM/odds and can outlast one minute) from double-submitting.
-
-At T-30 the lineups are out and there is ~1800s of headroom, so the auditable
-LLM pricing layer receives the match evidence JSON, researches online odds and
-context, and returns the submitted probabilities plus a per-market audit trail.
+The old cron design needed a dispatcher because cron cannot fire "30 min before
+a variable kickoff". When run deliberately, it finds due matches and submits once
+at the configured window using marker files, while a file lock prevents overlap.
 
 Manual checks:
   python -m scripts.cron_submit --dry-run   # decide + price, never submit/mark
@@ -38,8 +34,8 @@ from bot.sportspredict import SportPredict
 
 # Submit at these many minutes-before-kickoff (largest first). A window fires on
 # the first tick at or under its threshold, then is marked done for that match.
-# Single window: at T-30 the XI is out and the LLM pricing layer has ample
-# headroom; a later re-submit would only add market drift already researched here.
+# Legacy single prediction window. Not scheduled by deploy; kept for explicit
+# dry-run/status/manual dispatcher use.
 WINDOWS = (30,)
 # Ignore matches further out than this so most ticks exit cheaply.
 LOOKAHEAD_MIN = WINDOWS[0] + 1

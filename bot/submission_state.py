@@ -58,11 +58,11 @@ def marker_blocks_cron(
     *,
     state_dir: Path = STATE_DIR,
 ) -> bool:
-    """Return whether an existing marker should suppress the automated run.
+    """Return whether an existing marker should suppress dispatcher submission.
 
-    Cron's own markers always block repeat cron fires. Manual markers block only
-    when they are lineup-backed; this lets an older/manual no-lineups submission
-    be improved by the T-30 automated run once confirmed XIs exist.
+    Dispatcher markers always block repeat fires. Manual markers block only when
+    they are lineup-backed; this lets an older/manual no-lineups submission be
+    improved by a deliberate later lineup-backed manual or dispatcher run.
     """
     path = marker_path(match_id, kickoff, window, state_dir=state_dir)
     if not path.exists():

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Cron/deployed entrypoint: run one dispatcher, settlement, or manual command
+# Deployed entrypoint: run settlement/status utilities or a manual command
 # inside the immutable v1 image. Because the code is baked into the image, the
 # live bot is a frozen snapshot — editing the working tree never affects a
-# running tick or manual flow until the next scripts/deploy.sh rebuild.
+# manual/settlement flow until the next scripts/deploy.sh rebuild.
 #
-#   scripts/run.sh [--status|--dry-run|--settle]
+#   scripts/run.sh [--status|--dry-run|--settle|manual ...]
 set -uo pipefail
 export PATH="/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 
@@ -30,7 +30,7 @@ fi
 set -a; . "$ROOT/.env"; set +a
 : "${SPORTSPREDICT_KEY:?SPORTSPREDICT_KEY not set in .env}"
 
-# Mount cache/ (paid odds cache, parser cache, cron markers + flock) and logs/
+# Mount cache/ (paid odds cache, parser cache, markers + flock) and logs/
 # (ledger, audit) so state persists across the per-tick --rm containers. --user
 # keeps written files owned by the host user, not root.
 mkdir -p "$ROOT/cache" "$ROOT/logs"

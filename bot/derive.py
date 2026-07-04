@@ -75,6 +75,11 @@ def is_compound_question(question: str) -> bool:
     return bool(_COMPOUND_RE.search(question))
 
 
+def split_compound_template(question: str) -> dict | None:
+    """Split recurring compound forms without calling the fallback LLM."""
+    return _split_template(question)
+
+
 def _split(question: str) -> dict | None:
     deterministic = _split_template(question)
     if deterministic:

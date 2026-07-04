@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Price the next N open matches and log every question and prediction.
 
-Uses the configured auditable LLM pricing layer. Does not submit by itself; pass
---submit to send the logged predictions to SportPredict after review.
+Uses the configured auditable LLM pricing layer. Does not submit by itself; the
+production submission path is deployed manual Codex. The `--submit` flag remains
+as a legacy direct ledger-backed path for deliberate local use.
 """
 from __future__ import annotations
 
@@ -23,7 +24,10 @@ TAG = {"api-football": "AF", "odds-api": "OA", "derived": "DRV",
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=6)
-    ap.add_argument("--submit", action="store_true")
+    ap.add_argument(
+        "--submit", action="store_true",
+        help="legacy direct submit; production submissions use deployed manual Codex",
+    )
     args = ap.parse_args()
 
     sp = SportPredict()

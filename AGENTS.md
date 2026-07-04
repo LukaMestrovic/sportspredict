@@ -50,8 +50,9 @@ git-ignored; keep it that way).
   (ttl=0) so re-runs are stable. The pricing prompt lives in
   `prompts/llm_pricing_prompt.md`; editing it auto-invalidates the cache through
   the prompt hash. Bump `LLM_PRICING_VERSION` when the output contract changes.
-  The pricing LLM must return a `probability_int` value and complete audit
-  fields for every submitted market; if a market lacks audit detail, skip it.
+  The pricing LLM must return `subagent_memos`, a `probability_int` value and
+  complete audit fields for every submitted market; if a market lacks audit
+  detail, skip it.
 - Recurring question and compound templates are parsed deterministically. The
   parser uses `PARSER_MODEL` (default `gpt-5.4-mini`) for unfamiliar wording only,
   with **at most one batched fallback call per match**. Because the call is
@@ -64,16 +65,16 @@ git-ignored; keep it that way).
   `cache/` (git-ignored). Never add an uncached odds fetch in a hot loop.
 - The Odds API bills `markets × regions`: request only needed markets; the cache
   key is per `(event, market, regions)`. `ODDS_REGIONS` tunes breadth vs cost.
-- The scheduled 30-minute submission intentionally refreshes odds once. Keep
-  refreshes deduplicated within the run so identical Odds API market requests
-  never incur repeated credits.
+- Manual prepare with `--fresh` intentionally refreshes odds once. Keep refreshes
+  deduplicated within the run so identical Odds API market requests never incur
+  repeated credits.
 - The LLM pricing layer (`gpt-5.4-mini` + web search by default) is
-  web-grounded spend. It is cached per match for manual repeatability and can be
-  disabled with `LLM_PRICING_ENABLED=0` for deterministic validation. Scheduled
-  T-30 cron fires deliberately refresh provider odds and force a fresh LLM
-  pricing/web-search call for that submission window. Don't run it on settled
-  matches — a web search can leak the result. `llm_pricing.price_match()` refuses
-  to run once kickoff has passed, and ledger review reads frozen rows only.
+  web-grounded spend. It is cached per match/evidence hash for manual
+  repeatability and can be disabled with `LLM_PRICING_ENABLED=0` for deterministic
+  validation. Manual Codex submission is the production submission path for the
+  rest of the competition. Don't run LLM pricing on settled matches — a web
+  search can leak the result. `llm_pricing.price_match()` refuses to run once
+  kickoff has passed, and ledger review reads frozen rows only.
 - Treat `cache/` and `logs/` as retained runtime state. Never remove them during
   cleanup, tests, image builds, or deployment.
 
@@ -81,15 +82,13 @@ git-ignored; keep it that way).
 - When instructed to deploy, run `scripts/deploy.sh`. Do not hand-edit crontab or
   run the working tree directly for production.
 - `scripts/deploy.sh` builds an immutable Docker image, writes
-  `cache/deployed/run.sh` pinned to that image, and installs cron to call that
-  deployed runner. Cron/manual submissions must use the deployed runner so later
+  `cache/deployed/run.sh` pinned to that image, and installs only the settlement
+  cron entry. Manual submissions must use the deployed runner so later
   working-tree edits cannot affect live submissions until the next deploy.
-- Lineup-backed manual Codex prepare/submit owns the T-30 slot by writing the
-  cron marker as soon as confirmed XIs are present and the manual flow starts,
-  before SportPredict verification. Manual submissions without confirmed lineups
-  do not create the cron marker automatically, and a no-lineups manual ledger
-  row alone must not suppress the later T-30 lineup-backed cron refresh. Cron's
-  own markers still prevent repeat automated fires.
+- Lineup-backed manual Codex prepare/submit still writes the retained marker as
+  soon as confirmed XIs are present and the manual flow starts, before
+  SportPredict verification. Manual submissions without confirmed lineups do not
+  create the marker automatically.
 
 ## Keys / env
 `config.py` loads `.env`. Required: `SPORTSPREDICT_KEY`, `APIFOOTBALL_KEY`,

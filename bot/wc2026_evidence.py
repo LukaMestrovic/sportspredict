@@ -1,8 +1,8 @@
 """Target-time World Cup empirical evidence from final API-Football events.
 
 The deployed image is immutable, but ``cache/`` is bind-mounted and retained.
-Each T-30 fire therefore fetches only final fixtures whose event response is not
-already cached, rebuilds this small snapshot for the target kickoff, and overlays
+Settlement/manual refreshes fetch only final fixtures whose event response is not
+already cached, rebuild this small snapshot for the target kickoff, and overlay
 the live WC scopes onto the simulator's immutable all-history evidence.
 """
 from __future__ import annotations

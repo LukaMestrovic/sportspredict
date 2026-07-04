@@ -182,6 +182,15 @@ def parse_questions(
     return out
 
 
+def parse_question_template(question: str, home: str, away: str) -> dict | None:
+    """Parse one question using only local templates, never the fallback LLM."""
+    cleaned = _normalize_question(question, home, away)
+    intent = _parse_template(cleaned, home, away)
+    if not intent:
+        return None
+    return _repair_intent(cleaned, intent, home, away, raw_question=question)
+
+
 _COUNT_MARKETS = {
     "goal": ("total_goals", "team_total_goals"),
     "corner": ("total_corners", "team_corners"),

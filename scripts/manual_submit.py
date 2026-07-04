@@ -4,9 +4,10 @@
 The manual path deliberately uses the same deployed container as cron. It builds
 fresh evidence without calling OpenAI, accepts an audited GPT JSON response over
 stdin, submits through the normal ledger/platform path, and verifies
-SportPredict. A lineup-backed manual prepare/submit writes the cron-skip marker
-as soon as the lineup-backed manual flow is underway, so the T-30 automated
-OpenAI path cannot fire while Codex is still researching or submitting.
+SportPredict. A lineup-backed manual prepare/submit writes the retained marker
+as soon as the lineup-backed manual flow is underway. Deploy no longer installs
+an automated prediction cron, but the marker remains part of the audit and keeps
+older/manual dispatcher invocations from racing a lineup-backed Codex run.
 """
 from __future__ import annotations
 
@@ -208,21 +209,21 @@ def _prepare(args) -> None:
             print("CRON_BLOCKED=false")
         if lineup_warning:
             print(f"LINEUP_WARNING={lineup_warning}")
-        print(f"SESSION_PATH={_container_path(session_path)}")
-        print(f"SESSION_HOST_PATH={_host_path(session_path)}")
-        print(f"EVIDENCE_PATH={_container_path(result.evidence_path)}")
-        print(f"EVIDENCE_HOST_PATH={_host_path(result.evidence_path)}")
+        print(f"SESSION_PATH={_host_path(session_path)}")
+        print(f"SESSION_CONTAINER_PATH={_container_path(session_path)}")
+        print(f"EVIDENCE_PATH={_host_path(result.evidence_path)}")
+        print(f"EVIDENCE_CONTAINER_PATH={_container_path(result.evidence_path)}")
         print(f"CHATGPT_REQUEST_PATH={_host_path(chatgpt_path)}")
         print(f"CHATGPT_REQUEST_CONTAINER_PATH={_container_path(chatgpt_path)}")
-        print(f"RESPONSE_PATH={_container_path(response_path)}")
-        print(f"RESPONSE_HOST_PATH={_host_path(response_path)}")
+        print(f"RESPONSE_PATH={_host_path(response_path)}")
+        print(f"RESPONSE_CONTAINER_PATH={_container_path(response_path)}")
 
 
 def _submit(args) -> None:
     if not (args.response_stdin or args.response):
         raise SystemExit("provide --response-stdin or --response")
     with _nonblocking_lock():
-        session_path = Path(args.session)
+        session_path = Path(_container_path(args.session))
         session = json.loads(session_path.read_text(encoding="utf-8"))
         kickoff = _parse_kickoff(session["match"]["opening_time"])
         if (kickoff - datetime.now(timezone.utc)).total_seconds() <= 0:
@@ -246,16 +247,16 @@ def _submit(args) -> None:
 
         response_text = (
             sys.stdin.read() if args.response_stdin
-            else Path(args.response).read_text(encoding="utf-8")
+            else Path(_container_path(args.response)).read_text(encoding="utf-8")
         )
         response = llm_pricing._extract_json(response_text)  # strict schema follows.
-        response_path = Path(session["response_path"])
+        response_path = Path(_container_path(session["response_path"]))
         response_path.write_text(
             json.dumps(response, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
 
-        evidence_path = Path(session["evidence_path"])
+        evidence_path = Path(_container_path(session["evidence_path"]))
         evidence_json = json.loads(evidence_path.read_text(encoding="utf-8"))
         result = _result_from_session(session)
         llm_pricing.apply_pricing_response(
@@ -462,9 +463,10 @@ def _chatgpt_request(evidence_json: dict, evidence_path: str) -> str:
         "the delegation packet.\n\n"
         "Run pre-kickoff web research where required. Return ONLY valid JSON "
         "matching the prompt output schema: top-level `briefing`, `sources`, "
-        "`match_read_markdown`, `match_read_sources`, and `markets`. Include "
-        "one market object for every `market_id` in `question_evidence`, with "
-        "`base_probability_int` and `language_adjustment` on every market.\n\n"
+        "`match_read_markdown`, `match_read_sources`, `subagent_memos`, and "
+        "`markets`. Include one market object for every `market_id` in "
+        "`question_evidence`, with `base_probability_int` and "
+        "`language_adjustment` on every market.\n\n"
         "Do not include prose outside JSON. Do not reveal private chain-of-"
         "thought; keep reasoning in concise public audit summaries.\n\n"
         "## prompts/llm_pricing_prompt.md\n\n"
