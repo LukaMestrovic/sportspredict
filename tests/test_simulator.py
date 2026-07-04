@@ -195,6 +195,10 @@ class ReportParsingTests(unittest.TestCase):
             ("win_margin", "Will the home team win by 2 or more goals?", "win_margin"),
             ("red_card", "Will a red card be shown in the match?", "red_card"),
             ("both_card", "Will both teams receive at least one card?", "both_teams_card"),
+            ("lead_any", "Will Brazil hold a lead at any point in the match?", "lead_any_time"),
+            ("cards_gt_goals", "Will there be more total cards than total goals in regulation?", "cards_more_than_goals"),
+            ("full_match", "Will Vinicius Junior play the entire match in regulation?", "player_full_match"),
+            ("goal_each_half", "Will at least one goal be scored in each half in regulation?", "half_conditional"),
             ("player_score", "Will Vinicius Junior score in regulation?", "player_score"),
             ("player_soa", "Will Vinicius Junior score or assist in regulation?", "player_score_or_assist"),
         ]

@@ -19,9 +19,12 @@ from .postsim import (
     ANY_PLAYER_THRESHOLD,
     BOTH_TEAMS_CARD,
     CARD_WINDOW,
+    CARDS_MORE_THAN_GOALS,
     COMPOUND_AND,
     FIRST_GOAL,
     GOAL_WINDOW,
+    LEAD_ANY_TIME,
+    PLAYER_FULL_MATCH,
     RED_CARD,
     STAT_WINDOW,
     SUBSTITUTE_SCORE,
@@ -112,6 +115,21 @@ def _explanation(market: str, params: dict, notes: str | None) -> str:
         return "Estimated from simulated red-card counts, with regulation and extra time separated."
     if market == BOTH_TEAMS_CARD:
         return "Estimated when each team has at least one simulated yellow or red card in regulation."
+    if market == LEAD_ANY_TIME:
+        return (
+            "Estimated by walking the simulated goal timeline in each shared match world "
+            "and checking whether the named team ever holds a lead."
+        )
+    if market == CARDS_MORE_THAN_GOALS:
+        return (
+            "Estimated inside each shared simulated match world by comparing total "
+            "yellow/red cards with total goals over the question's exact time scope."
+        )
+    if market == PLAYER_FULL_MATCH:
+        return (
+            "Estimated from confirmed lineup exposure, expected minutes, and position-level "
+            "full-match completion rates; it is model context, not a bookmaker quote."
+        )
     if market == "team_score_no_own":
         return (
             "Estimated from the named team's simulated goal count after removing the learned "

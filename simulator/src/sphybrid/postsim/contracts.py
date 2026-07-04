@@ -65,10 +65,17 @@ def contract_key(market: str, params: dict | None, *, stage: str | None = None) 
             f"{params.get('comparator')}:{_number(params.get('threshold'))}:reg"
         )
     if market in {"substitute_score", "substitution_before_halftime", "red_card",
-                  "both_teams_card", "win_margin", "team_score_no_own"}:
+                  "both_teams_card", "win_margin", "team_score_no_own",
+                  "lead_any_time", "cards_more_than_goals", "player_full_match"}:
         if market == "substitution_before_halftime":
             regulation = "reg"
+        if market == "lead_any_time":
+            regulation = "match" if params.get("include_et") else "reg"
+        if market == "player_full_match":
+            regulation = "reg"
         suffix = f":{_number(params.get('threshold'))}" if market == "win_margin" else ""
+        if market == "player_full_match":
+            suffix = ":player"
         return f"{market}:{regulation}{suffix}"
     if market in {"player_score", "player_score_or_assist"}:
         scope = "reg" if params.get("half", "full") in {"1H", "2H"} else regulation

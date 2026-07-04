@@ -197,6 +197,67 @@ class BundledSimulatorTests(unittest.TestCase):
             "count:cards:team:full:>=:1:reg",
         )
 
+    def test_new_special_families_resolve_through_bridge(self):
+        report = self._run_bridge({
+            "home": "Paraguay",
+            "away": "France",
+            "kickoff": "2026-07-04T20:00:00Z",
+            "stage": "knockout",
+            "n_sims": 100,
+            "lineups": {
+                "home": [
+                    {"name": "Miguel Almiron", "position": "MF",
+                     "start_prob": 1.0, "expected_minutes": 82},
+                ],
+                "away": [
+                    {"name": "Kylian Mbappe", "position": "FW",
+                     "start_prob": 1.0, "expected_minutes": 84},
+                ],
+            },
+            "questions": [
+                {
+                    "market_id": "lead",
+                    "question": (
+                        "Will Paraguay hold a lead at any point in the match "
+                        "(excluding a penalty shootout)?"
+                    ),
+                },
+                {
+                    "market_id": "cards_gt_goals",
+                    "question": (
+                        "Will there be more total cards than total goals in regulation "
+                        "(90 minutes + stoppage time)?"
+                    ),
+                },
+                {
+                    "market_id": "full_match",
+                    "question": (
+                        "Will Miguel Almiron (Paraguay) play the entire match in "
+                        "regulation (90 minutes + stoppage time)?"
+                    ),
+                },
+                {
+                    "market_id": "each_half",
+                    "question": (
+                        "Will at least one goal be scored in each half in regulation "
+                        "(90 minutes + stoppage time)?"
+                    ),
+                },
+            ],
+        })
+        by_id = {item["market_id"]: item for item in report["question_reports"]}
+
+        self.assertEqual(set(by_id), {"lead", "cards_gt_goals", "full_match", "each_half"})
+        self.assertEqual(by_id["lead"]["family"], "lead_any_time")
+        self.assertEqual(by_id["lead"]["contract_key"], "lead_any_time:match")
+        self.assertEqual(by_id["cards_gt_goals"]["family"], "cards_more_than_goals")
+        self.assertEqual(by_id["cards_gt_goals"]["contract_key"],
+                         "cards_more_than_goals:reg")
+        self.assertEqual(by_id["full_match"]["family"], "player_full_match")
+        self.assertEqual(by_id["full_match"]["contract_key"], "player_full_match:reg:player")
+        self.assertEqual(by_id["each_half"]["contract_key"],
+                         "half_conditional:goal_in_both_halves")
+
     def _run_bridge(self, payload):
         env = os.environ.copy()
         env["PYTHONPATH"] = str(SIMULATOR / "src")

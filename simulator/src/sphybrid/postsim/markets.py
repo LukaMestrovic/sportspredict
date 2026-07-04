@@ -12,13 +12,18 @@ import numpy as np
 from sportspredict.features.context import MatchContext
 from sportspredict.markets.schema import MarketSpec, MarketType, apply_comparator
 from sportspredict.model.outcome import MatchOutcome
-from sportspredict.types import H1, H2, TEAM_A, TEAM_B
+from sportspredict.types import GOALS, H1, H2, TEAM_A, TEAM_B
 
 from .timing import TimingModel
 from .timeline import GoalTimeline, card_timeline, count_timeline
 
 try:
-    from sportspredict.markets.parser import _LEADING_Q, _detect_half, _find_teams
+    from sportspredict.markets.parser import (
+        _LEADING_Q,
+        _detect_half,
+        _find_teams,
+        player_name_match,
+    )
     _PARSER_OK = True
 except Exception:  # pragma: no cover
     _PARSER_OK = False
@@ -37,6 +42,9 @@ RED_CARD = "red_card"
 BOTH_TEAMS_CARD = "both_teams_card"
 TOTAL_SHOTS_THRESHOLD = "total_shots_threshold"
 WIN_MARGIN = "win_margin"
+LEAD_ANY_TIME = "lead_any_time"
+CARDS_MORE_THAN_GOALS = "cards_more_than_goals"
+PLAYER_FULL_MATCH = "player_full_match"
 FIRST_HYDRATION_MINUTE = 22.0
 SECOND_HYDRATION_MINUTE = 70.0
 
@@ -187,6 +195,35 @@ def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
         return ExtSpec(SUBSTITUTION_BEFORE_HALF, {}, question)
     if re.search(r"\ba substitute score", core):
         return ExtSpec(SUBSTITUTE_SCORE, {"regulation": True}, question)
+    lead_any_time = re.search(r"\bhold a lead at any point\b", core)
+    if lead_any_time:
+        teams = _teams_in_text(core, ctx)
+        if teams:
+            return ExtSpec(LEAD_ANY_TIME, {
+                "team": _LABEL[teams[0]],
+                "include_et": not _regulation_only(raw_lower),
+            }, question)
+    if "more total cards than total goals" in core:
+        return ExtSpec(CARDS_MORE_THAN_GOALS, {
+            "regulation": _regulation_only(raw_lower),
+        }, question)
+    full_match_player = re.search(r"(.+?)\s+play the entire match\b", core)
+    if full_match_player:
+        player = re.sub(r"\s+\([^)]*\)", "", full_match_player.group(1)).strip()
+        if player:
+            return ExtSpec(PLAYER_FULL_MATCH, {
+                "player": player,
+                "regulation": _regulation_only(raw_lower),
+            }, question)
+    if re.search(r"goal (?:be )?scored in each half|goal (?:be )?scored in every half", core):
+        return ExtSpec(REGULATION_STANDARD, {
+            "baseline_spec": MarketSpec(
+                MarketType.HALF_CONDITIONAL,
+                {"subtype": "goal_in_both_halves"},
+                question,
+            ),
+            "regulation": True,
+        }, question)
     if "excluding own goals" in raw_lower and re.search(r"\bscore a goal\b", core):
         teams = _teams_in_text(core, ctx)
         if len(teams) == 1:
@@ -384,6 +421,63 @@ def _resolve_leg(leg, timeline: GoalTimeline, outcome: MatchOutcome) -> np.ndarr
     raise ValueError(f"unknown extended leg {leg!r}")
 
 
+def _ever_leads(timeline: GoalTimeline, team: int, *, include_et: bool) -> np.ndarray:
+    phases = {"1H", "2H", "ET"} if include_et else {"1H", "2H"}
+    selected = np.where(timeline.select(phases=phases))[0]
+    led = np.zeros(timeline.n_sims, dtype=bool)
+    if selected.size == 0:
+        return led
+    phase_rank = np.array([_PHASE_IDX_VALUE.get(phase, 99) for phase in timeline.phase[selected]])
+    order = np.lexsort((timeline.order[selected], phase_rank, timeline.world[selected]))
+    score = np.zeros((2, timeline.n_sims), dtype=int)
+    other = TEAM_B if team == TEAM_A else TEAM_A
+    for idx in selected[order]:
+        world = timeline.world[idx]
+        scorer = int(timeline.team[idx])
+        if scorer in (TEAM_A, TEAM_B):
+            score[scorer, world] += 1
+            if score[team, world] > score[other, world]:
+                led[world] = True
+    return led
+
+
+_PHASE_IDX_VALUE = {"1H": 0, "2H": 1, "ET": 2}
+
+
+def _player_full_match_probability(params: dict, ctx: MatchContext | None) -> float:
+    if ctx is None:
+        return 0.10
+    player = str(params.get("player") or "").strip()
+    best = None
+    for team_idx, team_label in ((TEAM_A, "A"), (TEAM_B, "B")):
+        for candidate in ctx.lineup_for(team_idx):
+            score = player_name_match(player, candidate.name) if _PARSER_OK else 0
+            if best is None or score > best[0]:
+                best = (score, candidate, team_label)
+    if best is None or best[0] <= 0:
+        return 0.05
+    candidate = best[1]
+    start_prob = float(candidate.start_prob or 0.0)
+    if start_prob < 0.5:
+        return 0.02
+    base_by_pos = {"GK": 0.97, "DF": 0.72, "MF": 0.54, "FW": 0.42}
+    base = base_by_pos.get(str(candidate.position or "MF").upper(), 0.54)
+    minutes = candidate.expected_minutes
+    if minutes is not None:
+        try:
+            minutes = float(minutes)
+        except (TypeError, ValueError):
+            minutes = None
+    if minutes is not None:
+        if minutes >= 88:
+            base = max(base, 0.82)
+        elif minutes >= 84:
+            base = max(base, base + 0.08)
+        elif minutes < 75:
+            base = min(base, 0.32)
+    return float(np.clip(start_prob * base, 0.01, 0.99))
+
+
 def resolve_extended(
     spec: ExtSpec, timeline: GoalTimeline, outcome: MatchOutcome, *,
     timing: TimingModel | None = None, rng: np.random.Generator | None = None,
@@ -456,6 +550,17 @@ def resolve_extended(
         mask = np.ones(outcome.n_sims, dtype=bool)
         for team in (TEAM_A, TEAM_B):
             mask &= card_events.any(selected & (card_events.team == team))
+    elif spec.market == LEAD_ANY_TIME:
+        mask = _ever_leads(
+            timeline, spec.params["team"], include_et=bool(spec.params.get("include_et")),
+        )
+    elif spec.market == CARDS_MORE_THAN_GOALS:
+        include_et = not spec.params.get("regulation", False)
+        card_events = cards()
+        phases = {"1H", "2H", "ET"} if include_et else {"1H", "2H"}
+        card_count = card_events.counts(card_events.select(phases=phases))
+        goal_count = outcome.match_total(GOALS, include_et=include_et)
+        mask = card_count > goal_count
     elif spec.market == STAT_WINDOW:
         events = cached(
             f"count:{spec.params['event_type']}",
@@ -487,6 +592,8 @@ def resolve_extended(
                 if spec.params["stat"] == "goals" else 0.0
             ),
         )
+    elif spec.market == PLAYER_FULL_MATCH:
+        return _player_full_match_probability(spec.params, ctx)
     elif spec.market == TEAM_SCORE_NO_OWN:
         goals = outcome.goals_team(
             spec.params["team"], include_et=not spec.params.get("regulation", False),
