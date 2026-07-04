@@ -9,15 +9,20 @@ factors used, evidence ignored or downweighted, reasoning summary, and sources.
 
 ## Operating Mode
 
-Use one prompt-only main-agent workflow. If your environment has no real
-subagent tools, emulate the subagents internally through isolated passes. Do not
-mention hidden chain-of-thought in the final answer.
+Use a real main-agent/subagent workflow whenever your environment exposes
+subagent tools. Parallelize independent subagent work. If your environment truly
+has no real subagent tools, emulate the same handoffs internally through isolated
+passes, but keep the same outputs and audit discipline. Do not mention hidden
+chain-of-thought in the final answer.
 
 1. Read this prompt and the full evidence JSON once.
-2. Make a base pricing pass for every `question_evidence` item from only the
-   deterministic evidence hierarchy below. Record this as `base_probability_int`.
-3. Conduct a deep pre-kickoff match read. Split the research into aspect
-   subagents, real or emulated, covering:
+2. Spawn one base-pricing subagent per `question_evidence` item. Each subagent
+   prices only its assigned YES contract from the Pricing Hierarchy below and
+   returns a public base-pricing memo. Record its recommendation as
+   `base_probability_int` unless the main agent finds a scope, arithmetic, or
+   hierarchy error.
+3. Conduct a deep pre-kickoff match read. Spawn eight aspect-research subagents
+   in parallel, covering:
    - tactics, tempo, expected game state, pressing, transition profile;
    - official/predicted lineups, minutes, role changes, injuries, suspensions;
    - attacking and defensive form, xG/shot quality, territory and set pieces;
@@ -31,12 +36,45 @@ mention hidden chain-of-thought in the final answer.
 4. Synthesize the aspect notes into one extensive `match_read_markdown` file.
    It must be written as public markdown with sections, source links, and clear
    language about how the game is expected to play.
-5. For each question, make one isolated question-adjustment pass. Give it the
-   original evidence item, the match read, and any additional targeted web
-   research that can affect that exact contract. It must decide whether language
-   research should move or hold the base.
+5. Spawn one question-adjustment subagent per `question_evidence` item. Give it
+   the original evidence item, the base-pricing memo, the match read, and any
+   additional targeted web research that can affect that exact contract. It must
+   decide whether language research should move or hold the base.
 6. The main agent then reconciles question recommendations, checks cross-market
    coherence, applies the movement guardrails, and emits the final JSON only.
+
+### Subagent Handoff Contracts
+
+Base-pricing subagents:
+
+- Receive one `question_evidence` item plus any provided match metadata needed
+  to identify teams, players, kickoff time, and settlement scope.
+- Use the Pricing Hierarchy in order. This stage may search exact online
+  bookmaker markets when the hierarchy calls for it, but it must not use broad
+  tactical, lineup, referee, weather, or narrative research to move the price.
+- Return `question_id`, `market_id`, `base_probability_int`, odds/proxy inputs,
+  conversion methods, ignored evidence, and a concise public reasoning summary.
+
+Match-read aspect subagents:
+
+- Receive the full match identity, kickoff, lineups, relevant provided context,
+  and the source list/search guidance below.
+- Research only pre-kickoff information in their assigned area.
+- Return public markdown notes with source URLs, concrete findings, and a short
+  "pricing implications" section that names which market types may be affected.
+
+Question-adjustment subagents:
+
+- Receive one `question_evidence` item, its base-pricing memo, and the final
+  `match_read_markdown`.
+- Research only extra information that can affect that exact settlement
+  contract.
+- Return recommended `probability_int`, complete `language_adjustment`, audit
+  lists, and public reasoning. They must obey Movement Guardrails.
+
+The main agent owns final reconciliation. It may override a subagent only for a
+public reason: scope correction, arithmetic/conversion error, stronger source,
+cross-market incoherence, or movement-guardrail violation.
 
 ## Contract Scope Is Strict
 
@@ -56,12 +94,13 @@ mention hidden chain-of-thought in the final answer.
 
 For every question, follow `decision_basis` and `subagent_brief.research_focus`.
 The first result of this hierarchy is `base_probability_int`; only the later
-language-adjustment pass may move it.
+language-adjustment pass may move it for tactical, lineup, referee, weather,
+form, or broader match-read reasons.
 
 1. If `direct_odds` exists, use its de-vigged `probability_pct` values as the
    primary price spread. Give more weight to liquid, independent books with
-   matching scope. Move within or just outside the spread only when confirmed
-   lineup/tactical/referee/weather/form evidence gives a clear reason.
+   matching scope and fresh prices. Choose a base inside the spread, or just
+   outside it only for a clear scope/liquidity/conversion reason.
 2. If `online_odds_candidates` exists, these are deterministic public bookmaker
    prices already found from cached web pages. Treat exact candidates as direct
    online odds, include them in `online_odds_found` with the quoted price and
@@ -77,11 +116,14 @@ language-adjustment pass may move it.
    the base price; treat the raw simulator probability as downweighted context
    unless match-specific evidence clearly justifies moving back toward it.
 4. If no odds or simulator baseline exist, search exact online markets first.
-   If none exist, build a transparent base-rate estimate from provided context
-   and researched pre-kickoff information.
+   If none exist, build a transparent base-rate estimate from provided
+   structured context and exact-contract priors; reserve broader match-read
+   levers for the question-adjustment pass.
 
-Do not average blindly. Weigh liquidity, independence, scope match, freshness,
-lineup certainty, tactical fit, weather/venue, referee, and sample size.
+Do not average blindly. For the base price, weigh liquidity, independence, scope
+match, freshness, conversion quality, and sample size. Reserve lineup certainty,
+tactical fit, weather/venue, referee, and other match-read levers for
+`language_adjustment`.
 
 ## Question-Adjustment Instructions
 
@@ -127,8 +169,7 @@ Prefer high-quality sources before lower-quality commentary:
 - Official/primary: FIFA match centre, FIFA team/squad pages, national
   federation sites and verified team channels, official stadium/venue pages,
   official referee assignments, IFAB/FIFA rules when settlement scope is unclear.
-- Odds/prices: Pinnacle, Betfair Exchange, Bet365, DraftKings, FanDuel,
-  Caesars, Unibet, OddsPortal/OddsChecker, Kalshi, Polymarket. Prefer exact
+- Odds/prices: use the online betting-site search universe below. Prefer exact
   contract markets; use related prices only as context and label them as such.
 - Lineups/injuries/minutes: confirmed FIFA/team lineups, federation reports,
   Reuters/AP/BBC/ESPN, FotMob, SofaScore, Transfermarkt injury notes, trusted
@@ -143,6 +184,50 @@ Prefer high-quality sources before lower-quality commentary:
   Open-Meteo, NOAA/NWS, Environment Canada, or Mexico's Servicio Meteorologico
   Nacional. If a roof is closed/retractable and expected closed, do not price
   outdoor weather as a major factor.
+
+### Online Betting-Site Search Universe
+
+When searching online odds, start with provided `direct_odds` and
+`online_odds_candidates`, then search public pages from this universe. Do not
+claim "no online odds found" until the assigned subagent has checked a sensible
+mix of aggregators, exchanges, sharp books, local/stat-specialist books, and
+major recreational books for the exact contract or nearest proxy.
+
+- Odds aggregators and comparison pages: OddsPortal, OddsChecker, Flashscore
+  odds tabs, BetExplorer, BetBrain, Forebet odds pages, Soccerway odds pages,
+  Action Network odds, Covers odds, VegasInsider, Sportsbook Review, BettingPros,
+  Dimers, LegalSportsReport odds, TheLines, Lineups.com betting odds.
+- Exchanges and prediction markets: Betfair Exchange, Smarkets, Matchbook,
+  Sporttrade, Kalshi, Polymarket, Manifold only as sentiment context if no
+  regulated or bookmaker price exists.
+- Sharp/international books: Pinnacle, SBOBET, IBCBet/Maxbet feeds where public,
+  Betcris, BetOnline, Bovada, Bookmaker.eu, BetDSI, 10bet, Marathonbet.
+- Global recreational books: Bet365, Betway, Unibet, 888sport, William Hill,
+  Ladbrokes, Coral, Paddy Power, Sky Bet, Betfair Sportsbook, Bwin, Betsson,
+  NordicBet, Betano, BetVictor, Betfred, Sportingbet, Bet-at-home, Interwetten,
+  Tipico, LeoVegas, Casumo Sports, Mr Green, BetMGM where public.
+- US/Canada books: DraftKings, FanDuel, Caesars, ESPN BET, BetMGM, Fanatics,
+  bet365 US/Canada, Hard Rock Bet, PointsBet, BetRivers, SugarHouse, Unibet US,
+  Bally Bet, NorthStar Bets, Proline/OLG, Loto-Quebec Mise-o-jeu, PlayNow.
+- Europe/local-stat-specialist books: BetOlimp, 1xBet, Melbet, Parimatch,
+  Fonbet, Winline, BetCity, Liga Stavok, Superbet, STS, Fortuna, Tipsport,
+  Fortuna SK/CZ/RO, Sazkabet, SynotTip, Winbet, Eurobet, Sisal, Snai, Planetwin,
+  GoldBet, AdmiralBet, Mozzart, Meridianbet.
+- LatAm/Africa/Asia-Pacific books where public: Codere, Betano LatAm, Betsson
+  LatAm, Caliente, Playdoit, RushBet, Wplay, BetWarrior, Sportingbet Brazil,
+  KTO, Stake, Hollywoodbets, Supabets, SportyBet, Neds, TAB, Sportsbet,
+  Ladbrokes Australia, PointsBet Australia.
+- Player/stat and specials tabs to inspect inside books: Match Specials, Player
+  Props, Bet Builder, Same Game Parlay, Request-a-Bet, Statistics, Shots,
+  Shots on Target, Corners, Cards/Bookings, Fouls, Offsides, Saves, Goal Kicks,
+  Throw-ins, Tackles, Goalscorer, Assists, Goal Method, VAR, Penalty, Red Card,
+  Substitutes, Team Specials, Time Bands, Race To/First To Score.
+
+Search queries should combine the exact teams, player names if relevant,
+"World Cup 2026", kickoff date, the market wording, and bookmaker/stat tab
+terms. For example: `"Team A" "Team B" "shots on target" "Team Total" odds`,
+`"Player Name" "score or assist" odds`, or `"Team A" "red card" "penalty"
+"match specials"`.
 
 Market-specific search rules:
 
