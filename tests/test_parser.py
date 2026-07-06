@@ -458,6 +458,99 @@ class KnockoutWordingTests(unittest.TestCase):
             if "Christian Pulisic" in q:
                 self.assertEqual(intent["player"], "Christian Pulisic")
 
+    def test_portugal_spain_open_questions_are_deterministic(self):
+        cases = [
+            (
+                "Will Cristiano Ronaldo (Portugal) score a goal (excluding own goals) "
+                "in regulation (90 minutes + stoppage time)?",
+                "player_goal_scorer", "player", "Cristiano Ronaldo", "regulation",
+            ),
+            (
+                "Will Lamine Yamal (Spain) score or assist a goal (excluding own goals) "
+                "in regulation (90 minutes + stoppage time)?",
+                "player_score_or_assist", "player", "Lamine Yamal", "regulation",
+            ),
+            (
+                "Will Bruno Fernandes (Portugal) have 1 or more shots on target "
+                "in regulation (90 minutes + stoppage time)?",
+                "player_shots_on_target", "player", "Bruno Fernandes", "regulation",
+            ),
+            (
+                "Will both halves have the same number of goals in regulation "
+                "(90 minutes + stoppage time)?",
+                "highest_scoring_half_draw", "match", None, "regulation",
+            ),
+            (
+                "Will Portugal score the first goal of the match in regulation "
+                "(90 minutes + stoppage time)?",
+                "first_team_to_score", "home", None, "regulation",
+            ),
+            (
+                "Will the match have 3 or more total goals in regulation "
+                "(90 minutes + stoppage time)?",
+                "total_goals", "match", None, "regulation",
+            ),
+            (
+                "Will Diogo Costa (Portugal) make 4 or more saves in regulation "
+                "(90 minutes + stoppage time)?",
+                "player_goalkeeper_saves", "player", "Diogo Costa", "regulation",
+            ),
+            (
+                "Will a substitute score a goal (excluding own goals) in regulation "
+                "(90 minutes + stoppage time)?",
+                "substitute_score", "match", None, "regulation",
+            ),
+            (
+                "Will there be 4 or more total cards shown in regulation "
+                "(90 minutes + stoppage time)?",
+                "total_cards", "match", None, "regulation",
+            ),
+            (
+                "Will there be 9 or more total substitutions (both teams combined) "
+                "in regulation (90 minutes + stoppage time)?",
+                "total_substitutions", "match", None, "regulation",
+            ),
+            (
+                "Will Spain have 6 or more corner kicks in regulation "
+                "(90 minutes + stoppage time)?",
+                "team_corners", "away", None, "regulation",
+            ),
+            (
+                "Will the match go to extra time?",
+                "goes_to_extra_time", "match", None, "full_match",
+            ),
+            (
+                "Will any Portugal player have 2 or more shots on target in regulation "
+                "(90 minutes + stoppage time)?",
+                "any_team_player_shots_on_target", "home", None, "regulation",
+            ),
+            (
+                "Will Spain advance to the quarterfinals?",
+                "to_advance", "away", None, "full_match",
+            ),
+            (
+                "Will the first card of the match be shown before the first goal is scored?",
+                "first_card_before_first_goal", "match", None, "full_match",
+            ),
+        ]
+        questions = [{"id": str(i), "question": q} for i, (q, *_rest) in enumerate(cases)]
+        with patch("bot.parser.chat_json") as chat:
+            parsed = parse_questions(questions, "Portugal", "Spain")
+        chat.assert_not_called()
+
+        for i, (q, market, subject, player, scope) in enumerate(cases):
+            intent = parsed[str(i)]
+            self.assertEqual((intent["market"], intent["subject"], intent["time_scope"]),
+                             (market, subject, scope), msg=q)
+            if player:
+                self.assertEqual(intent["player"], player, msg=q)
+            if "2 or more shots on target" in q:
+                self.assertEqual((intent["comparator"], intent["threshold"]), ("gte", 2))
+            if "4 or more saves" in q:
+                self.assertEqual((intent["comparator"], intent["threshold"]), ("gte", 4))
+            if "9 or more total substitutions" in q:
+                self.assertEqual((intent["comparator"], intent["threshold"]), ("gte", 9))
+
     def test_special_familiar_model_families(self):
         hydration = self._parse(
             "Will a goal be scored before the first hydration break?",

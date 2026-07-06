@@ -704,6 +704,14 @@ def _player_form_guidance(intent: dict | None) -> str | None:
             "bet-builder Player Total Shots On Target / SoT tabs and any half-specific "
             "variant before relying only on form."
         )
+    elif market == "player_goalkeeper_saves":
+        metrics = (
+            "expected save volume, opponent shot-on-target volume, starts and minutes"
+        )
+        search_clause = (
+            " Search online for direct goalkeeper saves props and goalkeeper "
+            "total saves ladders before relying only on form."
+        )
     elif market == "player_score_or_assist":
         metrics = "assists, chances created, goals_per90, shots_per90, starts and minutes"
         search_clause = (
@@ -864,6 +872,27 @@ def _special_market_guidance(question: str) -> str | None:
             "Search match specials for first-substitution timing / substitution before "
             "halftime. If no exact timing market is found, do not treat generic "
             "substitution or lineup news as direct odds."
+        )
+    if "total substitutions" in lower:
+        parts.append(
+            "For total substitutions, treat the five-substitution tournament context, "
+            "confirmed bench strength, extra-time exclusion, injury/heat risk, and "
+            "game-state asymmetry as the main inputs. Search exact total-substitutions "
+            "specials first; otherwise estimate from regulation-only substitution "
+            "capacity and recent team substitution patterns, not from generic lineup news."
+        )
+    if "first card" in lower and "before the first goal" in lower:
+        parts.append(
+            "For first card before first goal, model the race between first booking "
+            "and first goal. Use total-card odds, first-goal/goal-total odds, referee "
+            "strictness, tactical foul risk, and expected early tempo; exact specials "
+            "beat derived race estimates if found."
+        )
+    if "go to extra time" in lower:
+        parts.append(
+            "For extra time, the exact condition is a regulation draw in a knockout "
+            "match. Treat 90-minute draw odds as direct evidence; qualification prices "
+            "are only related context."
         )
     if "hold a lead at any point" in lower:
         parts.append(

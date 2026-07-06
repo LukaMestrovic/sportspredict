@@ -60,6 +60,11 @@ def simulator_estimates(
     targets = _targets(markets, direct_by_market, intents)
     if not targets:
         return {}
+    proxy_notes = {
+        target["market_id"]: target.pop("simulator_proxy_note")
+        for target in targets
+        if target.get("simulator_proxy_note")
+    }
 
     runtime = _runtime(simulator_root)
     if runtime is None:
@@ -77,7 +82,7 @@ def simulator_estimates(
     payload = _payload(ctx, bridge_targets, kickoff=kickoff, referee=referee,
                        stage=stage, lineups=lineups)
     raw = _run_bridge(payload, root, python)
-    estimates = _reports_by_market(raw)
+    estimates = _reports_by_market(raw, proxy_notes=proxy_notes)
     if method_targets:
         estimates.update(_goal_method_estimates(method_targets, estimates))
         estimates.pop("__goal_method_total_goals_ge1", None)
@@ -99,8 +104,44 @@ def _targets(
         has_direct = bool(direct_by_market.get(raw_mid) or direct_by_market.get(mid))
         if has_direct:
             continue
-        targets.append({"market_id": mid, "question": str(market.get("question") or "")})
+        intent = intents.get(raw_mid) or intents.get(mid) or {}
+        target = {
+            "market_id": mid,
+            "question": _simulator_question(
+                str(market.get("question") or ""), intent,
+            ),
+        }
+        proxy_note = _simulator_proxy_note(intent)
+        if proxy_note:
+            target["simulator_proxy_note"] = proxy_note
+        targets.append(target)
     return targets
+
+
+def _simulator_question(question: str, intent: dict) -> str:
+    """Rewrite known bot intents to simulator-supported canonical wording."""
+    if intent.get("market") == "any_team_player_shots_on_target":
+        try:
+            threshold = int(intent.get("threshold") or 2)
+        except (TypeError, ValueError):
+            threshold = 2
+        return (
+            f"Will any player have {threshold} or more shots on target "
+            "in regulation?"
+        )
+    return question
+
+
+def _simulator_proxy_note(intent: dict) -> str | None:
+    if intent.get("market") == "any_team_player_shots_on_target":
+        side = intent.get("subject")
+        scope = "team-specific" if side in ("home", "away") else "single-team"
+        return (
+            "Simulator proxy: broad any-player shots-on-target threshold for both "
+            f"teams, used as context for the narrower {scope} player threshold. "
+            "Do not treat it as an exact direct price."
+        )
+    return None
 
 
 def _payload(
@@ -160,7 +201,7 @@ def _run_bridge(payload: dict, root: Path, python: Path) -> dict:
         return {}
 
 
-def _reports_by_market(raw: dict) -> dict[str, dict]:
+def _reports_by_market(raw: dict, *, proxy_notes: dict[str, str] | None = None) -> dict[str, dict]:
     """Key supported ``question_reports`` by market id; drop unsupported ones.
 
     Each value is exactly one report item (the simulator's per-question contract)
@@ -181,29 +222,40 @@ def _reports_by_market(raw: dict) -> dict[str, dict]:
         "rate_model": model_meta.get("rate_model"),
         "n_sims": model_meta.get("n_sims"),
     }
+    proxy_notes = proxy_notes or {}
     out: dict[str, dict] = {}
     for rep in raw.get("question_reports") or []:
         mid = str(rep.get("market_id") or "")
         prob = _as_probability(rep.get("probability"))
         if not mid or prob is None:
             continue
-        out[mid] = {
+        proxy_note = proxy_notes.get(mid)
+        adjustment_guidance = _simulator_adjustment_guidance(rep)
+        if proxy_note:
+            adjustment_guidance = f"{proxy_note} {adjustment_guidance}"
+        note = (
+            "Learned-rate simulator context only; not a final anchor. The "
+            "pricing LLM must weigh it against its disclosed conditioning inputs, "
+            "lineups, tactics, game state, referee, and market freshness."
+        )
+        if proxy_note:
+            note = f"{proxy_note} {note}"
+        item = {
             "source": rep.get("source") or "sportspredict-simulator",
             "family": rep.get("family"),
             "contract_key": rep.get("contract_key"),
             "probability": round(prob, 6),
             "probability_pct": round(prob * 100.0, 2),
             "explanation": rep.get("explanation"),
-            "adjustment_guidance": _simulator_adjustment_guidance(rep),
+            "adjustment_guidance": adjustment_guidance,
             "historical_evidence": rep.get("historical_evidence"),
             "evidence_role": rep.get("evidence_role") or "model_context",
             "model": model,
-            "note": (
-                "Learned-rate simulator context only; not a final anchor. The "
-                "pricing LLM must weigh it against its disclosed conditioning inputs, "
-                "lineups, tactics, game state, referee, and market freshness."
-            ),
+            "note": note,
         }
+        if proxy_note:
+            item["proxy_note"] = proxy_note
+        out[mid] = item
     return out
 
 

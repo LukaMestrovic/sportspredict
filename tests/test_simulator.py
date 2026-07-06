@@ -211,6 +211,42 @@ class ReportParsingTests(unittest.TestCase):
             self.assertIn(mid, out, f"{mid} missing from estimates")
             self.assertEqual(out[mid]["family"], fam)
 
+    def test_team_qualified_any_player_sot_uses_broad_proxy_question(self):
+        question = (
+            "Will any Portugal player have 2 or more shots on target in regulation "
+            "(90 minutes + stoppage time)?"
+        )
+        markets = [{"id": "any_sot", "question": question}]
+        intents = {
+            "any_sot": {
+                "market": "any_team_player_shots_on_target",
+                "subject": "home",
+                "comparator": "gte",
+                "threshold": 2,
+                "period": "match",
+            }
+        }
+        resp = _bridge_response([_report(
+            "any_sot",
+            "Will any player have 2 or more shots on target in regulation?",
+            "any_player_threshold",
+            0.83,
+            contract_key="any_player_threshold:shots_on_target:>=:2:reg",
+        )])
+        out, run = self._run(markets, {"any_sot": []}, resp, intents=intents)
+
+        payload = run.call_args.args[0]
+        self.assertEqual(
+            payload["questions"][0]["question"],
+            "Will any player have 2 or more shots on target in regulation?",
+        )
+        self.assertEqual(
+            out["any_sot"]["contract_key"],
+            "any_player_threshold:shots_on_target:>=:2:reg",
+        )
+        self.assertIn("Simulator proxy", out["any_sot"]["proxy_note"])
+        self.assertIn("narrower team-specific", out["any_sot"]["adjustment_guidance"])
+
 
 class TargetSelectionTests(unittest.TestCase):
     """Which markets are sent to the simulator (direct-odds priority)."""

@@ -63,6 +63,45 @@ class DirectContractTests(unittest.TestCase):
         )
         self.assertEqual((spec["bet_id"], spec["value"]), (11, "2nd Half"))
 
+    def test_same_goals_in_both_halves_uses_highest_scoring_half_draw(self):
+        spec = self.match(
+            market="highest_scoring_half_draw", subject="match",
+            comparator="yes", period="match",
+        )
+        self.assertEqual((spec["bet_id"], spec["value"]), (11, "Draw"))
+
+    def test_goes_to_extra_time_uses_regulation_draw(self):
+        intent = _I("goes_to_extra_time")
+        intent["time_scope"] = "full_match"
+        spec = match_intent(intent, "Portugal", "Spain", stage="knockout")
+        self.assertEqual(
+            (spec["type"], spec["bet_id"], spec["value"]),
+            ("select", 1, "Draw"),
+        )
+
+    def test_goalkeeper_saves_uses_player_save_ladder(self):
+        spec = self.match(
+            market="player_goalkeeper_saves", subject="player", comparator="gte",
+            threshold=4, player="Diogo Costa",
+        )
+        self.assertEqual(
+            (spec["type"], spec["bet_id"], spec["side"], spec["line"], spec["player"]),
+            ("player_threshold", 267, "Over", 3.5, "Diogo Costa"),
+        )
+
+    def test_unpriced_open_specials_do_not_get_wrong_direct_contracts(self):
+        self.assertIsNone(self.match(
+            market="total_substitutions", subject="match", comparator="gte",
+            threshold=9,
+        ))
+        self.assertIsNone(self.match(
+            market="first_card_before_first_goal", subject="match", comparator="yes",
+        ))
+        self.assertIsNone(self.match(
+            market="any_team_player_shots_on_target", subject="home", comparator="gte",
+            threshold=2,
+        ))
+
     def test_total_shots_on_target_uses_total_contract(self):
         spec = self.match(
             market="total_shots_on_target", subject="match", comparator="gte",

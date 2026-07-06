@@ -18,7 +18,7 @@ from .matcher import MARKET_KEYS
 from .teams import normalize_team
 
 # Bump to invalidate cached intents after a prompt/model semantics change.
-PROMPT_VERSION = "p6-familiar-specials"
+PROMPT_VERSION = "p7-open-specials"
 
 SYSTEM = """You convert soccer betting questions into structured JSON intents.
 Each question is a YES/NO question about a single match. Output ONLY the
@@ -53,6 +53,7 @@ Player markets (subject="player", set the player's full name):
   player_score_or_assist   to score OR assist a goal
   player_card              to be booked / receive a card
   player_shots_on_target   shots on target over/under (use comparator gte/lte)
+  player_goalkeeper_saves  goalkeeper saves over/under (use comparator gte/lte)
 
 Important direct mappings:
 - "at halftime, will the match be tied" -> market=match_draw, subject=match,
@@ -85,6 +86,12 @@ Knockout markets (emit when the wording fits):
 - a team to hold a lead at any point -> lead_any_time.
 - more total cards than goals -> cards_more_than_goals.
 - a named player to play the entire match -> player_full_match.
+- the match to go to extra time -> goes_to_extra_time.
+- both halves to have the same number of goals -> highest_scoring_half_draw.
+- a named goalkeeper to make N+ saves -> player_goalkeeper_saves.
+- any named-team player to have N+ shots on target -> any_team_player_shots_on_target.
+- total substitutions -> total_substitutions.
+- first card before first goal -> first_card_before_first_goal.
 A name written "Player (Country)" is ALWAYS that player, never the country's team.
 "in regulation (90 minutes + stoppage time)" means period=match and
 time_scope=regulation. A match-scoped question without that qualifier has
@@ -295,6 +302,23 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
         return _intent("lead_any_time", subject[0] if subject else "match")
     if "more total cards than total goals" in lower:
         return _intent("cards_more_than_goals")
+    if "go to extra time" in lower or "goes to extra time" in lower:
+        return _intent("goes_to_extra_time")
+    if (
+        "both halves" in lower
+        and "same number of goals" in lower
+    ) or (
+        "same number of goals" in lower
+        and "each half" in lower
+    ):
+        return _intent("highest_scoring_half_draw")
+    if "first card" in lower and "before the first goal" in lower:
+        return _intent("first_card_before_first_goal")
+    if "total substitutions" in lower:
+        count = _threshold_in(lower)
+        if count:
+            return _intent("total_substitutions", comparator=count[0],
+                           threshold=count[1], period=period)
     exact_goals = (
         re.search(r"\bexactly\s+(\d+)\s+(?:total\s+)?goals?\b", lower)
         or re.search(r"\bexactly\s+(\d+)\s+goals?\s+be scored\b", lower)
@@ -369,6 +393,16 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
 
     if subject:
         side, team = subject
+        if (
+            "any" in lower and "player" in lower
+            and "shot" in lower and "on target" in lower
+        ):
+            count = _threshold_in(lower)
+            if count:
+                return _intent(
+                    "any_team_player_shots_on_target", side,
+                    count[0], count[1], period,
+                )
         if "win by" in lower:
             count = _threshold_in(lower)
             if count and count[0] == "gte":
@@ -444,6 +478,17 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
             if count:
                 return _intent(
                     "player_shots_on_target", "player", count[0], count[1],
+                    period, player_match.group(1),
+                )
+        player_match = re.fullmatch(
+            r"will (.+?) (?:make|record|have) (.+?saves?.*?)\?",
+            question.strip(), re.IGNORECASE,
+        )
+        if player_match:
+            count = _threshold_in(player_match.group(2).lower())
+            if count:
+                return _intent(
+                    "player_goalkeeper_saves", "player", count[0], count[1],
                     period, player_match.group(1),
                 )
     return None
@@ -578,6 +623,40 @@ def _repair_intent(
 
     if "score or assist" in lower:
         intent["market"] = "player_score_or_assist"
+    if "go to extra time" in lower or "goes to extra time" in lower:
+        intent.update(market="goes_to_extra_time", subject="match",
+                      comparator="yes", period="match")
+    if "both halves" in lower and "same number of goals" in lower:
+        intent.update(market="highest_scoring_half_draw", subject="match",
+                      comparator="yes", period="match")
+    if "first card" in lower and "before the first goal" in lower:
+        intent.update(market="first_card_before_first_goal", subject="match",
+                      comparator="yes", period="match")
+    if "total substitutions" in lower:
+        count = _threshold_in(lower)
+        intent.update(market="total_substitutions", subject="match",
+                      comparator=count[0] if count else intent.get("comparator", "yes"),
+                      threshold=count[1] if count else intent.get("threshold"),
+                      period="match")
+    if (
+        "any" in lower and "player" in lower
+        and "shot" in lower and "on target" in lower
+    ):
+        count = _threshold_in(lower)
+        mentioned = [
+            side for side, team in (("home", home), ("away", away))
+            if _team_is_mentioned(question, team)
+        ]
+        if count and len(mentioned) == 1:
+            intent.update(market="any_team_player_shots_on_target",
+                          subject=mentioned[0], comparator=count[0],
+                          threshold=count[1], period="match")
+    if "save" in lower and intent.get("subject") == "player":
+        count = _threshold_in(lower)
+        if count:
+            intent.update(market="player_goalkeeper_saves",
+                          comparator=count[0], threshold=count[1],
+                          period="match")
     if "caught offside" in lower:
         intent["market"] = "team_offsides"
         if "or more" in lower or "at least" in lower:

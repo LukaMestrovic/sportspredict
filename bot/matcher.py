@@ -80,6 +80,7 @@ TEAM_SCORE_NO_OWN_GOALS_PROXY_NOTE = (
 # Player markets — sourced from the Odds API (API-Football rarely quotes them).
 _PLAYER_MARKETS = [
     "player_shots_on_target",  # over/under shots on target
+    "player_goalkeeper_saves", # over/under goalkeeper saves
     "player_goal_scorer",      # to score a goal (anytime)
     "player_score_or_assist",  # to score or assist
     "player_card",             # to be booked / receive a card
@@ -88,7 +89,8 @@ _PLAYER_MARKETS = [
 # The vocabulary the LLM parser is allowed to emit.
 MARKET_KEYS = (
     ["match_winner", "match_draw", "btts", "highest_scoring_half_2h",
-     "double_chance", "first_team_to_score", "win_margin", "red_card", "own_goal"]
+     "highest_scoring_half_draw", "double_chance", "first_team_to_score",
+     "win_margin", "red_card", "own_goal"]
     + list(_MATCH_OU)
     + list(_TEAM_OU)
     + list(_TEAM_YESNO)
@@ -104,6 +106,10 @@ MARKET_KEYS = (
         "lead_any_time",
         "cards_more_than_goals",
         "player_full_match",
+        "goes_to_extra_time",
+        "any_team_player_shots_on_target",
+        "total_substitutions",
+        "first_card_before_first_goal",
     ]
     + ["none"]
 )
@@ -202,10 +208,10 @@ def match_intent(
         str(stage or "").lower() == "knockout"
         and intent.get("time_scope") == "full_match"
         and period == "match"
-        and market not in {"to_advance", "first_team_to_score"}
+        and market not in {"to_advance", "first_team_to_score", "goes_to_extra_time"}
     ):
         return None
-    if market == "highest_scoring_half_2h":
+    if market in {"highest_scoring_half_2h", "highest_scoring_half_draw"}:
         period = "match"
 
     # Half-period bet IDs. If a 1st/2nd-half question has no half variant we
@@ -275,12 +281,20 @@ def match_intent(
         return {"type": "select", "bet_id": 11, "value": "2nd Half",
                 "label": "2nd half outscores 1st"}
 
+    if market == "highest_scoring_half_draw":
+        return {"type": "select", "bet_id": 11, "value": "Draw",
+                "label": "halves have same goals"}
+
     if market in _TEAM_SELECT:
         if subject not in ("home", "away"):
             return None
         return {"type": "select", "bet_id": _TEAM_SELECT[market],
                 "value": "Home" if subject == "home" else "Away",
                 "label": f"{market} {subject}"}
+
+    if market == "goes_to_extra_time":
+        return {"type": "select", "bet_id": 1, "value": "Draw",
+                "label": "regulation draw / match goes to extra time"}
 
     if market == "penalty_shootout":
         return {
@@ -388,13 +402,15 @@ def match_intent(
                 "player": intent["player"], "label": "player booked"}
 
     # API-Football quotes player thresholds as single-sided "Player - N+" odds.
-    if market == "player_shots_on_target":
+    if market in {"player_shots_on_target", "player_goalkeeper_saves"}:
         ou = _line_from_threshold(comp, threshold)
         if not ou:
             return None
         side, line = ou
-        return {"type": "player_threshold", "bet_id": 242, "side": side, "line": line,
-                "player": intent.get("player"), "label": "player SoT"}
+        bet_id = 267 if market == "player_goalkeeper_saves" else 242
+        label = "goalkeeper saves" if market == "player_goalkeeper_saves" else "player SoT"
+        return {"type": "player_threshold", "bet_id": bet_id, "side": side, "line": line,
+                "player": intent.get("player"), "label": label}
 
     return None
 
@@ -419,7 +435,7 @@ def match_intent_oddsapi(
         str(stage or "").lower() == "knockout"
         and intent.get("time_scope") == "full_match"
         and period == "match"
-        and market != "to_advance"
+        and market not in {"to_advance", "goes_to_extra_time"}
     ):
         return None
     if period in ("1H", "2H"):
@@ -429,6 +445,9 @@ def match_intent_oddsapi(
 
     if market == "match_winner" and team:
         return {"market": "h2h", "kind": "multiway", "name": team, "label": f"{team} win"}
+    if market == "goes_to_extra_time":
+        return {"market": "h2h", "kind": "multiway", "name": "Draw",
+                "label": "regulation draw / match goes to extra time"}
     if market == "btts":
         return {"market": "btts", "kind": "yesno", "value": "Yes", "label": "BTTS"}
     if market == "corners_compare" and team:
