@@ -94,6 +94,22 @@ class PublicOddsTests(unittest.TestCase):
         self.assertEqual(candidate["devig_method"], "raw single-sided implied probability")
         self.assertAlmostEqual(candidate["probability_pct"], 48.78)
 
+    def test_after_first_hydration_does_not_use_second_hydration_label(self):
+        page = """
+        <div>Match Specials</div>
+        <div>Goal scored after the 2nd half hydration break</div><span>2.05</span>
+        """
+        intent = {"market": "goal_window", "subject": "match", "period": "match"}
+        with patch("bot.public_odds.SPECIAL_PAGES", [
+                ("BetVictor", "betvictor_match_specials", "https://example.test/specials")
+        ]), patch("bot.public_odds._fetch", return_value=page):
+            odds = public_odds.online_odds(
+                intent, "Argentina", "Egypt",
+                question="Will a goal be scored in the first half after the first hydration break?",
+            )
+
+        self.assertEqual(odds, [])
+
     def test_penalty_or_red_yes_no_special_is_extracted_with_question_text(self):
         page = """
         <div>Penalty or Red card</div>

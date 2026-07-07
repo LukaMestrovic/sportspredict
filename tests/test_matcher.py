@@ -170,6 +170,7 @@ class KnockoutMarketMappingTests(unittest.TestCase):
             (_I("goal_in_each_half"), {"type": "select", "bet_id": 184, "value": "Yes"}),
             (_I("red_card"), {"type": "ou", "bet_id": 335, "side": "Over", "line": 0.5}),
             (_I("total_goals", "match", "eq", 2), {"type": "select", "bet_id": 38, "value": 2}),
+            (_I("total_goals_parity", "match", "odd"), {"type": "select", "bet_id": 21, "value": "Odd"}),
             (_I("total_shots", "match", "gte", 22), {"type": "ou", "bet_id": 211, "side": "Over", "line": 21.5}),
             (_I("team_shots", "home", "gte", 10), {"type": "ou", "bet_id": 221, "side": "Over", "line": 9.5}),
         ]

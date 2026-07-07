@@ -86,6 +86,11 @@ def _explanation(market: str, params: dict, notes: str | None) -> str:
                 "Estimated from learned regulation goal counts and historical goal clocks through "
                 "minute 22, the first hydration-break boundary."
             )
+        if params.get("window") == "after_first_hydration_1h":
+            return (
+                "Estimated from learned first-half goal counts and historical goal clocks after "
+                "minute 22, the first hydration-break boundary, through first-half stoppage time."
+            )
         if params.get("window") == "after_second_hydration":
             scope = "including extra time" if params.get("include_et") else "regulation only"
             return (

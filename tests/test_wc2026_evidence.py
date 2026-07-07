@@ -107,6 +107,22 @@ class WC2026EvidenceTests(unittest.TestCase):
         self.assertEqual(rate["yes_events"], 1)
         self.assertEqual(rate["rate"], 0.5)
 
+    def test_first_half_after_first_hydration_boundary_starts_after_minute_22(self):
+        af = _AF()
+        af.events[1] = [_event("Goal", 22)]
+        af.events[2] = [_event("Goal", 23)]
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot = wc2026_evidence.refresh(
+                af, "2026-06-30T01:00:00Z",
+                {"goal_window:after_first_hydration_1h:reg"},
+                path=Path(directory) / "wc.json",
+            )
+        rate = snapshot["contracts"][
+            "goal_window:after_first_hydration_1h:reg"
+        ]["wc2026"]
+        self.assertEqual(rate["yes_events"], 1)
+        self.assertEqual(rate["rate"], 0.5)
+
     def test_overlay_preserves_static_history(self):
         estimates = {"m": {
             "contract_key": "red_card:match",

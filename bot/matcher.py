@@ -101,6 +101,7 @@ MARKET_KEYS = (
     + [
         "penalty_shootout",
         "goal_in_each_half",
+        "total_goals_parity",
         "goal_window",
         "substitute_score",
         "lead_any_time",
@@ -347,6 +348,17 @@ def match_intent(
             return None
         return {"type": "select", "bet_id": 38, "value": n,
                 "label": f"exactly {n} total goals"}
+
+    if market == "total_goals_parity":
+        parity = str(intent.get("parity") or comp or "").lower()
+        if parity not in {"odd", "even"}:
+            return None
+        bet_id = {"match": 21, "1H": 22, "2H": 63}.get(period)
+        if bet_id is None:
+            return None
+        value = "Odd" if parity == "odd" else "Even"
+        return {"type": "select", "bet_id": bet_id, "value": value,
+                "label": f"total goals {value.lower()} {period}"}
 
     if market in _MATCH_OU:
         ou = _line_from_threshold(comp, threshold)

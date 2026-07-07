@@ -206,6 +206,16 @@ def _special_labels(intent: dict, question: str) -> list[str]:
             "Goal scored before the first half hydration break",
             "Goal before first hydration break",
         ]
+    if (
+        market == "goal_window"
+        and "after" in lower
+        and "first hydration break" in lower
+    ):
+        return [
+            "Goal scored after the 1st half hydration break",
+            "Goal scored after the first half hydration break",
+            "Goal after first hydration break",
+        ]
     if market == "goal_window" and "after" in lower and "hydration break" in lower:
         return [
             "Goal scored after the 2nd half hydration break",

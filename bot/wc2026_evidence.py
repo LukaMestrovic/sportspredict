@@ -420,6 +420,11 @@ def _event_label(key: str, facts: dict) -> bool | None:
         return any(SECOND_HYDRATION_MINUTE < event["minute"] <= 90 for event in goals)
     if key == "goal_window:before_first_hydration:reg":
         return any(event["minute"] <= FIRST_HYDRATION_MINUTE for event in goals)
+    if key == "goal_window:after_first_hydration_1h:reg":
+        return any(
+            FIRST_HYDRATION_MINUTE < event["minute"] <= 45
+            for event in goals
+        )
     if key == "goal_window:stoppage:1H":
         return any(event["minute"] <= 45 and event["extra"] > 0 for event in goals)
     if key == "goal_window:stoppage:2H":

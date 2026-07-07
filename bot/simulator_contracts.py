@@ -32,6 +32,9 @@ def questions_for_contract(key: str, home: str, away: str) -> list[str]:
         "goal_window:before_first_hydration:reg": [
             "Will a goal be scored before the first hydration break in regulation?"
         ],
+        "goal_window:after_first_hydration_1h:reg": [
+            "Will a goal be scored in the first half after the first hydration break?"
+        ],
         "goal_window:stoppage:1H": [
             "Will a goal be scored in first-half stoppage time?"
         ],

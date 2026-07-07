@@ -822,8 +822,11 @@ def _special_market_guidance(question: str) -> str | None:
         parts.append(
             "Search bookmaker Match Specials / Market Specials for hydration-break "
             "props. Exact phrases include \"Goal scored before the 1st half hydration "
-            "break\" and \"goal before first hydration break\". For after-second-"
-            "hydration goal questions, search exact labels such as \"Goal scored "
+            "break\" and \"goal before first hydration break\". For first-half "
+            "after-first-hydration questions, use only exact first-half/first-"
+            "hydration labels such as \"Goal scored after the 1st half hydration "
+            "break\"; do not use after-second-hydration or 80:00-full-time prices. "
+            "For after-second-hydration goal questions, search exact labels such as \"Goal scored "
             "after the 2nd half hydration break\" or \"Goal after second hydration "
             "break\" first. Nearby late-window prices such as \"Goal scored 80:00 - "
             "Full time\" or \"Goal scored 85:00 - Full time\" are only labeled "
@@ -887,6 +890,14 @@ def _special_market_guidance(question: str) -> str | None:
             "and first goal. Use total-card odds, first-goal/goal-total odds, referee "
             "strictness, tactical foul risk, and expected early tempo; exact specials "
             "beat derived race estimates if found."
+        )
+    if "first goal" in lower and "other than" in lower:
+        parts.append(
+            "Search first-goalscorer and match-special markets for exact \"any "
+            "other player to score first\" / \"first goalscorer excluding named "
+            "players\" prices. If no exact quote exists, derive transparently from "
+            "no-goal, named-player first-goalscorer, and team first-goal prices. "
+            "Do not treat anytime-scorer odds as exact first-goal odds."
         )
     if "go to extra time" in lower:
         parts.append(

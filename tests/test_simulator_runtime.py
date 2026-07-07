@@ -107,6 +107,26 @@ class BundledSimulatorTests(unittest.TestCase):
         self.assertIn("including extra time", item["explanation"])
         self.assertNotIn("conditioning_inputs", item)
 
+    def test_first_half_after_first_hydration_uses_window_contract(self):
+        payload = {
+            "home": "Argentina", "away": "Egypt",
+            "kickoff": "2026-07-07T16:00:00Z", "stage": "knockout",
+            "n_sims": 100,
+            "questions": [{
+                "market_id": "post_break",
+                "question": (
+                    "Will a goal be scored in the first half after the first "
+                    "hydration break?"
+                ),
+            }],
+        }
+
+        report = self._run_bridge(payload)
+        item = report["question_reports"][0]
+        self.assertEqual(item["family"], "goal_window")
+        self.assertEqual(item["contract_key"], "goal_window:after_first_hydration_1h:reg")
+        self.assertIn("after minute 22", item["explanation"])
+
     def test_first_goal_scope_distinguishes_regulation_from_full_match(self):
         payload = {
             "home": "France", "away": "Sweden",

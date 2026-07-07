@@ -322,6 +322,49 @@ class KnockoutWordingTests(unittest.TestCase):
         self.assertEqual(assist["market"], "player_score_or_assist")
         self.assertEqual(assist["player"], "Florian Wirtz")
 
+    def test_player_country_and_jersey_number_parenthetical(self):
+        shot = self._parse(
+            "Will Omar Marmoush (Egypt, #22) have 1 or more shots on target "
+            "in regulation (90 minutes + stoppage time)?",
+            "Argentina", "Egypt",
+        )
+        self.assertEqual(shot["market"], "player_shots_on_target")
+        self.assertEqual(shot["subject"], "player")
+        self.assertEqual(shot["player"], "Omar Marmoush")
+        self.assertEqual((shot["comparator"], shot["threshold"]), ("gte", 1))
+
+        scorer = self._parse(
+            "Will Lionel Messi (Argentina, #10) score a goal (excluding own goals) "
+            "in regulation (90 minutes + stoppage time)?",
+            "Argentina", "Egypt",
+        )
+        self.assertEqual(scorer["market"], "player_goal_scorer")
+        self.assertEqual(scorer["player"], "Lionel Messi")
+
+        assist = self._parse(
+            "Will Julián Álvarez (Argentina, #9) score or assist a goal "
+            "(excluding own goals) in regulation (90 minutes + stoppage time)?",
+            "Argentina", "Egypt",
+        )
+        self.assertEqual(assist["market"], "player_score_or_assist")
+        self.assertEqual(assist["player"], "Julián Álvarez")
+
+    def test_odd_total_goals_and_first_goal_exclusion_are_known(self):
+        parity = self._parse(
+            "Will the total number of goals in regulation (90 minutes + stoppage time) "
+            "be an odd number?",
+            "Argentina", "Egypt",
+        )
+        self.assertEqual(parity["market"], "total_goals_parity")
+        self.assertEqual(parity["comparator"], "odd")
+
+        first_goal = self._parse(
+            "Will the first goal of the match be scored by a player other than "
+            "Lionel Messi and Mohamed Salah?",
+            "Argentina", "Egypt",
+        )
+        self.assertEqual(first_goal["market"], "none")
+
     def test_win_by_margin_is_not_a_scoring_total(self):
         intent = self._parse(
             "Will the United States win by 2 or more goals in regulation "

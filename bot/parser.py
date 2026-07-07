@@ -18,7 +18,7 @@ from .matcher import MARKET_KEYS
 from .teams import normalize_team
 
 # Bump to invalidate cached intents after a prompt/model semantics change.
-PROMPT_VERSION = "p7-open-specials"
+PROMPT_VERSION = "p8-open-specials"
 
 SYSTEM = """You convert soccer betting questions into structured JSON intents.
 Each question is a YES/NO question about a single match. Output ONLY the
@@ -37,6 +37,7 @@ Field rules:
     "gte"             a count is >= threshold ("N or more", "at least N")
     "lte"             a count is <= threshold ("N or fewer", "N or less")
     "eq"              a count is exactly threshold
+    "odd" | "even"    total goals parity
     "more"            subject team has strictly MORE than the other team
     "second_half_more" second half has more goals than first half
 - threshold: the integer N from the question for gte/lte (else null).
@@ -68,6 +69,8 @@ Important direct mappings:
 - a team to score the first goal of the game -> market=first_team_to_score,
   subject=home/away, comparator=yes, period=match.
 - an own goal to be scored -> market=own_goal, subject=match, comparator=yes.
+- odd/even total goals -> market=total_goals_parity, subject=match,
+  comparator=odd/even.
 
 Knockout markets (emit when the wording fits):
 - a team to qualify/advance to the next round -> to_advance.
@@ -253,6 +256,7 @@ def _normalize_question(question: str, home: str, away: str) -> str:
     text = re.sub(r"\s*\(excluding own goals\)", "", text, flags=re.I)
     for team in (home, away):
         text = _strip_team_parenthetical(text, team)
+    text = re.sub(r"\s*,\s*\)", ")", text)
     text = re.sub(r"\s{2,}", " ", text).replace(" ?", "?").strip()
     return text
 
@@ -262,7 +266,12 @@ def _strip_team_parenthetical(text: str, team: str) -> str:
     target = normalize_team(team)
 
     def repl(match: re.Match) -> str:
-        return "" if normalize_team(match.group(1)) == target else match.group(0)
+        contents = match.group(1)
+        without_number = re.sub(r"(?:,\s*)?#?\d+\b", "", contents)
+        without_number = re.sub(
+            r"\b(?:no|number)\.?\s*\d+\b", "", without_number, flags=re.I,
+        )
+        return "" if normalize_team(without_number) == target else match.group(0)
 
     return re.sub(r"\s*\(([^()]*)\)", repl, text)
 
@@ -284,6 +293,8 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
     # to keep these questions out of the unfamiliar-question LLM batch.
     if (re.search(r"\b(?:AND|OR)\b", question)
             or "score the first goal of the game and" in lower):
+        return _intent("none")
+    if "first goal" in lower and "other than" in lower:
         return _intent("none")
 
     # Time-window / match-state questions. A hydration break is NOT a half (the
@@ -326,6 +337,15 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
     if exact_goals:
         return _intent("total_goals", comparator="eq",
                        threshold=int(exact_goals.group(1)))
+    goals_parity = (
+        re.search(r"\bgoals?(?:\s+\w+){0,5}\s+be\s+(?:an?\s+)?(odd|even)\b", lower)
+        or re.search(r"\b(odd|even)\s+(?:number|total|amount)\b.*\bgoals?\b", lower)
+    )
+    if goals_parity and "goal" in lower:
+        return _intent(
+            "total_goals_parity", subject="match",
+            comparator=goals_parity.group(1), period=period,
+        )
     if "goal be scored in each half" in lower or "goal be scored in every half" in lower:
         return _intent("goal_in_each_half")
     if "play the entire match" in lower:

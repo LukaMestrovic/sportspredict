@@ -300,6 +300,12 @@ def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
 
     if "goal" in core and "before the first hydration break" in core:
         return ExtSpec(GOAL_WINDOW, {"window": "before_first_hydration"}, question)
+    if (
+        "goal" in core
+        and "after the first hydration break" in core
+        and ("first half" in core or "1st half" in core)
+    ):
+        return ExtSpec(GOAL_WINDOW, {"window": "after_first_hydration_1h"}, question)
     if "goal" in core and "after the second hydration break" in core:
         regulation_only = _regulation_only(raw_lower)
         return ExtSpec(GOAL_WINDOW, {
@@ -395,6 +401,8 @@ def _window_mask(timeline, params: dict) -> np.ndarray:
     window = params["window"]
     if window == "before_first_hydration":
         return timeline.select(through=FIRST_HYDRATION_MINUTE, phases={"1H"})
+    if window == "after_first_hydration_1h":
+        return timeline.select(after=FIRST_HYDRATION_MINUTE, phases={"1H"})
     if window == "after_second_hydration":
         phases = {"2H", "ET"} if params.get("include_et") else {"2H"}
         return timeline.select(after=SECOND_HYDRATION_MINUTE, phases=phases)
