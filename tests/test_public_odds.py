@@ -130,6 +130,21 @@ class PublicOddsTests(unittest.TestCase):
         self.assertEqual(candidate["devig_method"], "same-book special yes/no de-vig")
         self.assertAlmostEqual(candidate["probability_pct"], 52.0, places=1)
 
+    def test_substitute_score_only_special_not_used_for_score_or_assist(self):
+        page = """
+        <div>Match Specials</div>
+        <div>A substitute to score</div><span>4.00</span>
+        """
+        with patch("bot.public_odds.SPECIAL_PAGES", [
+                ("BetVictor", "betvictor_match_specials", "https://example.test/specials")
+        ]), patch("bot.public_odds._fetch", return_value=page):
+            odds = public_odds.online_odds(
+                {"market": "substitute_score_or_assist"}, "Switzerland", "Colombia",
+                question="Will a substitute score or assist a goal?",
+            )
+
+        self.assertEqual(odds, [])
+
 
 if __name__ == "__main__":
     unittest.main()

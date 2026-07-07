@@ -20,6 +20,18 @@ def _event(kind, minute, *, detail="", team_id=1, extra=0, comments=None):
     }
 
 
+def _players(*, substitute_goals=0, substitute_assists=0):
+    return [{
+        "players": [{
+            "statistics": [{
+                "games": {"substitute": True},
+                "goals": {"total": substitute_goals, "assists": substitute_assists},
+                "shots": {"on": 0},
+            }],
+        }],
+    }]
+
+
 class _AF:
     def __init__(self):
         self.calls = []
@@ -233,6 +245,81 @@ class WC2026EvidenceTests(unittest.TestCase):
         self.assertEqual(
             wc2026_evidence.labels_for_contract("compare:cards:full:reg", facts),
             [False, False],
+        )
+
+    def test_new_special_contract_labels_are_exact(self):
+        fixture = _fixture(
+            20, "2026-07-02T20:00:00Z", status="FT", round_name="Round of 16",
+        )
+        home_id = fixture["teams"]["home"]["id"]
+        away_id = fixture["teams"]["away"]["id"]
+        facts = wc2026_evidence._fixture_facts(
+            fixture,
+            events=[
+                _event("Goal", 60, detail="Normal Goal", team_id=home_id),
+                _event("Card", 45, detail="Yellow Card", team_id=away_id, extra=2),
+                _event("Card", 80, detail="Yellow Card", team_id=home_id),
+            ],
+            statistics=[
+                {"team": {"id": home_id}, "statistics": [
+                    {"type": "Corner Kicks", "value": 7},
+                    {"type": "Total Shots", "value": 14},
+                ]},
+                {"team": {"id": away_id}, "statistics": [
+                    {"type": "Corner Kicks", "value": 4},
+                    {"type": "Total Shots", "value": 10},
+                ]},
+            ],
+            players=_players(substitute_assists=1),
+        )
+
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract("first_goal_half:2H:reg", facts),
+            [True],
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract("exact_goal_margin:reg:1", facts),
+            [True],
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract(
+                "card_window:cards:each_half:reg:>=:1", facts,
+            ),
+            [True],
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract(
+                "card_window:cards:stoppage_any:reg:>=:1", facts,
+            ),
+            [True],
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract("substitute_score_or_assist:reg", facts),
+            [True],
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract(
+                "compound:team_more_corners_and_total_shots:reg", facts,
+            ),
+            [True, False],
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract("win_both_halves:reg", facts),
+            [False],
+        )
+
+        both_halves = wc2026_evidence._fixture_facts(
+            fixture,
+            events=[
+                _event("Goal", 10, detail="Normal Goal", team_id=home_id),
+                _event("Goal", 60, detail="Normal Goal", team_id=home_id),
+            ],
+            statistics=None,
+            players=None,
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract("win_both_halves:reg", both_halves),
+            [True],
         )
 
 

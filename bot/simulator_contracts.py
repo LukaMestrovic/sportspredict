@@ -47,6 +47,12 @@ def questions_for_contract(key: str, home: str, away: str) -> list[str]:
         "card_window:cards:first_half:reg:>=:1": [
             "Will a card be shown in the first half in regulation?"
         ],
+        "card_window:cards:each_half:reg:>=:1": [
+            "Will at least one card be shown in each half in regulation?"
+        ],
+        "card_window:cards:stoppage_any:reg:>=:1": [
+            "Will a card be shown in first- or second-half stoppage time?"
+        ],
         "red_card:match": ["Will a red card be shown in the match?"],
         "both_teams_card:reg": [
             "Will both teams receive at least one card in regulation?"
@@ -75,6 +81,19 @@ def questions_for_contract(key: str, home: str, away: str) -> list[str]:
         "half_conditional:more_goals_2h": [
             "Will more goals be scored in the second half than the first half?"
         ],
+        "first_goal_half:2H:reg": [
+            "Will the first goal of the match be scored in the second half?"
+        ],
+        "win_both_halves:reg": [
+            "Will either team win both halves in regulation?"
+        ],
+        "exact_goal_margin:reg:1": [
+            "Will the match be decided by exactly 1 goal in regulation?"
+        ],
+        "compound:team_more_corners_and_total_shots:reg": [
+            f"Will {home} have more corner kicks AND more total shots than {away} in regulation?",
+            f"Will {away} have more corner kicks AND more total shots than {home} in regulation?",
+        ],
         "match_result:draw:reg": [
             "Will the match be a draw in regulation?"
         ],
@@ -92,6 +111,9 @@ def questions_for_contract(key: str, home: str, away: str) -> list[str]:
         ],
         "substitute_score:reg": [
             "Will a substitute score in regulation?"
+        ],
+        "substitute_score_or_assist:reg": [
+            "Will a substitute score or assist a goal in regulation?"
         ],
         "stat_window:corners:before_first_hydration:reg:>=:2": [
             "Will there be at least 2 corners before the first hydration break?"

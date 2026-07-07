@@ -263,11 +263,63 @@ class BundledSimulatorTests(unittest.TestCase):
                         "(90 minutes + stoppage time)?"
                     ),
                 },
+                {
+                    "market_id": "sub_involvement",
+                    "question": (
+                        "Will a substitute score or assist a goal in regulation "
+                        "(90 minutes + stoppage time)?"
+                    ),
+                },
+                {
+                    "market_id": "first_goal_2h",
+                    "question": (
+                        "Will the first goal of the match be scored in the second half "
+                        "of regulation (90 minutes + stoppage time)?"
+                    ),
+                },
+                {
+                    "market_id": "win_both_halves",
+                    "question": (
+                        "Will either team win both halves in regulation "
+                        "(90 minutes + stoppage time)?"
+                    ),
+                },
+                {
+                    "market_id": "exact_margin",
+                    "question": (
+                        "Will the match be decided by exactly one goal in regulation "
+                        "(90 minutes + stoppage time)?"
+                    ),
+                },
+                {
+                    "market_id": "card_each_half",
+                    "question": (
+                        "Will at least one card be shown in each half in regulation "
+                        "(90 minutes + stoppage time)?"
+                    ),
+                },
+                {
+                    "market_id": "card_stoppage",
+                    "question": (
+                        "Will a card be shown during first- or second-half stoppage time?"
+                    ),
+                },
+                {
+                    "market_id": "corners_shots",
+                    "question": (
+                        "Will France have more corner kicks AND more total shots than "
+                        "Paraguay in regulation (90 minutes + stoppage time)?"
+                    ),
+                },
             ],
         })
         by_id = {item["market_id"]: item for item in report["question_reports"]}
 
-        self.assertEqual(set(by_id), {"lead", "cards_gt_goals", "full_match", "each_half"})
+        self.assertEqual(set(by_id), {
+            "lead", "cards_gt_goals", "full_match", "each_half",
+            "sub_involvement", "first_goal_2h", "win_both_halves",
+            "exact_margin", "card_each_half", "card_stoppage", "corners_shots",
+        })
         self.assertEqual(by_id["lead"]["family"], "lead_any_time")
         self.assertEqual(by_id["lead"]["contract_key"], "lead_any_time:match")
         self.assertEqual(by_id["cards_gt_goals"]["family"], "cards_more_than_goals")
@@ -277,6 +329,20 @@ class BundledSimulatorTests(unittest.TestCase):
         self.assertEqual(by_id["full_match"]["contract_key"], "player_full_match:reg:player")
         self.assertEqual(by_id["each_half"]["contract_key"],
                          "half_conditional:goal_in_both_halves")
+        self.assertEqual(by_id["sub_involvement"]["contract_key"],
+                         "substitute_score_or_assist:reg")
+        self.assertEqual(by_id["first_goal_2h"]["contract_key"],
+                         "first_goal_half:2H:reg")
+        self.assertEqual(by_id["win_both_halves"]["contract_key"],
+                         "win_both_halves:reg")
+        self.assertEqual(by_id["exact_margin"]["contract_key"],
+                         "exact_goal_margin:reg:1")
+        self.assertEqual(by_id["card_each_half"]["contract_key"],
+                         "card_window:cards:each_half:reg:>=:1")
+        self.assertEqual(by_id["card_stoppage"]["contract_key"],
+                         "card_window:cards:stoppage_any:reg:>=:1")
+        self.assertEqual(by_id["corners_shots"]["contract_key"],
+                         "compound:team_more_corners_and_total_shots:reg")
 
     def _run_bridge(self, payload):
         env = os.environ.copy()

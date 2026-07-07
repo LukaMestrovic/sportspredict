@@ -604,10 +604,57 @@ class KnockoutWordingTests(unittest.TestCase):
             "(90 minutes + stoppage time)?",
             "South Africa", "Canada",
         )
+        substitute_involvement = self._parse(
+            "Will a substitute score or assist a goal in regulation "
+            "(90 minutes + stoppage time)?",
+            "Switzerland", "Colombia",
+        )
+        first_goal_2h = self._parse(
+            "Will the first goal of the match be scored in the second half of "
+            "regulation (90 minutes + stoppage time)?",
+            "Switzerland", "Colombia",
+        )
+        both_halves = self._parse(
+            "Will either team win both halves in regulation "
+            "(90 minutes + stoppage time)?",
+            "Switzerland", "Colombia",
+        )
+        exact_margin = self._parse(
+            "Will the match be decided by exactly one goal in regulation "
+            "(90 minutes + stoppage time)?",
+            "Switzerland", "Colombia",
+        )
+        cards_each_half = self._parse(
+            "Will at least one card be shown in each half in regulation "
+            "(90 minutes + stoppage time)?",
+            "Norway", "England",
+        )
+        stoppage_card = self._parse(
+            "Will a card be shown during first- or second-half stoppage time?",
+            "France", "Morocco",
+        )
+        corners_and_shots = self._parse(
+            "Will England have more corner kicks AND more total shots than Norway "
+            "in regulation (90 minutes + stoppage time)?",
+            "Norway", "England",
+        )
         self.assertEqual((hydration["market"], hydration["period"]),
                          ("goal_window", "match"))
         self.assertEqual((substitute["market"], substitute["period"]),
                          ("substitute_score", "match"))
+        self.assertEqual(substitute_involvement["market"], "substitute_score_or_assist")
+        self.assertEqual((first_goal_2h["market"], first_goal_2h["period"]),
+                         ("first_goal_half", "2H"))
+        self.assertEqual(both_halves["market"], "win_both_halves")
+        self.assertEqual((exact_margin["market"], exact_margin["threshold"]),
+                         ("exact_goal_margin", 1))
+        self.assertEqual((cards_each_half["market"], cards_each_half["threshold"]),
+                         ("card_each_half", 1))
+        self.assertEqual(stoppage_card["market"], "card_stoppage")
+        self.assertEqual(
+            (corners_and_shots["market"], corners_and_shots["subject"]),
+            ("team_corners_and_total_shots_compare", "away"),
+        )
 
 
 if __name__ == "__main__":

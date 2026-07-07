@@ -12,7 +12,7 @@ import numpy as np
 from sportspredict.features.context import MatchContext
 from sportspredict.markets.schema import MarketSpec, MarketType, apply_comparator
 from sportspredict.model.outcome import MatchOutcome
-from sportspredict.types import GOALS, H1, H2, TEAM_A, TEAM_B
+from sportspredict.types import CORNERS, GOALS, H1, H2, TEAM_A, TEAM_B
 
 from .timing import TimingModel
 from .timeline import GoalTimeline, card_timeline, count_timeline
@@ -29,14 +29,19 @@ except Exception:  # pragma: no cover
     _PARSER_OK = False
 
 FIRST_GOAL = "first_goal"
+FIRST_GOAL_HALF = "first_goal_half"
 GOAL_WINDOW = "goal_window"
 CARD_WINDOW = "card_window"
 STAT_WINDOW = "stat_window"
 SUBSTITUTION_BEFORE_HALF = "substitution_before_halftime"
 SUBSTITUTE_SCORE = "substitute_score"
+SUBSTITUTE_GOAL_INVOLVEMENT = "substitute_score_or_assist"
 TEAM_SCORE_NO_OWN = "team_score_no_own"
 ANY_PLAYER_THRESHOLD = "any_player_threshold"
 COMPOUND_AND = "compound_and"
+WIN_BOTH_HALVES = "win_both_halves"
+EXACT_GOAL_MARGIN = "exact_goal_margin"
+TEAM_CORNERS_AND_TOTAL_SHOTS_MORE = "team_corners_and_total_shots_more"
 REGULATION_STANDARD = "regulation_standard"
 RED_CARD = "red_card"
 BOTH_TEAMS_CARD = "both_teams_card"
@@ -193,8 +198,40 @@ def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
     # Match operations/player aggregate props must precede generic scoring parsing.
     if "substitution be made before halftime" in core:
         return ExtSpec(SUBSTITUTION_BEFORE_HALF, {}, question)
+    if re.search(r"\ba substitute score or assist", core):
+        return ExtSpec(SUBSTITUTE_GOAL_INVOLVEMENT, {"regulation": True}, question)
     if re.search(r"\ba substitute score", core):
         return ExtSpec(SUBSTITUTE_SCORE, {"regulation": True}, question)
+    if "first goal" in core and "second half" in core and not _teams_in_text(core, ctx):
+        return ExtSpec(FIRST_GOAL_HALF, {"half": "2H", "regulation": True}, question)
+    if "win both halves" in core and "either team" in core:
+        return ExtSpec(WIN_BOTH_HALVES, {"regulation": True}, question)
+    margin_exact = re.search(r"\bdecided by exactly\s+(\d+|one)\s+goals?\b", core)
+    if margin_exact:
+        margin = 1 if margin_exact.group(1) == "one" else int(margin_exact.group(1))
+        return ExtSpec(EXACT_GOAL_MARGIN, {
+            "margin": margin, "regulation": True,
+        }, question)
+    if "card" in core and "each half" in core:
+        count = _threshold(core) or (">=", 1.0)
+        return ExtSpec(CARD_WINDOW, {
+            "window": "each_half", "include_et": False,
+            "comparator": count[0], "threshold": count[1],
+        }, question)
+    if (
+        "card" in core
+        and re.search(r"stoppage(?:\s*\(added\))?\s+time|added\s+time", core)
+    ):
+        return ExtSpec(CARD_WINDOW, {
+            "window": "stoppage_any", "include_et": False,
+            "comparator": ">=", "threshold": 1.0,
+        }, question)
+    if "more corner" in core and "more total shots" in core:
+        teams = _teams_in_text(core, ctx)
+        if teams:
+            return ExtSpec(TEAM_CORNERS_AND_TOTAL_SHOTS_MORE, {
+                "team": _LABEL[teams[0]], "regulation": True,
+            }, question)
     lead_any_time = re.search(r"\bhold a lead at any point\b", core)
     if lead_any_time:
         teams = _teams_in_text(core, ctx)
@@ -543,11 +580,30 @@ def resolve_extended(
             spec.params["team"], spec.params.get("half"),
             include_et=bool(spec.params.get("include_et")),
         )
+    elif spec.market == FIRST_GOAL_HALF:
+        if spec.params.get("half") != "2H":
+            raise ValueError(f"unknown first-goal half {spec.params.get('half')!r}")
+        mask = (outcome.match_goals_half(H1) == 0) & (outcome.match_goals_half(H2) >= 1)
     elif spec.market == GOAL_WINDOW:
         mask = timeline.any(_window_mask(timeline, spec.params))
     elif spec.market == CARD_WINDOW:
         card_events = cards()
-        mask = card_events.any(_window_mask(card_events, spec.params))
+        window = spec.params.get("window")
+        if window == "each_half":
+            first = card_events.counts(card_events.select(phases={"1H"}))
+            second = card_events.counts(card_events.select(phases={"2H"}))
+            mask = (
+                apply_comparator(first, spec.params["comparator"], spec.params["threshold"])
+                & apply_comparator(second, spec.params["comparator"], spec.params["threshold"])
+            )
+        elif window == "stoppage_any":
+            selected = (
+                card_events.select(stoppage="1H") | card_events.select(stoppage="2H")
+            )
+            counts = card_events.counts(selected)
+            mask = apply_comparator(counts, spec.params["comparator"], spec.params["threshold"])
+        else:
+            mask = card_events.any(_window_mask(card_events, spec.params))
     elif spec.market == RED_CARD:
         red_events = reds()
         phases = {"1H", "2H"} if spec.params.get("regulation") else {"1H", "2H", "ET"}
@@ -582,14 +638,25 @@ def resolve_extended(
     elif spec.market == SUBSTITUTION_BEFORE_HALF:
         stage = getattr(ctx, "stage", None) if ctx is not None else None
         return timing.rate("substitution_before_halftime", stage, default=0.10)
-    elif spec.market in (SUBSTITUTE_SCORE, ANY_PLAYER_THRESHOLD):
+    elif spec.market in (SUBSTITUTE_SCORE, SUBSTITUTE_GOAL_INVOLVEMENT, ANY_PLAYER_THRESHOLD):
         if ctx is None or settings is None:
             raise ValueError("player-event markets require context and settings")
-        from .allocation import prob_any_player_threshold, prob_substitute_scores
+        from .allocation import (
+            prob_any_player_threshold,
+            prob_substitute_goal_involvement,
+            prob_substitute_scores,
+        )
         if spec.market == SUBSTITUTE_SCORE:
             return prob_substitute_scores(
                 outcome, ctx, player_shares, settings,
                 fallback_share=timing.parameter("substitute_goal_share", 0.12),
+                own_goal_share=timing.parameter("own_goal_share", 0.015),
+            )
+        if spec.market == SUBSTITUTE_GOAL_INVOLVEMENT:
+            return prob_substitute_goal_involvement(
+                outcome, ctx, player_shares, settings,
+                fallback_goal_share=timing.parameter("substitute_goal_share", 0.12),
+                fallback_assist_share=timing.parameter("substitute_assist_share", 0.14),
                 own_goal_share=timing.parameter("own_goal_share", 0.015),
             )
         return prob_any_player_threshold(
@@ -625,6 +692,30 @@ def resolve_extended(
             - outcome.goals_team(other, include_et=False)
         )
         mask = margin >= int(spec.params["threshold"])
+    elif spec.market == WIN_BOTH_HALVES:
+        a_h1 = outcome.goals_half(TEAM_A, H1)
+        a_h2 = outcome.goals_half(TEAM_A, H2)
+        b_h1 = outcome.goals_half(TEAM_B, H1)
+        b_h2 = outcome.goals_half(TEAM_B, H2)
+        mask = ((a_h1 > b_h1) & (a_h2 > b_h2)) | ((b_h1 > a_h1) & (b_h2 > a_h2))
+    elif spec.market == EXACT_GOAL_MARGIN:
+        margin = np.abs(
+            outcome.goals_team(TEAM_A, include_et=False)
+            - outcome.goals_team(TEAM_B, include_et=False)
+        )
+        mask = margin == int(spec.params["margin"])
+    elif spec.market == TEAM_CORNERS_AND_TOTAL_SHOTS_MORE:
+        from .shots import sample_team_total_shots
+
+        team = spec.params["team"]
+        other = TEAM_B if team == TEAM_A else TEAM_A
+        corner_margin = (
+            outcome.team_total(CORNERS, team, include_et=False)
+            > outcome.team_total(CORNERS, other, include_et=False)
+        )
+        shot_model = (timing.data.get("models") or {}).get("total_shots")
+        total_shots = sample_team_total_shots(outcome, shot_model, stream("team_total_shots"))
+        mask = corner_margin & (total_shots[team] > total_shots[other])
     elif spec.market == REGULATION_STANDARD:
         if ctx is None or settings is None:
             raise ValueError("standard regulation markets require context and settings")

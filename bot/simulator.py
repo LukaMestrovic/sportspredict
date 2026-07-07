@@ -272,6 +272,13 @@ def _simulator_adjustment_guidance(rep: dict) -> str:
             "goalkeeper/defender injury risk, concussion concern, or a coach "
             "with recent early changes; ignore normal 60'-75' substitutions."
         )
+    if "substitute_score_or_assist" in family:
+        return (
+            "Lean toward WC2026 empirical rates and modern five-sub context. "
+            "Identify each team's likely attacking substitutes and whether they "
+            "are real scorers, creators, set-piece takers, or assist threats from "
+            "player_form or research."
+        )
     if "substitute_score" in family:
         return (
             "Lean toward WC2026 empirical rates and modern five-sub context. "

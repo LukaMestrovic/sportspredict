@@ -833,12 +833,56 @@ def _special_market_guidance(question: str) -> str | None:
             "proxies. For card, corner, offside, or substitution hydration questions, "
             "use a special only when both the event type and time window match closely."
         )
-    if "substitute" in lower and ("score" in lower or "goal" in lower):
+    if "substitute" in lower and "score or assist" in lower:
+        parts.append(
+            "Search match specials for exact substitute goal-involvement wording, "
+            "including \"substitute to score or assist\" and \"bench player to score "
+            "or assist\". Score-only substitute specials are useful context but not "
+            "direct odds for this contract because assists also settle YES."
+        )
+    elif "substitute" in lower and ("score" in lower or "goal" in lower):
         parts.append(
             "Search match specials for \"A substitute to score\", \"Substitute to "
             "come on and score\", and \"Bench player will score\". Treat exact "
             "substitute-to-score prices as direct online odds for this contract, "
             "with an own-goal caveat when the SportPredict wording excludes own goals."
+        )
+    if "first goal" in lower and "second half" in lower:
+        parts.append(
+            "For first goal in the second half, the exact condition is no first-half "
+            "goal and at least one second-half regulation goal. Do not use team "
+            "first-goal odds or generic second-half goal odds as exact prices."
+        )
+    if "win both halves" in lower:
+        parts.append(
+            "For either team to win both halves, evaluate the two half winners jointly; "
+            "full-match winner and team-to-win-both-halves specials are related only "
+            "unless the market says either team."
+        )
+    if "decided by exactly" in lower and "goal" in lower:
+        parts.append(
+            "For exact one-goal margin, use regulation correct-score or winning-margin "
+            "distributions when available. Match-winner odds and over/under totals are "
+            "components, not direct prices."
+        )
+    if "card" in lower and "each half" in lower:
+        parts.append(
+            "For card in each half, search exact half-card specials first. Full-match "
+            "card totals over 0.5 or 1.5 do not settle the same way because all cards "
+            "could occur in one half."
+        )
+    if "card" in lower and ("stoppage" in lower or "added time" in lower):
+        parts.append(
+            "For stoppage-time cards, use only exact added-time or stoppage-time card "
+            "specials as direct odds. Full-half or full-match card totals are broad "
+            "context only."
+        )
+    if "more corner" in lower and "more total shots" in lower:
+        parts.append(
+            "For the corners-plus-total-shots compound, search exact bet-builder or "
+            "same-game specials first. If absent, the simulator joint event is the "
+            "contract-specific baseline; separate corner and total-shot prices need "
+            "an explicit positive-correlation/territory adjustment."
         )
     if (
         ("stoppage" in lower or "added time" in lower)

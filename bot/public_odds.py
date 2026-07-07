@@ -224,8 +224,17 @@ def _special_labels(intent: dict, question: str) -> list[str]:
             "Goal scored 80:00 - Full time",
             "Goal scored 85:00 - Full time",
         ]
+    if market == "substitute_score_or_assist" or (
+        "substitute" in lower and "score or assist" in lower
+    ):
+        return [
+            "A substitute to score or assist",
+            "Substitute to score or assist",
+            "Bench player to score or assist",
+        ]
     if market == "substitute_score" or (
-        "substitute" in lower and ("score" in lower or "goal" in lower)
+        "substitute" in lower and "score or assist" not in lower
+        and ("score" in lower or "goal" in lower)
     ):
         return [
             "A substitute to score",

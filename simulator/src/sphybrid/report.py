@@ -21,16 +21,21 @@ from .postsim import (
     CARD_WINDOW,
     CARDS_MORE_THAN_GOALS,
     COMPOUND_AND,
+    EXACT_GOAL_MARGIN,
     FIRST_GOAL,
+    FIRST_GOAL_HALF,
     GOAL_WINDOW,
     LEAD_ANY_TIME,
     PLAYER_FULL_MATCH,
     RED_CARD,
     STAT_WINDOW,
+    SUBSTITUTE_GOAL_INVOLVEMENT,
     SUBSTITUTE_SCORE,
     SUBSTITUTION_BEFORE_HALF,
+    TEAM_CORNERS_AND_TOTAL_SHOTS_MORE,
     SECOND_HYDRATION_MINUTE,
     TOTAL_SHOTS_THRESHOLD,
+    WIN_BOTH_HALVES,
     WIN_MARGIN,
     parse_extended,
 )
@@ -80,6 +85,11 @@ def _explanation(market: str, params: dict, notes: str | None) -> str:
             "Estimated from learned team/half goal counts and historical goal timing, with the "
             f"first scorer resolved inside each shared simulated match world ({scope})."
         )
+    if market == FIRST_GOAL_HALF:
+        return (
+            "Estimated from shared simulated regulation goal worlds by requiring no first-half "
+            "goal and at least one second-half goal."
+        )
     if market == GOAL_WINDOW:
         if params.get("window") == "before_first_hydration":
             return (
@@ -111,6 +121,16 @@ def _explanation(market: str, params: dict, notes: str | None) -> str:
             return (
                 "Estimated from simulated yellow and red cards whose learned event clocks fall "
                 "in the regulation first half, including first-half added time."
+            )
+        if params.get("window") == "each_half":
+            return (
+                "Estimated from simulated yellow and red cards by requiring the stated card "
+                "threshold separately in each regulation half."
+            )
+        if params.get("window") == "stoppage_any":
+            return (
+                "Estimated from simulated yellow/red-card volume and learned added-time clocks "
+                "in either regulation-half stoppage period."
             )
         return (
             "Estimated from simulated yellow/red-card volume and the historical late-card timing "
@@ -147,6 +167,21 @@ def _explanation(market: str, params: dict, notes: str | None) -> str:
         )
     if market == WIN_MARGIN:
         return "Estimated from the regulation goal difference in each shared simulated match world."
+    if market == WIN_BOTH_HALVES:
+        return (
+            "Estimated from shared simulated regulation goal worlds by checking whether the same "
+            "team outscores its opponent in both halves."
+        )
+    if market == EXACT_GOAL_MARGIN:
+        return (
+            "Estimated from the absolute regulation goal difference in each shared simulated "
+            "match world."
+        )
+    if market == TEAM_CORNERS_AND_TOTAL_SHOTS_MORE:
+        return (
+            "Estimated as a joint event inside the same simulated match worlds: the named team "
+            "must have more regulation corners and more regulation total shots."
+        )
     if market == STAT_WINDOW:
         stat = str(params.get("stat") or "event").replace("_", " ")
         learned = "source-gated learned" if stat == "offsides" else "learned"
@@ -163,6 +198,11 @@ def _explanation(market: str, params: dict, notes: str | None) -> str:
         return (
             "Estimated by assigning simulated regulation goals to substitutes using the learned "
             "historical substitute goal share and available lineup exposure."
+        )
+    if market == SUBSTITUTE_GOAL_INVOLVEMENT:
+        return (
+            "Estimated by assigning simulated regulation goals and assisted-goal involvement to "
+            "substitutes using lineup exposure, learned scoring shares, and assist-share priors."
         )
     if market == ANY_PLAYER_THRESHOLD:
         return (

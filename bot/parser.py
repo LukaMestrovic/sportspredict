@@ -18,7 +18,7 @@ from .matcher import MARKET_KEYS
 from .teams import normalize_team
 
 # Bump to invalidate cached intents after a prompt/model semantics change.
-PROMPT_VERSION = "p8-open-specials"
+PROMPT_VERSION = "p9-open-match-specials"
 
 SYSTEM = """You convert soccer betting questions into structured JSON intents.
 Each question is a YES/NO question about a single match. Output ONLY the
@@ -85,7 +85,14 @@ Knockout markets (emit when the wording fits):
 - a penalty shootout occurrence -> penalty_shootout.
 - at least one match goal in each half -> goal_in_each_half.
 - hydration-break goal windows -> goal_window.
-- a substitute to score -> substitute_score.
+- a substitute to score -> substitute_score; a substitute to score OR assist ->
+  substitute_score_or_assist.
+- match first goal to be scored in the second half -> first_goal_half.
+- either team to win both halves -> win_both_halves.
+- match decided by exactly N goals -> exact_goal_margin.
+- at least one card in each half -> card_each_half.
+- a card in first- or second-half stoppage time -> card_stoppage.
+- one team to have more corners AND more total shots -> team_corners_and_total_shots_compare.
 - a team to hold a lead at any point -> lead_any_time.
 - more total cards than goals -> cards_more_than_goals.
 - a named player to play the entire match -> player_full_match.
@@ -289,6 +296,38 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
     before_more = question.lower().split("more", 1)[0]
     compare_subject = subject or _mentioned_team(before_more, home, away)
 
+    # New exact specials whose wording contains AND/OR or otherwise looks like a
+    # nearby standard market. Claim them before the generic compound guard.
+    if (
+        "more corner" in lower
+        and "more total shots" in lower
+        and re.search(r"\band\b", lower)
+        and compare_subject
+    ):
+        return _intent(
+            "team_corners_and_total_shots_compare", compare_subject[0], "more",
+            period=period,
+        )
+    if "first goal" in lower and "second half" in lower and not subject:
+        return _intent("first_goal_half", comparator="yes", period="2H")
+    if "win both halves" in lower and "either team" in lower:
+        return _intent("win_both_halves")
+    if "decided by exactly" in lower and "goal" in lower:
+        count = _threshold_in(lower)
+        threshold = count[1] if count and count[0] == "eq" else 1 if "exactly one" in lower else None
+        if threshold is not None:
+            return _intent("exact_goal_margin", comparator="eq", threshold=threshold)
+    if "card" in lower and "each half" in lower:
+        count = _threshold_in(lower) or ("gte", 1)
+        return _intent("card_each_half", comparator=count[0], threshold=count[1])
+    if (
+        "card" in lower
+        and ("stoppage time" in lower or "added time" in lower)
+        and ("first-" in lower or "first half" in lower or "second-" in lower
+             or "second half" in lower)
+    ):
+        return _intent("card_stoppage", comparator="gte", threshold=1)
+
     # Compound decomposition happens in derive; the top-level parser only needs
     # to keep these questions out of the unfamiliar-question LLM batch.
     if (re.search(r"\b(?:AND|OR)\b", question)
@@ -356,6 +395,8 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
             "player_full_match", "player",
             player=player_match.group(1) if player_match else None,
         )
+    if lower.startswith("will a substitute") and "score or assist" in lower:
+        return _intent("substitute_score_or_assist")
     if lower.startswith("will a substitute") and ("score" in lower or "goal" in lower):
         return _intent("substitute_score")
     if ("stoppage time" in lower or "added time" in lower
@@ -641,7 +682,7 @@ def _repair_intent(
                 intent["subject"] = side
                 break
 
-    if "score or assist" in lower:
+    if "score or assist" in lower and "substitute" not in lower:
         intent["market"] = "player_score_or_assist"
     if "go to extra time" in lower or "goes to extra time" in lower:
         intent.update(market="goes_to_extra_time", subject="match",

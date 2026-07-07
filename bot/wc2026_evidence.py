@@ -219,15 +219,19 @@ def _supports(key: str) -> bool:
         or key.startswith("total_goals:")
         or key.startswith("match_result:")
         or key.startswith("first_goal:")
+        or key.startswith("first_goal_half:")
         or key.startswith("compound:")
         or key.startswith("half_conditional:")
         or key.startswith("btts:")
         or key.startswith("btts_and_total:")
         or key.startswith("win_margin:")
+        or key.startswith("win_both_halves:")
+        or key.startswith("exact_goal_margin:")
         or key.startswith("clean_sheet:")
         or key.startswith("any_player_threshold:")
         or key.startswith("total_shots_threshold:")
         or key.startswith("substitute_score:")
+        or key.startswith("substitute_score_or_assist:")
     )
 
 
@@ -235,11 +239,14 @@ def _needs_statistics(key: str) -> bool:
     return bool(
         re.match(r"^(count|compare):(shots_on_target|shots_total|corners|fouls|offsides):", key)
         or key.startswith("total_shots_threshold:")
+        or key == "compound:team_more_corners_and_total_shots:reg"
     )
 
 
 def _needs_players(key: str) -> bool:
-    return key.startswith(("any_player_threshold:", "substitute_score:"))
+    return key.startswith((
+        "any_player_threshold:", "substitute_score:", "substitute_score_or_assist:",
+    ))
 
 
 def _source_available(key: str, facts: dict) -> bool:
@@ -353,17 +360,52 @@ def _labels(key: str, facts: dict) -> list[bool] | None:
         if key.startswith("first_goal:2H"):
             first = facts.get("first_goal_2h_team")
         return [first == 0, first == 1] if first in (0, 1, None) else None
+    if key == "first_goal_half:2H:reg":
+        first = facts["team_goals"].get("1H")
+        second = facts["team_goals"].get("2H")
+        if first is None or second is None:
+            return None
+        return [sum(first) == 0 and sum(second) > 0]
     if key == "compound:first_goal_and_other_team_scores_2h":
         first = facts.get("first_goal_team")
         second = facts["team_goals"].get("2H")
         if second is None:
             return None
         return [first == 0 and second[1] > 0, first == 1 and second[0] > 0]
+    if key == "compound:team_more_corners_and_total_shots:reg":
+        if facts.get("stats_include_extra_time"):
+            return None
+        corners = facts["team_statistics"].get("corners")
+        shots = facts["team_statistics"].get("shots_total")
+        if (
+            corners is None or shots is None
+            or any(value is None for value in corners + shots)
+        ):
+            return None
+        return [
+            corners[0] > corners[1] and shots[0] > shots[1],
+            corners[1] > corners[0] and shots[1] > shots[0],
+        ]
     if key == "win_margin:reg:2":
         goals = facts["team_goals"].get("full")
         return [
             goals[0] - goals[1] >= 2, goals[1] - goals[0] >= 2,
         ] if goals is not None else None
+    exact_margin = re.fullmatch(r"exact_goal_margin:reg:(\d+(?:\.\d+)?)", key)
+    if exact_margin:
+        goals = facts["team_goals"].get("full")
+        return [
+            abs(goals[0] - goals[1]) == float(exact_margin.group(1))
+        ] if goals is not None else None
+    if key == "win_both_halves:reg":
+        first = facts["team_goals"].get("1H")
+        second = facts["team_goals"].get("2H")
+        if first is None or second is None:
+            return None
+        return [
+            (first[0] > first[1] and second[0] > second[1])
+            or (first[1] > first[0] and second[1] > second[0])
+        ]
     if key.startswith("clean_sheet:"):
         goals = facts["team_goals"].get("match" if key.endswith(":match") else "full")
         return [goals[1] == 0, goals[0] == 0] if goals is not None else None
@@ -387,6 +429,15 @@ def _labels(key: str, facts: dict) -> list[bool] | None:
         players = facts.get("players")
         return [
             any(player.get("substitute") and (player.get("goals") or 0) >= 1 for player in players)
+        ] if players is not None and not facts.get("stats_include_extra_time") else None
+    if key.startswith("substitute_score_or_assist:"):
+        players = facts.get("players")
+        return [
+            any(
+                player.get("substitute")
+                and ((player.get("goals") or 0) >= 1 or (player.get("assists") or 0) >= 1)
+                for player in players
+            )
         ] if players is not None and not facts.get("stats_include_extra_time") else None
     shots = re.fullmatch(
         r"total_shots_threshold:shots_total:(>=|>|<=|<):(\d+(?:\.\d+)?):reg",
@@ -453,8 +504,8 @@ def _event_label(key: str, facts: dict) -> bool | None:
         return any(event["minute"] <= 45 for event in substitutions)
 
     card_match = re.fullmatch(
-        r"card_window:cards:(after_second_hydration|first_half):(et|reg):"
-        r"(>=|>|<=|<):(\d+(?:\.\d+)?)", key,
+        r"card_window:cards:(after_second_hydration|first_half|each_half|stoppage_any):"
+        r"(et|reg):(>=|>|<=|<):(\d+(?:\.\d+)?)", key,
     )
     if card_match:
         window, scope, comparator, raw_threshold = card_match.groups()
@@ -466,8 +517,23 @@ def _event_label(key: str, facts: dict) -> bool | None:
                 event for event in selected
                 if event["minute"] > SECOND_HYDRATION_MINUTE
             ]
-        else:
+        elif window == "first_half":
             selected = [event for event in selected if event["minute"] <= 45]
+        elif window == "each_half":
+            first = sum(event["minute"] <= 45 for event in selected)
+            second = sum(event["minute"] > 45 for event in selected)
+            threshold = float(raw_threshold)
+            return (
+                _compare(first, comparator, threshold)
+                and _compare(second, comparator, threshold)
+            )
+        else:
+            selected = [
+                event for event in selected
+                if event["extra"] > 0 and (
+                    event["minute"] <= 45 or 45 < event["minute"] <= 90
+                )
+            ]
         return _compare(len(selected), comparator, float(raw_threshold))
     return None
 
@@ -621,6 +687,7 @@ def _player_facts(players: list[dict] | None) -> list[dict] | None:
             result.append({
                 "substitute": bool(games.get("substitute")),
                 "goals": int(goals.get("total") or 0),
+                "assists": int(goals.get("assists") or 0),
                 "shots_on_target": int(shots.get("on") or 0),
             })
     return result

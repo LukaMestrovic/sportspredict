@@ -188,6 +188,34 @@ def prob_substitute_scores(
     return float(np.clip(np.mean(1.0 - no_sub_goal), 0.0, 1.0))
 
 
+def prob_substitute_goal_involvement(
+    outcome: MatchOutcome, ctx, shares: PlayerShares | None, settings: Settings,
+    *,
+    fallback_goal_share: float,
+    fallback_assist_share: float,
+    own_goal_share: float = 0.0,
+) -> float:
+    """Probability a substitute scores or assists, conditional on regulation goals."""
+    no_sub_involvement = np.ones(outcome.n_sims, dtype=float)
+    assisted = float(settings.players.get("prob_goal_assisted", 0.70))
+    goal_scale = 1.0 - float(own_goal_share)
+    for team_idx in (TEAM_A, TEAM_B):
+        goal_probs, goal_bench = _team_share_vector(ctx, team_idx, "goals", shares, settings)
+        assist_probs, assist_bench = _team_share_vector(ctx, team_idx, "assists", shares, settings)
+        sub_goal_share = (
+            float(goal_probs[goal_bench].sum()) if goal_bench.any() else float(fallback_goal_share)
+        )
+        sub_assist_share = (
+            float(assist_probs[assist_bench].sum())
+            if assist_bench.any() else float(fallback_assist_share)
+        )
+        per_goal = goal_scale * (sub_goal_share + assisted * sub_assist_share)
+        per_goal = float(np.clip(per_goal, 0.01, 0.85))
+        goals = np.asarray(outcome.goals_team(team_idx, include_et=False), dtype=int)
+        no_sub_involvement *= (1.0 - per_goal) ** goals
+    return float(np.clip(np.mean(1.0 - no_sub_involvement), 0.0, 1.0))
+
+
 def allocate_player_prob(
     outcome: MatchOutcome, team_idx: int, stat: str, share: float, exposure: float,
     comparator: str, threshold: float, half: str = "full", include_et: bool = True,

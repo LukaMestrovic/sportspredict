@@ -62,17 +62,14 @@ def _sample_count(mean: np.ndarray, vmr: float, rng: np.random.Generator) -> np.
     return np.where(mean > 0, values, 0)
 
 
-def total_shots_probability(
-    outcome, model: dict | None, comparator: str, threshold: float,
-    rng: np.random.Generator,
-) -> float:
-    """Price match total shots in regulation; never adds extra-time counts."""
+def sample_team_total_shots(outcome, model: dict | None, rng: np.random.Generator) -> dict[int, np.ndarray]:
+    """Sample regulation total shots by team from simulated shots on target."""
     model = model or {}
     intercept = float(model.get("intercept", 6.5))
     slope = float(model.get("slope", 1.1))
     vmr = float(model.get("vmr", 1.5))
     lookup = model.get("off_target_mean_by_sot") or {}
-    match_total = np.zeros(outcome.n_sims, dtype=int)
+    team_totals: dict[int, np.ndarray] = {}
     for team in (TEAM_A, TEAM_B):
         sot = np.asarray(
             outcome.team_total(SHOTS_ON_TARGET, team, include_et=False), dtype=int,
@@ -82,5 +79,15 @@ def total_shots_probability(
             for value in sot
         ])
         off = _sample_count(means, vmr, rng)
-        match_total += sot + off.astype(int)
+        team_totals[team] = sot + off.astype(int)
+    return team_totals
+
+
+def total_shots_probability(
+    outcome, model: dict | None, comparator: str, threshold: float,
+    rng: np.random.Generator,
+) -> float:
+    """Price match total shots in regulation; never adds extra-time counts."""
+    team_totals = sample_team_total_shots(outcome, model, rng)
+    match_total = team_totals[TEAM_A] + team_totals[TEAM_B]
     return float(np.mean(apply_comparator(match_total, comparator, threshold)))

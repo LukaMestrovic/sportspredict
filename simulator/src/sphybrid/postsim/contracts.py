@@ -52,8 +52,12 @@ def contract_key(market: str, params: dict | None, *, stage: str | None = None) 
         period = params.get("half") or "full"
         scope = ":et" if period == "full" and params.get("include_et") else ""
         return f"first_goal:{period}{scope}:team"
+    if market == "first_goal_half":
+        return f"first_goal_half:{params.get('half', 'unknown')}:reg"
     if market == "compound_and":
         return "compound:first_goal_and_other_team_scores_2h"
+    if market == "team_corners_and_total_shots_more":
+        return "compound:team_more_corners_and_total_shots:reg"
     if market == "any_player_threshold" and params.get("stat") == "goals":
         comparator, threshold = _count_threshold(
             params.get("comparator"), params.get("threshold"),
@@ -64,9 +68,11 @@ def contract_key(market: str, params: dict | None, *, stage: str | None = None) 
             f"{market}:{params.get('stat', 'shots_total')}:"
             f"{params.get('comparator')}:{_number(params.get('threshold'))}:reg"
         )
-    if market in {"substitute_score", "substitution_before_halftime", "red_card",
+    if market in {"substitute_score", "substitute_score_or_assist",
+                  "substitution_before_halftime", "red_card",
                   "both_teams_card", "win_margin", "team_score_no_own",
-                  "lead_any_time", "cards_more_than_goals", "player_full_match"}:
+                  "lead_any_time", "cards_more_than_goals", "player_full_match",
+                  "win_both_halves", "exact_goal_margin"}:
         if market == "substitution_before_halftime":
             regulation = "reg"
         if market == "lead_any_time":
@@ -74,6 +80,8 @@ def contract_key(market: str, params: dict | None, *, stage: str | None = None) 
         if market == "player_full_match":
             regulation = "reg"
         suffix = f":{_number(params.get('threshold'))}" if market == "win_margin" else ""
+        if market == "exact_goal_margin":
+            suffix = f":{_number(params.get('margin'))}"
         if market == "player_full_match":
             suffix = ":player"
         return f"{market}:{regulation}{suffix}"
