@@ -1,211 +1,194 @@
-"""LLM question parser.
+"""Deterministic SportPredict question parser.
 
-Turns a free-text binary question (e.g. "Will Argentina win the match?") into a
-structured intent the matcher can map to an odds market. All of a match's
-questions are parsed in ONE batched call to keep token spend minimal.
-
-Model: configurable via ``PARSER_MODEL`` (default ``gpt-5.4-mini``). See README.
+Known competition wording is mapped locally. Unfamiliar wording is returned as
+structured unresolved work and may be resolved by the manual Codex workflow;
+this module never performs a network or model call.
 """
 from __future__ import annotations
 
-import json
 import re
+from pathlib import Path
+from typing import Iterable, Mapping
 
-import requests
-
-from . import cache, config
-from .matcher import MARKET_KEYS
+from .intent_resolution import (
+    PARSER_SCHEMA_VERSION,
+    lookup_resolution,
+    validate_intent,
+)
 from .teams import normalize_team
 
-# Bump to invalidate cached intents after a prompt/model semantics change.
-PROMPT_VERSION = "p9-open-match-specials"
 
-SYSTEM = """You convert soccer betting questions into structured JSON intents.
-Each question is a YES/NO question about a single match. Output ONLY the
-subject, market and parameters needed to price it. Do NOT estimate probability.
+class ParseResult(dict):
+    """Resolved intents plus explicit metadata for unresolved questions.
 
-Allowed "market" values (use exactly one, or "none" if no market fits):
-{keys}
-
-Field rules:
-- subject: "home" | "away" | "match" | "player"
-    home/away = the team the question is ABOUT (use the given home/away names).
-- player: full player name if subject is "player", else null.
-- comparator:
-    "win"             team to win the match (market=match_winner)
-    "yes"             a yes/no event happens (btts, team_score, etc.)
-    "gte"             a count is >= threshold ("N or more", "at least N")
-    "lte"             a count is <= threshold ("N or fewer", "N or less")
-    "eq"              a count is exactly threshold
-    "odd" | "even"    total goals parity
-    "more"            subject team has strictly MORE than the other team
-    "second_half_more" second half has more goals than first half
-- threshold: the integer N from the question for gte/lte (else null).
-- period: "match" | "1H" | "2H".
-- time_scope: "regulation" | "full_match". "full_match" includes extra time
-  when it is played; explicit regulation/90-minute wording is "regulation".
-- excludes_own_goals: true only when the question explicitly excludes own goals.
-
-If the subject is a named PERSON (not one of the two teams), it is ALWAYS a
-player market with subject="player" — never a team_* market.
-
-Player markets (subject="player", set the player's full name):
-  player_goal_scorer       to score a goal (excluding own goals)
-  player_score_or_assist   to score OR assist a goal
-  player_card              to be booked / receive a card
-  player_shots_on_target   shots on target over/under (use comparator gte/lte)
-  player_goalkeeper_saves  goalkeeper saves over/under (use comparator gte/lte)
-
-Important direct mappings:
-- "at halftime, will the match be tied" -> market=match_draw, subject=match,
-  comparator=yes, period=1H.
-- a team to be winning at halftime, or to score more goals than its opponent in
-  the second half -> market=match_winner, subject=home/away, comparator=win,
-  period=1H/2H.
-- a team to receive more cards than its opponent -> market=cards_compare,
-  subject=home/away, comparator=more.
-- match total shots on target -> market=total_shots_on_target, subject=match.
-  A single team's shots-on-target total is market=team_shots_on_target.
-- a team to score the first goal of the game -> market=first_team_to_score,
-  subject=home/away, comparator=yes, period=match.
-- an own goal to be scored -> market=own_goal, subject=match, comparator=yes.
-- odd/even total goals -> market=total_goals_parity, subject=match,
-  comparator=odd/even.
-
-Knockout markets (emit when the wording fits):
-- a team to qualify/advance to the next round -> to_advance.
-- a team to keep a clean sheet -> team_clean_sheet; to score in both halves ->
-  team_score_both_halves.
-- total shots (on AND off target, NOT "shots on target") -> total_shots; a single
-  team's -> team_shots.
-- a team to win BY N or more goals (winning margin) -> win_margin, comparator=gte,
-  threshold=N (never team_total_goals).
-- both teams to receive a card -> both_teams_card; a penalty awarded ->
-  penalty_awarded; a red card shown -> red_card.
-- a penalty shootout occurrence -> penalty_shootout.
-- at least one match goal in each half -> goal_in_each_half.
-- hydration-break goal windows -> goal_window.
-- a substitute to score -> substitute_score; a substitute to score OR assist ->
-  substitute_score_or_assist.
-- match first goal to be scored in the second half -> first_goal_half.
-- either team to win both halves -> win_both_halves.
-- match decided by exactly N goals -> exact_goal_margin.
-- at least one card in each half -> card_each_half.
-- a card in first- or second-half stoppage time -> card_stoppage.
-- one team to have more corners AND more total shots -> team_corners_and_total_shots_compare.
-- a team to hold a lead at any point -> lead_any_time.
-- more total cards than goals -> cards_more_than_goals.
-- a named player to play the entire match -> player_full_match.
-- the match to go to extra time -> goes_to_extra_time.
-- both halves to have the same number of goals -> highest_scoring_half_draw.
-- a named goalkeeper to make N+ saves -> player_goalkeeper_saves.
-- any named-team player to have N+ shots on target -> any_team_player_shots_on_target.
-- total substitutions -> total_substitutions.
-- first card before first goal -> first_card_before_first_goal.
-A name written "Player (Country)" is ALWAYS that player, never the country's team.
-"in regulation (90 minutes + stoppage time)" means period=match and
-time_scope=regulation. A match-scoped question without that qualifier has
-time_scope=full_match and includes potential extra time.
-
-Use market="none" for compound questions (two events joined by AND/OR). Set
-period to "1H"/"2H" for first/second-half or "at halftime" questions, else
-"match".
-
-Return a JSON object: {{"intents": [{{"id": <int>, "market": ..., "subject": ...,
-"player": ..., "comparator": ..., "threshold": ..., "period": ...,
-"time_scope": ..., "excludes_own_goals": ...}}, ...]}}
-One intent per question, preserving the given id."""
-
-
-def chat_json(messages: list[dict], model: str | None = None) -> str:
-    """Cached, deterministic JSON chat call (parser + compound splitter).
-
-    The OpenAI response is keyed on (prompt version, model, exact messages) and
-    cached forever (ttl=0). Identical questions therefore return byte-identical
-    intents on every re-run, so a question can never flap between sources or
-    probabilities across runs — and re-runs cost $0. ``temperature=0`` + a fixed
-    ``seed`` make the first (cache-miss) call as reproducible as the API allows.
+    This remains a ``dict`` so existing pricing and evidence callers can keep
+    using ``.get()``, iteration, and direct market-ID indexing.
     """
-    model = model or config.PARSER_MODEL
-    key = json.dumps(
-        {"v": PROMPT_VERSION, "model": model, "messages": messages},
-        sort_keys=True,
-    )
-    return cache.get_or_fetch("llm", key, lambda: _client_chat(messages, model), ttl=0)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.unresolved: list[dict] = []
+        self.compounds: dict[str, dict] = {}
+        self.intent_sources: dict[str, str] = {}
+        self.resolution_provenance: dict[str, dict] = {}
+
+    @property
+    def intents(self) -> "ParseResult":
+        return self
 
 
-def _client_chat(messages: list[dict], model: str) -> str:
-    r = requests.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {config.OPENAI_API_KEY}"},
-        json={
-            "model": model,
-            "messages": messages,
-            "temperature": 0,
-            "seed": 7,
-            "response_format": {"type": "json_object"},
-        },
-        timeout=60,
+_COMPOUND_RE = re.compile(
+    r"\b(?:AND|OR)\b|\bscore the first goal of the game and\b"
+)
+
+
+def is_compound_question(question: str) -> bool:
+    """Return whether wording uses one of the supported compound forms."""
+    return bool(_COMPOUND_RE.search(question))
+
+
+def split_compound_template(question: str) -> dict | None:
+    """Split a recurring two-leg compound without any model fallback."""
+    explicit = re.fullmatch(
+        r"Will (.+?)\s+(AND|OR)\s+(.+?)\?", question.strip(),
     )
-    r.raise_for_status()
-    data = r.json()
-    return data["choices"][0]["message"]["content"]
+    if explicit:
+        first, op, second = explicit.groups()
+        return {
+            "op": op,
+            "a": f"Will {first}?",
+            "b": f"Will {second}?",
+        }
+    first_goal = re.fullmatch(
+        r"Will (.+?) score the first goal of the game and "
+        r"(.+?) score in the (first|second) half\?",
+        question.strip(), re.IGNORECASE,
+    )
+    if first_goal:
+        first, second, period = first_goal.groups()
+        return {
+            "op": "AND",
+            "a": f"Will {first} score the first goal of the game?",
+            "b": f"Will {second} score in the {period} half?",
+        }
+    return None
+
+
+def _parse_compound(split: dict | None, home: str, away: str) -> dict | None:
+    if not split or split.get("op") not in {"AND", "OR"}:
+        return None
+    components = []
+    for key in ("a", "b"):
+        question = split.get(key)
+        if not isinstance(question, str) or is_compound_question(question):
+            return None
+        cleaned = _normalize_question(question, home, away)
+        intent = _parse_template(cleaned, home, away)
+        if not intent:
+            return None
+        repaired = validate_intent(_repair_intent(
+            cleaned, intent, home, away, raw_question=question,
+        ))
+        components.append({"question": question, "intent": repaired})
+    return {"op": split["op"], "components": components}
 
 
 def parse_questions(
-    questions: list[dict], home: str, away: str
-) -> dict[str, dict]:
-    """Parse recurring templates locally, then batch unfamiliar questions.
+    questions: Iterable[Mapping],
+    home: str,
+    away: str,
+    *,
+    registry_dir: str | Path | None = None,
+) -> ParseResult:
+    """Parse known questions and report every unfamiliar one without raising."""
+    out = ParseResult()
+    seen_ids: set[str] = set()
+    for index, question in enumerate(questions):
+        if not isinstance(question, Mapping):
+            raise ValueError(f"questions[{index}] must be an object")
+        if "id" not in question or "question" not in question:
+            raise ValueError(f"questions[{index}] requires id and question")
+        market_id = str(question["id"])
+        raw_question = question["question"]
+        if not market_id or market_id in seen_ids:
+            raise ValueError(f"duplicate or empty question id: {market_id!r}")
+        if not isinstance(raw_question, str) or not raw_question.strip():
+            raise ValueError(f"question {market_id!r} must be a non-empty string")
+        seen_ids.add(market_id)
+        cleaned = _normalize_question(raw_question, home, away)
 
-    questions: [{id, question}]. Returns {market_id: intent}.
-    """
-    out: dict[str, dict] = {}
-    unfamiliar: list[tuple[dict, str]] = []  # (question, normalized text)
-    for question in questions:
-        cleaned = _normalize_question(question["question"], home, away)
+        split = split_compound_template(cleaned)
+        compound = _parse_compound(split, home, away) if split else None
         intent = _parse_template(cleaned, home, away)
+        if intent and intent.get("market") != "none":
+            # A dedicated exact contract (for example corners AND total shots)
+            # is stronger than generic logical decomposition.
+            compound = None
+        elif split and compound:
+            intent = _intent("none")
+        elif is_compound_question(cleaned):
+            # Recognizing a conjunction is not enough. Every component must
+            # have a canonical tracked intent or Codex must resolve it.
+            intent = None
+
         if intent:
-            out[question["id"]] = _repair_intent(
-                cleaned, intent, home, away, raw_question=question["question"],
-            )
-        else:
-            unfamiliar.append((question, cleaned))
+            repaired = validate_intent(_repair_intent(
+                cleaned, intent, home, away, raw_question=raw_question,
+            ))
+            out[market_id] = repaired
+            out.intent_sources[market_id] = "tracked-rule"
+            if compound:
+                out.compounds[market_id] = compound
+            continue
 
-    if not unfamiliar:
-        return out
-    if not config.OPENAI_API_KEY:
-        raise RuntimeError("OPENAI_API_KEY not set — unfamiliar question requires parser")
+        registered = lookup_resolution(
+            raw_question, home, away, registry_dir=registry_dir,
+        )
+        if registered:
+            repaired = validate_intent(_repair_intent(
+                cleaned, registered["intent"], home, away,
+                raw_question=raw_question,
+            ))
+            out[market_id] = repaired
+            out.intent_sources[market_id] = "runtime-resolution"
+            if registered.get("compound"):
+                out.compounds[market_id] = registered["compound"]
+            out.resolution_provenance[market_id] = {
+                "resolution_key": registered["resolution_key"],
+                "registry_path": registered["registry_path"],
+                "provenance": registered["provenance"],
+            }
+            continue
 
-    numbered = [{"id": i, "question": cleaned}
-                for i, (_q, cleaned) in enumerate(unfamiliar)]
-    user = (
-        f"Home team: {home}\nAway team: {away}\n\n"
-        f"Questions:\n{json.dumps(numbered, indent=0)}"
-    )
-    content = chat_json(
-        [
-            {"role": "system", "content": SYSTEM.format(keys="\n".join(MARKET_KEYS))},
-            {"role": "user", "content": user},
-        ]
-    )
-    parsed = json.loads(content)
-    for intent in parsed.get("intents", []):
-        idx = intent.get("id")
-        if isinstance(idx, int) and 0 <= idx < len(unfamiliar):
-            question, cleaned = unfamiliar[idx]
-            out[question["id"]] = _repair_intent(
-                cleaned, intent, home, away, raw_question=question["question"],
-            )
+        out.unresolved.append({
+            "market_id": market_id,
+            "question": raw_question.strip(),
+            "normalized_question": cleaned,
+            "reason": "unrecognized-question",
+        })
     return out
 
 
 def parse_question_template(question: str, home: str, away: str) -> dict | None:
-    """Parse one question using only local templates, never the fallback LLM."""
+    """Parse one question using tracked local templates only."""
     cleaned = _normalize_question(question, home, away)
     intent = _parse_template(cleaned, home, away)
+    if intent and intent.get("market") != "none":
+        return validate_intent(
+            _repair_intent(cleaned, intent, home, away, raw_question=question),
+        )
+    split = split_compound_template(cleaned)
+    if split and _parse_compound(split, home, away):
+        return validate_intent(_repair_intent(
+            cleaned, _intent("none"), home, away, raw_question=question,
+        ))
+    if is_compound_question(cleaned):
+        return None
     if not intent:
         return None
-    return _repair_intent(cleaned, intent, home, away, raw_question=question)
+    return validate_intent(
+        _repair_intent(cleaned, intent, home, away, raw_question=question),
+    )
 
 
 _COUNT_MARKETS = {
@@ -265,6 +248,13 @@ def _normalize_question(question: str, home: str, away: str) -> str:
         text = _strip_team_parenthetical(text, team)
     text = re.sub(r"\s*,\s*\)", ")", text)
     text = re.sub(r"\s{2,}", " ", text).replace(" ?", "?").strip()
+    leading_period = re.fullmatch(
+        r"in the (first|second) half,\s*(will .+?)\?",
+        text, re.IGNORECASE,
+    )
+    if leading_period:
+        period, body = leading_period.groups()
+        text = f"{body} in the {period.lower()} half?"
     return text
 
 
@@ -328,8 +318,8 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
     ):
         return _intent("card_stoppage", comparator="gte", threshold=1)
 
-    # Compound decomposition happens in derive; the top-level parser only needs
-    # to keep these questions out of the unfamiliar-question LLM batch.
+    # Compound decomposition metadata is attached by ``parse_questions``. Keep
+    # the top-level market unsupported because there is no single contract.
     if (re.search(r"\b(?:AND|OR)\b", question)
             or "score the first goal of the game and" in lower):
         return _intent("none")
@@ -433,7 +423,7 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
                  r"end (?:level|all square))\b", lower):
         return _intent("match_draw", period=period)
 
-    if re.search(r"second half (?:have|produce|score) more goals than the "
+    if re.search(r"second half (?:have|produce|score) more (?:total )?goals than the "
                  r"first half", lower):
         return _intent("highest_scoring_half_2h", comparator="second_half_more")
     if "both teams score" in lower:
@@ -470,7 +460,11 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
                 return _intent("win_margin", side, "gte", count[1])
         if lower.endswith(" win the match?") or lower.endswith(" win?"):
             return _intent("match_winner", side, "win")
-        if "ahead at halftime" in lower or "winning at halftime" in lower:
+        if (
+            "ahead at halftime" in lower
+            or "winning at halftime" in lower
+            or (period == "1H" and re.search(r"\bbe winning\?", lower))
+        ):
             return _intent("match_winner", side, "win", period="1H")
         if re.search(
             r"\b(?:advance|qualify|progress|go through|reach)\b.*\b(?:"
@@ -483,8 +477,9 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
         if "score in both halves" in lower:
             return _intent("team_score_both_halves", side)
         if ("score the first goal of the game" in lower
-                or "score the first goal of the match" in lower):
-            return _intent("first_team_to_score", side)
+                or "score the first goal of the match" in lower
+                or "score the first goal of the second half" in lower):
+            return _intent("first_team_to_score", side, period=period)
         if re.search(
             r"\bscore(?: a goal| at least 1 goal| in the (?:first|second) half)\?",
             lower,

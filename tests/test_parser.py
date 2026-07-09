@@ -1,12 +1,10 @@
 import unittest
-import json
-from unittest.mock import patch
 
 from bot.parser import _normalize_question, _repair_intent, parse_questions
 
 
 class DeterministicTemplateTests(unittest.TestCase):
-    def test_recurring_templates_do_not_call_the_llm(self):
+    def test_recurring_templates_are_tracked_rules(self):
         cases = [
             ("Will Austria be caught offside 2 or more times?",
              "team_offsides", "away", "gte", 2, "match"),
@@ -36,9 +34,8 @@ class DeterministicTemplateTests(unittest.TestCase):
         questions = [
             {"id": str(i), "question": case[0]} for i, case in enumerate(cases)
         ]
-        with patch("bot.parser.chat_json") as chat:
-            parsed = parse_questions(questions, "Argentina", "Austria")
-        chat.assert_not_called()
+        parsed = parse_questions(questions, "Argentina", "Austria")
+        self.assertFalse(parsed.unresolved)
 
         for i, (_, market, subject, comparator, threshold, period) in enumerate(cases):
             intent = parsed[str(i)]
@@ -47,49 +44,95 @@ class DeterministicTemplateTests(unittest.TestCase):
                  intent["threshold"], intent["period"]),
                 (market, subject, comparator, threshold, period),
             )
+            self.assertEqual(parsed.intent_sources[str(i)], "tracked-rule")
 
-    def test_only_unfamiliar_questions_are_sent_to_the_llm(self):
+    def test_unfamiliar_questions_are_returned_without_network_fallback(self):
         questions = [
             {"id": "known", "question": "Will Argentina win the match?"},
             {"id": "new", "question": "Could something unusual occur?"},
         ]
-        response = json.dumps({"intents": [{
-            "id": 0, "market": "none", "subject": "match",
-            "player": None, "comparator": "yes", "threshold": None,
-            "period": "match",
-        }]})
-        with patch("bot.parser.config.OPENAI_API_KEY", "key"), patch(
-            "bot.parser.chat_json", return_value=response
-        ) as chat:
-            parsed = parse_questions(questions, "Argentina", "Austria")
+        parsed = parse_questions(questions, "Argentina", "Austria")
 
-        sent = chat.call_args.args[0][1]["content"]
-        self.assertIn("Could something unusual occur?", sent)
-        self.assertNotIn("Will Argentina win the match?", sent)
         self.assertEqual(parsed["known"]["market"], "match_winner")
-        self.assertEqual(parsed["new"]["market"], "none")
+        self.assertNotIn("new", parsed)
+        self.assertEqual(parsed.unresolved, [{
+            "market_id": "new",
+            "question": "Could something unusual occur?",
+            "normalized_question": "Could something unusual occur?",
+            "reason": "unrecognized-question",
+        }])
 
-    def test_known_templates_work_without_an_api_key(self):
-        with patch("bot.parser.config.OPENAI_API_KEY", ""), patch(
-            "bot.parser.chat_json"
-        ) as chat:
-            parsed = parse_questions(
-                [{"id": "x", "question": "Will Argentina win the match?"}],
-                "Argentina", "Austria",
-            )
-        chat.assert_not_called()
+    def test_known_templates_need_no_credentials(self):
+        parsed = parse_questions(
+            [{"id": "x", "question": "Will Argentina win the match?"}],
+            "Argentina", "Austria",
+        )
         self.assertEqual(parsed["x"]["subject"], "home")
 
     def test_team_code_in_question_is_not_parsed_as_a_player(self):
-        with patch("bot.parser.chat_json") as chat:
-            parsed = parse_questions(
-                [{"id": "x", "question":
-                  "Will USA have 6 or more shots on target?"}],
-                "USA", "Australia",
-            )
-        chat.assert_not_called()
+        parsed = parse_questions(
+            [{"id": "x", "question":
+              "Will USA have 6 or more shots on target?"}],
+            "USA", "Australia",
+        )
         self.assertEqual(parsed["x"]["market"], "team_shots_on_target")
         self.assertEqual(parsed["x"]["subject"], "home")
+
+    def test_historical_unfamiliar_wordings_are_now_tracked(self):
+        cases = [
+            (
+                "In the second half, will Uruguay have more shots on target than Spain?",
+                "shots_on_target_compare", "home", "more", "2H",
+            ),
+            (
+                "At halftime, will Spain be winning?",
+                "match_winner", "away", "win", "1H",
+            ),
+            (
+                "Will the second half have more total goals than the first half?",
+                "highest_scoring_half_2h", "match", "second_half_more", "match",
+            ),
+            (
+                "Will Spain score the first goal of the second half?",
+                "first_team_to_score", "away", "yes", "2H",
+            ),
+        ]
+        questions = [
+            {"id": str(index), "question": case[0]}
+            for index, case in enumerate(cases)
+        ]
+        parsed = parse_questions(questions, "Uruguay", "Spain")
+        self.assertFalse(parsed.unresolved)
+        for index, (_question, market, subject, comparator, period) in enumerate(cases):
+            intent = parsed[str(index)]
+            self.assertEqual(
+                (intent["market"], intent["subject"], intent["comparator"],
+                 intent["period"]),
+                (market, subject, comparator, period),
+            )
+
+    def test_known_compound_has_canonical_component_metadata(self):
+        question = "Will both teams score AND the match have 3 or more total goals?"
+        parsed = parse_questions(
+            [{"id": "compound", "question": question}],
+            "Argentina", "Austria",
+        )
+        self.assertEqual(parsed["compound"]["market"], "none")
+        self.assertEqual(parsed.compounds["compound"]["op"], "AND")
+        self.assertEqual(
+            [part["intent"]["market"]
+             for part in parsed.compounds["compound"]["components"]],
+            ["btts", "total_goals"],
+        )
+
+    def test_unknown_compound_is_unresolved_not_silently_unsupported(self):
+        question = "Will something unprecedented happen AND the match feel unusual?"
+        parsed = parse_questions(
+            [{"id": "compound", "question": question}],
+            "Argentina", "Austria",
+        )
+        self.assertNotIn("compound", parsed)
+        self.assertEqual(parsed.unresolved[0]["question"], question)
 
 
 class SubjectRepairTests(unittest.TestCase):
@@ -210,11 +253,10 @@ class KnockoutWordingTests(unittest.TestCase):
     """Best-of-32 questions: regulation suffix, (Country) props, new families."""
 
     def _parse(self, question, home, away):
-        with patch("bot.parser.chat_json") as chat:
-            parsed = parse_questions(
-                [{"id": "x", "question": question}], home, away
-            )
-        chat.assert_not_called()  # must stay deterministic (no LLM spend)
+        parsed = parse_questions(
+            [{"id": "x", "question": question}], home, away
+        )
+        self.assertFalse(parsed.unresolved)
         return parsed["x"]
 
     def test_regulation_suffix_is_stripped(self):
@@ -577,9 +619,8 @@ class KnockoutWordingTests(unittest.TestCase):
             ),
         ]
         questions = [{"id": str(i), "question": q} for i, (q, *_rest) in enumerate(cases)]
-        with patch("bot.parser.chat_json") as chat:
-            parsed = parse_questions(questions, "Portugal", "Spain")
-        chat.assert_not_called()
+        parsed = parse_questions(questions, "Portugal", "Spain")
+        self.assertFalse(parsed.unresolved)
 
         for i, (q, market, subject, player, scope) in enumerate(cases):
             intent = parsed[str(i)]
