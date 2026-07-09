@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from bot.evidence import (
+    _apply_card_stoppage_model,
     _compact_simulator_estimate,
     _contract_scope,
     build_match_evidence,
@@ -365,6 +366,56 @@ class EvidenceTests(unittest.TestCase):
             baseline["brier"]["shrunk_empirical_rate"], 0.243283,
         )
 
+    def test_card_stoppage_model_replaces_raw_simulator_context(self):
+        estimate = {
+            "contract_key": "card_window:cards:stoppage_any:reg:>=:1",
+            "probability": 0.3376,
+            "probability_pct": 33.76,
+            "explanation": "Old simulator card-window context.",
+            "historical_evidence": {
+                "empirical_rate": {
+                    "wc2026": {
+                        "available": True, "rate": 0.34375, "observations": 96,
+                    },
+                },
+                "card_stoppage_model": {
+                    "available": True,
+                    "training_scope": "wc2026_settled_before_target",
+                    "observations": 96,
+                    "yes_events": 33,
+                    "empirical_rate": 0.34375,
+                    "mean_total_cards": 3.8,
+                    "beta": 0.08,
+                    "regularization": {"max_abs_logit_adjustment": 0.25},
+                    "brier": {
+                        "empirical_rate": 0.225,
+                        "card_count_model": 0.222,
+                        "always_50": 0.25,
+                    },
+                },
+            },
+        }
+        _apply_card_stoppage_model(estimate, {
+            "source": "api-football",
+            "market_key": "af_bet_80",
+            "line": 4.5,
+            "book_count": 4,
+            "expected_total_cards": 5.8,
+            "over_probability": 0.64,
+        })
+        compact = _compact_simulator_estimate(estimate)
+
+        self.assertGreater(compact["probability_pct"], 33.76)
+        self.assertIn("WC2026-only stoppage-card model", compact["basis"])
+        self.assertEqual(compact["card_stoppage_model"]["observations"], 96)
+        prediction = compact["conditioning"]["wc2026_stoppage_card_prediction"]
+        self.assertEqual(prediction["base_empirical_probability"], 0.34375)
+        self.assertEqual(prediction["expected_total_cards"], 5.8)
+        self.assertEqual(
+            compact["conditioning"]["expected_total_cards_signal"]["source"],
+            "api-football",
+        )
+
     def test_unmapped_question_omits_broad_related_odds(self):
         result = _result({
             "odd": {"market": "none", "subject": "match",
@@ -500,7 +551,7 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(estimates.call_args.kwargs["intents"], result.intents)
         q = evidence["question_evidence"][0]
-        self.assertEqual(evidence["schema_version"], 22)
+        self.assertEqual(evidence["schema_version"], 23)
         self.assertEqual(q["simulator_estimate"], {"probability_pct": 24.1})
         self.assertLess(
             list(q).index("direct_odds"),
@@ -568,7 +619,7 @@ class EvidenceTests(unittest.TestCase):
             )
 
         question = bundle["question_evidence"][0]
-        self.assertEqual(bundle["schema_version"], 22)
+        self.assertEqual(bundle["schema_version"], 23)
         self.assertEqual(question["direct_market_spec"]["bet_id"], 14)
         self.assertEqual(len(question["direct_odds"]), 1)
         self.assertIn("regulation first-team-to-score proxy",
@@ -661,7 +712,7 @@ class ContextEvidenceTests(unittest.TestCase):
         with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
-        self.assertEqual(evidence["schema_version"], 22)
+        self.assertEqual(evidence["schema_version"], 23)
         self.assertEqual(
             list(evidence),
             [

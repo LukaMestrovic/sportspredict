@@ -119,6 +119,35 @@ class WC2026EvidenceTests(unittest.TestCase):
         self.assertEqual(rate["yes_events"], 1)
         self.assertEqual(rate["rate"], 0.5)
 
+    def test_stoppage_card_refresh_exports_card_count_model(self):
+        af = _AF()
+        first_home = af._fixtures[0]["teams"]["home"]["id"]
+        first_away = af._fixtures[0]["teams"]["away"]["id"]
+        second_home = af._fixtures[1]["teams"]["home"]["id"]
+        af.events[1] = [
+            _event("Card", 45, detail="Yellow Card", team_id=first_home, extra=2),
+            _event("Card", 80, detail="Yellow Card", team_id=first_away),
+        ]
+        af.events[2] = [
+            _event("Card", 75, detail="Yellow Card", team_id=second_home),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot = wc2026_evidence.refresh(
+                af, "2026-06-30T01:00:00Z",
+                {"card_window:cards:stoppage_any:reg:>=:1"},
+                path=Path(directory) / "wc.json",
+            )
+
+        contract = snapshot["contracts"]["card_window:cards:stoppage_any:reg:>=:1"]
+        self.assertEqual(contract["wc2026"]["yes_events"], 1)
+        self.assertEqual(contract["wc2026"]["rate"], 0.5)
+        model = contract["card_stoppage_model"]
+        self.assertEqual(model["training_scope"], "wc2026_settled_before_target")
+        self.assertEqual(model["observations"], 2)
+        self.assertEqual(model["yes_events"], 1)
+        self.assertEqual(model["empirical_rate"], 0.5)
+        self.assertEqual(model["mean_total_cards"], 1.5)
+
     def test_first_half_after_first_hydration_boundary_starts_after_minute_22(self):
         af = _AF()
         af.events[1] = [_event("Goal", 22)]

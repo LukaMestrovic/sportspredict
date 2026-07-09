@@ -13,7 +13,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config
+from . import card_stoppage, config
 
 
 SNAPSHOT_PATH = config.ROOT / "cache" / "wc2026_empirical.json"
@@ -61,9 +61,11 @@ def refresh(
                 key, eligible, covered, stage="knockout", cutoff=cutoff,
             ),
         }
+        if key == card_stoppage.CONTRACT_KEY:
+            contracts[key]["card_stoppage_model"] = _card_stoppage_model(covered)
 
     snapshot = {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "target_kickoff": cutoff.isoformat(),
         "eligible_matches": len(eligible),
@@ -153,7 +155,15 @@ def overlay(estimates: dict[str, dict], snapshot: dict) -> dict[str, dict]:
         history = copy.deepcopy(estimate.get("historical_evidence") or {})
         history.setdefault("contract_key", estimate.get("contract_key"))
         empirical = history.setdefault("empirical_rate", {})
-        empirical.update(copy.deepcopy(dynamic))
+        empirical.update({
+            scope: copy.deepcopy(dynamic[scope])
+            for scope in ("wc2026", "wc2026_knockout")
+            if scope in dynamic
+        })
+        if dynamic.get("card_stoppage_model"):
+            history["card_stoppage_model"] = copy.deepcopy(
+                dynamic["card_stoppage_model"],
+            )
         history["wc2026_refresh"] = {
             key: snapshot.get(key) for key in (
                 "generated_at", "target_kickoff", "eligible_matches",
@@ -162,6 +172,31 @@ def overlay(estimates: dict[str, dict], snapshot: dict) -> dict[str, dict]:
         }
         estimate["historical_evidence"] = history
     return estimates
+
+
+def _card_stoppage_model(covered: list[dict]) -> dict:
+    rows = []
+    for row in covered:
+        facts = row.get("facts") or {}
+        values = _labels(card_stoppage.CONTRACT_KEY, facts)
+        total_cards = _total_regulation_cards(facts)
+        if values is None or total_cards is None:
+            continue
+        rows.append({
+            "fixture_id": row.get("fixture_id"),
+            "kickoff": row.get("kickoff"),
+            "stage": row.get("stage"),
+            "total_cards": total_cards,
+            "outcome": values[0],
+        })
+    return card_stoppage.fit_model(rows)
+
+
+def _total_regulation_cards(facts: dict) -> int | None:
+    values = (facts.get("team_cards") or {}).get("full")
+    if values is None or len(values) != 2 or any(value is None for value in values):
+        return None
+    return int(sum(values))
 
 
 def _scope_rate(key: str, eligible: list[dict], covered: list[dict], *, stage, cutoff) -> dict:

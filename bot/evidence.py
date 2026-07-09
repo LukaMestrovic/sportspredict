@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Iterable
 
 from . import (
+    card_stoppage,
     config,
     derive,
     parser as question_parser,
@@ -38,7 +39,7 @@ from .pricing import PriceCtx
 
 
 EVIDENCE_DIR = config.ROOT / "logs" / "llm_pricing_runs"
-EVIDENCE_SCHEMA_VERSION = 22
+EVIDENCE_SCHEMA_VERSION = 23
 MIN_BASELINE_COMPARISON_OBSERVATIONS = 30
 SHRUNK_EMPIRICAL_RATE_SOURCE = "shrunk_empirical_rate"
 BASELINE_BRIER_KEYS = (
@@ -112,6 +113,7 @@ def build_match_evidence(
     live_benchmark = simulator_benchmark.load()
     if simulator_by_market:
         simulator_benchmark.overlay(simulator_by_market, live_benchmark)
+        _apply_live_context_models(simulator_by_market, ctx)
 
     context = getattr(result, "match_context", None) or {}
 
@@ -185,6 +187,68 @@ def build_match_evidence(
     }
     evidence["evidence_hash"] = evidence_hash(evidence)
     return evidence
+
+
+def _apply_live_context_models(estimates: dict[str, dict], ctx: PriceCtx) -> None:
+    """Apply deterministic live-context overlays to simulator fallback estimates."""
+    expected_cards = None
+    expected_cards_loaded = False
+    for estimate in estimates.values():
+        if estimate.get("contract_key") != card_stoppage.CONTRACT_KEY:
+            continue
+        if not expected_cards_loaded:
+            expected_cards = card_stoppage.expected_total_cards_from_context(ctx)
+            expected_cards_loaded = True
+        _apply_card_stoppage_model(estimate, expected_cards)
+
+
+def _apply_card_stoppage_model(
+    estimate: dict,
+    expected_cards: dict | None,
+) -> None:
+    history = estimate.get("historical_evidence") or {}
+    model = history.get("card_stoppage_model")
+    if not isinstance(model, dict):
+        return
+    expected_total = (
+        expected_cards.get("expected_total_cards")
+        if isinstance(expected_cards, dict) else None
+    )
+    prediction = card_stoppage.predict_from_model(model, expected_total)
+    if not prediction:
+        return
+    probability = float(prediction["probability"])
+    estimate["probability"] = round(probability, 6)
+    estimate["probability_pct"] = round(probability * 100.0, 2)
+    estimate["explanation"] = (
+        "WC2026-only stoppage-card model: start from the current tournament "
+        "empirical rate, then apply a capped total-card logit adjustment."
+    )
+    estimate["adjustment_guidance"] = (
+        "Use this as calibrated model context for stoppage-time cards. It is "
+        "centered on the live WC2026 empirical rate and only moves modestly for "
+        "expected full-match card volume; compare with referee/team discipline "
+        "and exact stoppage-card specials if found."
+    )
+    inputs = dict(estimate.get("conditioning_inputs") or {})
+    inputs["wc2026_stoppage_card_prediction"] = {
+        "probability": round(probability, 6),
+        "base_empirical_probability": round(
+            float(prediction["base_probability"]), 6,
+        ),
+        "expected_total_cards": (
+            round(float(expected_total), 6) if expected_total is not None else None
+        ),
+        "training_mean_total_cards": prediction.get("mean_training_total_cards"),
+        "beta": prediction.get("beta"),
+        "logit_adjustment": prediction.get("logit_adjustment"),
+        "raw_logit_adjustment": prediction.get("raw_logit_adjustment"),
+        "max_abs_logit_adjustment": prediction.get("max_abs_logit_adjustment"),
+        "reason": prediction.get("reason"),
+    }
+    if expected_cards:
+        inputs["expected_total_cards_signal"] = expected_cards
+    estimate["conditioning_inputs"] = inputs
 
 
 def _drop_static_wc2026_scopes(estimates: dict[str, dict]) -> None:
@@ -1036,11 +1100,18 @@ def _compact_simulator_estimate(estimate: dict, *, stage: str | None = None) -> 
     }
 
     inputs = estimate.get("conditioning_inputs") or {}
+    conditioning = {}
     draw = inputs.get("regulation_draw_probability")
     if draw is not None:
-        compact["conditioning"] = {
-            "regulation_draw_probability_pct": round(float(draw) * 100.0, 2),
-        }
+        conditioning["regulation_draw_probability_pct"] = round(float(draw) * 100.0, 2)
+    card_prediction = inputs.get("wc2026_stoppage_card_prediction")
+    if isinstance(card_prediction, dict):
+        conditioning["wc2026_stoppage_card_prediction"] = card_prediction
+    expected_cards = inputs.get("expected_total_cards_signal")
+    if isinstance(expected_cards, dict):
+        conditioning["expected_total_cards_signal"] = expected_cards
+    if conditioning:
+        compact["conditioning"] = conditioning
 
     history = estimate.get("historical_evidence") or {}
     empirical_rates = {}
@@ -1068,6 +1139,17 @@ def _compact_simulator_estimate(estimate: dict, *, stage: str | None = None) -> 
         empirical_rates[scope] = rate
     if empirical_rates:
         compact["empirical_rates"] = empirical_rates
+
+    card_model = history.get("card_stoppage_model")
+    if isinstance(card_model, dict):
+        compact["card_stoppage_model"] = {
+            key: value for key, value in card_model.items()
+            if key in (
+                "available", "reason", "training_scope", "observations",
+                "yes_events", "empirical_rate", "mean_total_cards", "beta",
+                "min_training_observations", "regularization", "brier",
+            )
+        }
 
     def compact_contract_comparisons(source: dict) -> dict:
         comparisons = {}
