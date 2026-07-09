@@ -616,7 +616,7 @@ def _repair_intent(
     raw_lower = (raw_question or question).lower()
 
     # --- deterministic period detection ---
-    # Push the period decision out of the LLM for the unambiguous phrasings so
+    # Resolve the period deterministically for unambiguous phrasings so
     # half questions can never silently price as full-match lines (or fall to
     # the web layer) across runs.
     has_1h = bool(re.search(r"\bfirst half\b|\b1st half\b", lower))

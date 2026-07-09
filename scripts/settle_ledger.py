@@ -8,13 +8,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from bot import ledger, simulator_benchmark, wc2026_evidence
 from bot.apifootball import APIFootball
+from bot.operation_lock import operation_lock
 from bot.sportspredict import SportPredict
 from bot.web import WebAPI
 
 
 _SRC_TAG = {"api-football": "AF", "odds-api": "OA", "af+oa": "AF+OA",
             "derived": "DRV", "empirical": "EMP",
-            "llm-pricing": "LLM"}
+            "llm-pricing": "LLM", "manual-codex": "CODEX"}
 
 
 def _print_match_detail(detail: dict) -> None:
@@ -68,6 +69,14 @@ def _print_match_detail(detail: dict) -> None:
 
 def settle_open(path: Path = ledger.LEDGER_PATH) -> tuple[dict, dict]:
     """Settle explicit outcomes and refresh tournament empirical/simulator evidence."""
+    try:
+        with operation_lock():
+            return _settle_open(path)
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
+
+
+def _settle_open(path: Path) -> tuple[dict, dict]:
     sp = SportPredict()
     event = sp.event()
     lobby = sp.lobby(event["id"])

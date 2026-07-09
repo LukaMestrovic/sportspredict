@@ -5,7 +5,7 @@ import math
 import re
 from statistics import mean
 
-from .pricing import PriceCtx
+from .odds_context import PriceCtx
 
 
 CONTRACT_KEY = "card_window:cards:stoppage_any:reg:>=:1"

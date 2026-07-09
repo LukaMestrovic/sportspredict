@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from bot import simulator
-from bot.pricing import PriceCtx
+from bot.odds_context import PriceCtx
 
 
 def _ctx():

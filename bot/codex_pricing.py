@@ -1,45 +1,24 @@
-"""Auditable LLM pricing from match evidence.
+"""Validate and render audited Codex pricing responses.
 
-This layer receives the deterministic evidence JSON for one match and returns
-the submitted probabilities. The model first prices a base from the evidence,
-then writes a researched match read and may move probabilities only through a
-complete, validator-checked language-adjustment audit.
+Codex performs research outside this process.  This module is deliberately a
+pure local boundary: it parses the returned JSON, validates every market and
+public audit field, attaches submission objects, and writes retained reports.
+It contains no model client, network call, or model configuration.
 """
 from __future__ import annotations
 
-import hashlib
 import json
-import os
+import math
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-import requests
-
-from . import cache, config
+from . import config
 from .pipeline import Prediction
 
 
-LLM_PRICING_VERSION = "lp8"
-MODEL = os.environ.get("LLM_PRICING_MODEL", "gpt-5.5")
-REASONING_EFFORT = os.environ.get("LLM_PRICING_REASONING_EFFORT", "high")
-SEARCH_CONTEXT_SIZE = os.environ.get("LLM_PRICING_SEARCH_CONTEXT_SIZE", "medium")
-PROMPT_PATH = config.ROOT / "prompts" / "llm_pricing_prompt.md"
-ENABLED = os.environ.get("LLM_PRICING_ENABLED", "1") != "0"
-# Read timeout (seconds) for the single per-match OpenAI call. This model does
-# web search + medium reasoning over a large evidence payload, which has been
-# observed to exceed 300s. 600s is comfortably above the observed need, and even
-# the two internal retries (worst case 2x) stay inside a typical manual
-# pre-kickoff work window.
-TIMEOUT = int(os.environ.get("LLM_PRICING_TIMEOUT", "600"))
-
-_PRICES = {
-    "gpt-5.5": (5.0, 30.0), "gpt-5": (1.25, 10.0), "gpt-5-mini": (0.25, 2.0),
-    "gpt-5.4-mini": (0.25, 2.0),
-    "gpt-4.1": (2.0, 8.0), "gpt-4.1-mini": (0.4, 1.6),
-}
-_WEB_SEARCH_CALL_USD = 0.01
-LAST_USAGE: dict | None = None
+CODEX_RESPONSE_SCHEMA_VERSION = 1
+PROMPT_PATH = config.ROOT / "prompts" / "codex_pricing_prompt.md"
 
 REQUIRED_AUDIT_FIELDS = (
     "provided_odds_used",
@@ -63,144 +42,25 @@ MATCH_READ_ASPECTS = (
 _prompt_cache: str | None = None
 
 
-_FALLBACK_PROMPT = """You are a football probability analyst. Price every binary
-SportPredict market from the supplied evidence JSON plus web research. Return
-only JSON with match_read_markdown, match_read_sources, and a market entry for
-every market_id. Include base_probability_int, probability_int 1-99, a complete
-language_adjustment audit, provided_odds_used, online_odds_found,
-non_odds_factors_used, ignored_or_downweighted_evidence, reasoning_summary, and
-sources. Include subagent_memos with base-pricing, match-read aspect, and
-question-adjustment public memos. When no direct odds exist, use
-simulator_estimate.calibrated_baseline as the base when present. Do not mention
-hidden reasoning or chain-of-thought."""
-
-
 def _load_prompt() -> str:
     global _prompt_cache
     if _prompt_cache is None:
-        try:
-            _prompt_cache = PROMPT_PATH.read_text(encoding="utf-8")
-        except OSError:
-            _prompt_cache = _FALLBACK_PROMPT
+        _prompt_cache = PROMPT_PATH.read_text(encoding="utf-8")
     return _prompt_cache
-
-
-def _cache_key(match_id: str, evidence_hash: str | None) -> str:
-    prompt_sha = _prompt_sha()
-    return json.dumps({
-        "v": LLM_PRICING_VERSION,
-        "model": MODEL,
-        "reasoning_effort": REASONING_EFFORT,
-        "search_context_size": SEARCH_CONTEXT_SIZE,
-        "match_id": match_id,
-        "evidence_hash": evidence_hash,
-        "prompt_sha": prompt_sha,
-    }, sort_keys=True)
-
-
-def _prompt_sha() -> str:
-    return hashlib.sha1(_load_prompt().encode("utf-8")).hexdigest()[:8]
 
 
 def _extract_json(text: str) -> dict:
     text = text.strip()
     try:
-        return json.loads(text)
+        value = json.loads(text)
     except ValueError:
         match = re.search(r"\{.*\}", text, re.DOTALL)
         if not match:
             raise
-        return json.loads(match.group(0))
-
-
-def _record_usage(data: dict) -> None:
-    global LAST_USAGE
-    usage = data.get("usage") or {}
-    in_tok = usage.get("input_tokens") or usage.get("prompt_tokens") or 0
-    out_tok = usage.get("output_tokens") or usage.get("completion_tokens") or 0
-    web_calls = sum(1 for o in data.get("output", [])
-                    if str(o.get("type", "")).startswith("web_search"))
-    in_rate, out_rate = _PRICES.get(MODEL, (0.0, 0.0))
-    cost = in_tok / 1e6 * in_rate + out_tok / 1e6 * out_rate
-    cost += web_calls * _WEB_SEARCH_CALL_USD
-    LAST_USAGE = {
-        "model": MODEL,
-        "input_tokens": in_tok,
-        "output_tokens": out_tok,
-        "web_search_calls": web_calls,
-        "est_cost_usd": round(cost, 4),
-    }
-    print(f"[llm-pricing] usage model={MODEL} in={in_tok} out={out_tok} "
-          f"web_calls={web_calls} est_cost=${cost:.4f}", flush=True)
-
-
-def _call_llm(evidence: dict) -> dict:
-    payload = {
-        "model": MODEL,
-        "tools": [{"type": "web_search", "search_context_size": SEARCH_CONTEXT_SIZE}],
-        "reasoning": {"effort": REASONING_EFFORT},
-        "input": f"{_load_prompt()}\n\nMATCH EVIDENCE JSON:\n"
-                 f"{json.dumps(evidence, ensure_ascii=False)}",
-    }
-    last_exc: Exception | None = None
-    for _ in range(2):
-        try:
-            r = requests.post(
-                "https://api.openai.com/v1/responses",
-                headers={"Authorization": f"Bearer {config.OPENAI_API_KEY}"},
-                json=payload,
-                timeout=TIMEOUT,
-            )
-            try:
-                r.raise_for_status()
-            except requests.HTTPError as exc:
-                raise RuntimeError(f"{exc}: {r.text[:500]}") from exc
-            data = r.json()
-            _record_usage(data)
-            text = "".join(
-                c.get("text", "")
-                for o in data.get("output", []) if o.get("type") == "message"
-                for c in o.get("content", [])
-            )
-            return _extract_json(text)
-        except (requests.RequestException, ValueError) as exc:
-            last_exc = exc
-    raise last_exc  # type: ignore[misc]
-
-
-def _ask(evidence: dict, *, refresh: bool = False) -> dict:
-    key = _cache_key(
-        evidence["match"]["match_id"], evidence.get("evidence_hash"),
-    )
-    return cache.get_or_fetch(
-        "llm_pricing", key, lambda: _call_llm(evidence), ttl=0, refresh=refresh,
-    )
-
-
-def price_match(
-    result,
-    evidence: dict,
-    evidence_path: Path | None,
-    minutes_before: float | None,
-    *,
-    force: bool = False,
-    refresh: bool = False,
-):
-    """Populate ``result.predictions`` with validated raw LLM probabilities."""
-    if not (force or ENABLED) or not config.OPENAI_API_KEY:
-        _skip_all(result, "LLM pricing unavailable")
-        return result
-    if minutes_before is not None and minutes_before <= 0:
-        _skip_all(result, "LLM pricing refused after kickoff")
-        return result
-
-    try:
-        response = _ask(evidence, refresh=refresh) or {}
-    except Exception as exc:
-        _skip_all(result, f"LLM pricing failed: {exc}")
-        return result
-
-    return apply_pricing_response(result, evidence, evidence_path, response)
+        value = json.loads(match.group(0))
+    if not isinstance(value, dict):
+        raise ValueError("Codex pricing response must be a JSON object")
+    return value
 
 
 def apply_pricing_response(
@@ -211,20 +71,33 @@ def apply_pricing_response(
     *,
     require_all_markets: bool = False,
     model_label: str | None = None,
+    expected_session_id: str | None = None,
+    expected_evidence_hash: str | None = None,
+    directory: Path | None = None,
 ):
     """Validate an audited pricing JSON response and attach predictions."""
+    binding_error = _binding_error(
+        response,
+        expected_session_id=expected_session_id,
+        expected_evidence_hash=expected_evidence_hash,
+    )
+    if binding_error:
+        _skip_all(result, binding_error)
+        if require_all_markets:
+            raise ValueError(binding_error)
+        return result
     match_read = str(response.get("match_read_markdown") or "").strip()
     if not match_read:
-        _skip_all(result, "LLM pricing missing match_read_markdown")
+        _skip_all(result, "Codex pricing missing match_read_markdown")
         if require_all_markets:
-            raise ValueError("LLM pricing missing match_read_markdown")
+            raise ValueError("Codex pricing missing match_read_markdown")
         return result
 
     markets = response.get("markets")
     if not isinstance(markets, list):
-        _skip_all(result, "LLM pricing returned no markets list")
+        _skip_all(result, "Codex pricing returned no markets list")
         if require_all_markets:
-            raise ValueError("LLM pricing returned no markets list")
+            raise ValueError("Codex pricing returned no markets list")
         return result
     ok, reason = validate_response_audit(response, evidence, markets)
     if not ok:
@@ -233,9 +106,9 @@ def apply_pricing_response(
             raise ValueError(reason)
         return result
 
-    result.llm_pricing_briefing = response.get("briefing")
-    result.llm_pricing_sources = response.get("sources") or []
-    result.llm_pricing_response = response
+    result.codex_briefing = response.get("briefing")
+    result.codex_sources = response.get("sources") or []
+    result.codex_response = response
 
     by_market = {
         item.get("market_id"): item for item in markets
@@ -251,7 +124,7 @@ def apply_pricing_response(
         mid = market["id"]
         audit = by_market.get(mid)
         if not audit:
-            _skip(result, market, "LLM pricing omitted market audit")
+            _skip(result, market, "Codex pricing omitted market audit")
             continue
         q_evidence = evidence_by_market.get(mid, {})
         validated = validate_market_audit(audit, q_evidence)
@@ -266,14 +139,14 @@ def apply_pricing_response(
             probability=probability_int / 100.0,
             probability_int=probability_int,
             n_books=len(direct),
-            market_label="LLM audited price",
-            source="llm-pricing",
+            market_label="Codex audited price",
+            source=model_label or "manual-codex",
             book_probabilities=[obs["probability"] for obs in direct
                                 if isinstance(obs.get("probability"), (int, float))],
         )
-        pred.llm_audit = audit
-        pred.llm_sources = audit.get("sources") or []
-        pred.llm_reasoning_summary = audit.get("reasoning_summary")
+        pred.codex_audit = audit
+        pred.codex_sources = audit.get("sources") or []
+        pred.codex_reasoning_summary = audit.get("reasoning_summary")
         result.predictions.append(pred)
 
     if require_all_markets and result.skipped:
@@ -282,21 +155,65 @@ def apply_pricing_response(
 
     audit_path, report_path, match_read_path = write_audit_bundle(
         result, evidence, evidence_path, response, model_label=model_label,
+        directory=directory,
     )
-    result.llm_pricing_audit_path = str(audit_path)
-    result.llm_pricing_report_path = str(report_path)
-    result.llm_match_read_path = str(match_read_path)
+    result.codex_audit_path = str(audit_path)
+    result.codex_report_path = str(report_path)
+    result.codex_match_read_path = str(match_read_path)
     return result
+
+
+def _binding_error(
+    response: dict,
+    *,
+    expected_session_id: str | None,
+    expected_evidence_hash: str | None,
+) -> str | None:
+    """Return a fail-closed error when a response is bound to another run."""
+    if not isinstance(response, dict):
+        return "Codex pricing response must be a JSON object"
+    if response.get("schema_version") != CODEX_RESPONSE_SCHEMA_VERSION:
+        return "Codex response schema_version is missing or unsupported"
+    if expected_session_id is not None:
+        if response.get("session_id") != expected_session_id:
+            return "Codex response session_id does not match the prepared session"
+    if expected_evidence_hash is not None:
+        if response.get("evidence_hash") != expected_evidence_hash:
+            return "Codex response evidence_hash does not match the prepared evidence"
+    return None
 
 
 def validate_response_audit(
     response: dict, evidence: dict, markets: list[dict]
 ) -> tuple[bool, str]:
     """Validate top-level public audit scaffolding."""
+    if not str(response.get("briefing") or "").strip():
+        return False, "Codex pricing briefing must be non-empty"
     for field in ("sources", "match_read_sources"):
         value = response.get(field)
-        if not isinstance(value, list) or not value:
-            return False, f"LLM pricing {field} must be a non-empty list"
+        if not _valid_sources(value):
+            return False, f"Codex pricing {field} must be a non-empty list"
+    expected = _expected_market_keys(evidence)
+    ids = []
+    question_ids = {
+        item.get("market_id"): item.get("question_id")
+        for item in evidence.get("question_evidence", [])
+        if isinstance(item, dict) and item.get("market_id") is not None
+    }
+    for index, market in enumerate(markets):
+        if not isinstance(market, dict) or market.get("market_id") is None:
+            return False, f"Codex pricing markets[{index}] is missing market_id"
+        mid = market["market_id"]
+        if isinstance(mid, bool) or not isinstance(mid, (str, int)):
+            return False, f"Codex pricing markets[{index}] has invalid market_id"
+        ids.append(mid)
+        expected_question_id = question_ids.get(mid)
+        if expected_question_id and market.get("question_id") != expected_question_id:
+            return False, f"Codex pricing market {mid} has wrong question_id"
+    if len(ids) != len(set(ids)):
+        return False, "Codex pricing markets contains duplicate market_id"
+    if set(ids) != expected:
+        return False, "Codex pricing markets must exactly match evidence markets"
     return _validate_subagent_memos(response.get("subagent_memos"), evidence, markets)
 
 
@@ -304,8 +221,16 @@ def _validate_subagent_memos(
     memos, evidence: dict, markets: list[dict]
 ) -> tuple[bool, str]:
     if not isinstance(memos, dict):
-        return False, "LLM pricing missing subagent_memos object"
+        return False, "Codex pricing missing subagent_memos object"
+    expected_sections = {"base_pricing", "match_read_aspects", "question_adjustments"}
+    if set(memos) != expected_sections:
+        return False, "Codex pricing subagent_memos sections are incomplete or unknown"
     expected = _expected_market_keys(evidence)
+    expected_question_ids = {
+        item.get("market_id"): item.get("question_id")
+        for item in evidence.get("question_evidence", [])
+        if isinstance(item, dict) and item.get("market_id") is not None
+    }
     market_audits = {
         item.get("market_id"): item for item in markets
         if isinstance(item, dict) and item.get("market_id") is not None
@@ -313,18 +238,20 @@ def _validate_subagent_memos(
     for section in ("base_pricing", "question_adjustments"):
         rows = memos.get(section)
         if not isinstance(rows, list):
-            return False, f"LLM pricing subagent_memos.{section} must be a list"
+            return False, f"Codex pricing subagent_memos.{section} must be a list"
         seen = set()
         for row in rows:
             if not isinstance(row, dict):
-                return False, f"LLM pricing subagent_memos.{section} contains non-object memo"
+                return False, f"Codex pricing subagent_memos.{section} contains non-object memo"
             mid = row.get("market_id")
             if mid is None:
-                return False, f"LLM pricing subagent_memos.{section} missing market_id"
+                return False, f"Codex pricing subagent_memos.{section} missing market_id"
+            if mid in seen:
+                return False, f"Codex pricing subagent_memos.{section} has duplicate market_id"
             seen.add(mid)
             audit = market_audits.get(mid)
             if not audit:
-                return False, f"LLM pricing subagent_memos.{section} references unknown market"
+                return False, f"Codex pricing subagent_memos.{section} references unknown market"
             if section == "base_pricing":
                 value = row.get("base_probability_int")
                 field = "base_probability_int"
@@ -341,39 +268,44 @@ def _validate_subagent_memos(
                 return False, reason
             if parsed != expected_parsed:
                 return False, (
-                    f"LLM pricing subagent_memos.{section} {field} "
+                    f"Codex pricing subagent_memos.{section} {field} "
                     "does not match market audit"
                 )
             if not str(row.get("memo") or row.get("summary") or "").strip():
-                return False, f"LLM pricing subagent_memos.{section} missing public memo"
-        missing = expected - seen
-        if missing:
+                return False, f"Codex pricing subagent_memos.{section} missing public memo"
+            if not _valid_sources(row.get("sources")):
+                return False, f"Codex pricing subagent_memos.{section} missing sources"
+            expected_question_id = expected_question_ids.get(mid)
+            if expected_question_id and row.get("question_id") != expected_question_id:
+                return False, f"Codex pricing subagent_memos.{section} has wrong question_id"
+            if section == "base_pricing" and not str(row.get("method") or "").strip():
+                return False, "Codex pricing subagent_memos.base_pricing missing method"
+        if seen != expected:
             return False, (
-                f"LLM pricing subagent_memos.{section} missing markets: "
-                f"{sorted(missing)[:3]}"
+                f"Codex pricing subagent_memos.{section} must exactly match evidence markets"
             )
 
     aspects = memos.get("match_read_aspects")
     if not isinstance(aspects, list):
-        return False, "LLM pricing subagent_memos.match_read_aspects must be a list"
+        return False, "Codex pricing subagent_memos.match_read_aspects must be a list"
     expected_aspects = _expected_aspects(evidence)
     seen_aspects = set()
     for row in aspects:
         if not isinstance(row, dict):
-            return False, "LLM pricing subagent_memos.match_read_aspects contains non-object memo"
+            return False, "Codex pricing subagent_memos.match_read_aspects contains non-object memo"
         aspect = row.get("aspect")
+        if aspect in seen_aspects:
+            return False, "Codex pricing subagent_memos.match_read_aspects has duplicate aspect"
         if aspect:
             seen_aspects.add(aspect)
         if not str(row.get("memo") or row.get("summary") or "").strip():
-            return False, "LLM pricing subagent_memos.match_read_aspects missing public memo"
+            return False, "Codex pricing subagent_memos.match_read_aspects missing public memo"
         sources = row.get("sources")
-        if not isinstance(sources, list) or not sources:
-            return False, "LLM pricing subagent_memos.match_read_aspects missing sources"
-    missing_aspects = expected_aspects - seen_aspects
-    if missing_aspects:
+        if not _valid_sources(sources):
+            return False, "Codex pricing subagent_memos.match_read_aspects missing sources"
+    if seen_aspects != expected_aspects:
         return False, (
-            "LLM pricing subagent_memos.match_read_aspects missing aspects: "
-            f"{sorted(missing_aspects)[:3]}"
+            "Codex pricing subagent_memos.match_read_aspects must exactly match expected aspects"
         )
     return True, ""
 
@@ -389,6 +321,14 @@ def _expected_aspects(evidence: dict) -> set:
     workflow = evidence.get("agent_workflow") or {}
     aspects = workflow.get("match_read_aspect_subagents") or MATCH_READ_ASPECTS
     return {str(aspect) for aspect in aspects if aspect}
+
+
+def _valid_sources(value) -> bool:
+    return (
+        isinstance(value, list)
+        and bool(value)
+        and all(isinstance(item, str) and item.strip() for item in value)
+    )
 
 
 def validate_market_audit(
@@ -407,36 +347,65 @@ def validate_market_audit(
     for field in REQUIRED_AUDIT_FIELDS:
         value = audit.get(field)
         if value is None:
-            return False, f"LLM pricing missing audit field: {field}", 0
+            return False, f"Codex pricing missing audit field: {field}", 0
         if field == "reasoning_summary" and not str(value).strip():
-            return False, "LLM pricing missing reasoning summary", 0
+            return False, "Codex pricing missing reasoning summary", 0
         if field != "reasoning_summary" and not isinstance(value, list):
-            return False, f"LLM pricing audit field must be a list: {field}", 0
-        if field == "sources" and not value:
-            return False, "LLM pricing sources must be a non-empty list", 0
+            return False, f"Codex pricing audit field must be a list: {field}", 0
+        if field == "sources" and not _valid_sources(value):
+            return False, "Codex pricing sources must be a non-empty list", 0
     ok, reason = _validate_language_adjustment(
         audit, probability_int, base_probability_int, question_evidence or {},
     )
     if not ok:
         return False, reason, 0
+    direct = (question_evidence or {}).get("direct_odds") or []
+    if direct and not audit.get("provided_odds_used"):
+        ignored_text = json.dumps(
+            audit.get("ignored_or_downweighted_evidence") or [],
+            ensure_ascii=False,
+        ).lower()
+        direct_tokens = {
+            str(value).lower()
+            for observation in direct if isinstance(observation, dict)
+            for value in (
+                observation.get("bookmaker"), observation.get("contract"),
+                observation.get("market_key"),
+            )
+            if value
+        }
+        explicitly_rejected = (
+            "provided direct odd" in ignored_text
+            or "direct odd" in ignored_text
+            or any(token in ignored_text for token in direct_tokens)
+        )
+        if not explicitly_rejected:
+            return (
+                False,
+                "Codex pricing ignored provided direct odds without an explicit audit reason",
+                0,
+            )
     candidates = (question_evidence or {}).get("online_odds_candidates") or []
-    if candidates and not _audit_uses_online_candidate(audit, candidates):
+    if candidates and not _audit_uses_all_online_candidates(audit, candidates):
         return (
             False,
-            "LLM pricing ignored pre-collected online odds candidates",
+            "Codex pricing ignored one or more pre-collected online odds candidates",
             0,
         )
     return True, "", probability_int
 
 
 def _probability_int(value, field: str) -> tuple[bool, str, int]:
-    if not isinstance(value, (int, float)):
-        return False, f"LLM pricing missing numeric {field}", 0
-    rounded = round(float(value))
-    if abs(float(value) - rounded) > 1e-9:
-        return False, f"LLM pricing {field} must be an integer", 0
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False, f"Codex pricing missing numeric {field}", 0
+    numeric = float(value)
+    if not math.isfinite(numeric):
+        return False, f"Codex pricing {field} must be finite", 0
+    rounded = round(numeric)
+    if abs(numeric - rounded) > 1e-9:
+        return False, f"Codex pricing {field} must be an integer", 0
     if rounded < 1 or rounded > 99:
-        return False, f"LLM pricing {field} outside 1-99", 0
+        return False, f"Codex pricing {field} outside 1-99", 0
     return True, "", int(rounded)
 
 
@@ -448,34 +417,40 @@ def _validate_language_adjustment(
 ) -> tuple[bool, str]:
     adjustment = audit.get("language_adjustment")
     if not isinstance(adjustment, dict):
-        return False, "LLM pricing missing language_adjustment object"
+        return False, "Codex pricing missing language_adjustment object"
     required = (
         "action", "direction", "move_points", "confidence", "base_used",
         "match_read_evidence", "additional_research", "why_move_or_hold",
     )
     for field in required:
         if field not in adjustment:
-            return False, f"LLM pricing language_adjustment missing field: {field}"
+            return False, f"Codex pricing language_adjustment missing field: {field}"
 
     ok, reason, base_used = _probability_int(adjustment.get("base_used"), "base_used")
     if not ok:
         return False, reason
     if base_used != base_probability_int:
-        return False, "LLM pricing language_adjustment base_used != base_probability_int"
+        return False, "Codex pricing language_adjustment base_used != base_probability_int"
 
     move_raw = adjustment.get("move_points")
-    if not isinstance(move_raw, (int, float)):
-        return False, "LLM pricing language_adjustment missing numeric move_points"
-    move_points = round(float(move_raw))
-    if abs(float(move_raw) - move_points) > 1e-9 or move_points < 0:
-        return False, "LLM pricing language_adjustment move_points must be a non-negative integer"
+    if isinstance(move_raw, bool) or not isinstance(move_raw, (int, float)):
+        return False, "Codex pricing language_adjustment missing numeric move_points"
+    move_numeric = float(move_raw)
+    if not math.isfinite(move_numeric):
+        return False, "Codex pricing language_adjustment move_points must be finite"
+    move_points = round(move_numeric)
+    if abs(move_numeric - move_points) > 1e-9 or move_points < 0:
+        return False, "Codex pricing language_adjustment move_points must be a non-negative integer"
 
     action = str(adjustment.get("action") or "").lower().strip()
     direction = str(adjustment.get("direction") or "").lower().strip()
     if action not in {"hold", "move"}:
-        return False, "LLM pricing language_adjustment action must be hold or move"
+        return False, "Codex pricing language_adjustment action must be hold or move"
     if direction not in {"none", "up", "down"}:
-        return False, "LLM pricing language_adjustment direction must be none, up, or down"
+        return False, "Codex pricing language_adjustment direction must be none, up, or down"
+    confidence = str(adjustment.get("confidence") or "").lower().strip()
+    if confidence not in {"low", "medium", "high"}:
+        return False, "Codex pricing language_adjustment confidence must be low, medium, or high"
 
     if direction == "up":
         expected = base_probability_int + move_points
@@ -484,30 +459,30 @@ def _validate_language_adjustment(
     else:
         expected = base_probability_int
     if expected != probability_int:
-        return False, "LLM pricing language_adjustment move does not match final probability"
+        return False, "Codex pricing language_adjustment move does not match final probability"
 
     if move_points == 0:
         if action != "hold" or direction != "none":
-            return False, "LLM pricing zero move must use action=hold and direction=none"
+            return False, "Codex pricing zero move must use action=hold and direction=none"
     else:
         if action != "move" or direction == "none":
-            return False, "LLM pricing non-zero move must use action=move and direction up/down"
+            return False, "Codex pricing non-zero move must use action=move and direction up/down"
         if not str(adjustment.get("why_move_or_hold") or "").strip():
-            return False, "LLM pricing non-zero move missing why_move_or_hold"
+            return False, "Codex pricing non-zero move missing why_move_or_hold"
         evidence_items = adjustment.get("match_read_evidence")
         if not isinstance(evidence_items, list) or not evidence_items:
-            return False, "LLM pricing non-zero move missing match_read_evidence"
+            return False, "Codex pricing non-zero move missing match_read_evidence"
 
     if not str(adjustment.get("why_move_or_hold") or "").strip():
-        return False, "LLM pricing language_adjustment missing why_move_or_hold"
+        return False, "Codex pricing language_adjustment missing why_move_or_hold"
     if not isinstance(adjustment.get("match_read_evidence"), list):
-        return False, "LLM pricing language_adjustment match_read_evidence must be a list"
+        return False, "Codex pricing language_adjustment match_read_evidence must be a list"
     if not isinstance(adjustment.get("additional_research"), list):
-        return False, "LLM pricing language_adjustment additional_research must be a list"
+        return False, "Codex pricing language_adjustment additional_research must be a list"
 
     cap = _movement_cap(question_evidence)
     if move_points > cap:
-        return False, f"LLM pricing language_adjustment move exceeds {cap} point cap"
+        return False, f"Codex pricing language_adjustment move exceeds {cap} point cap"
     return True, ""
 
 
@@ -520,7 +495,7 @@ def _movement_cap(question_evidence: dict) -> int:
     return 10
 
 
-def _audit_uses_online_candidate(audit: dict, candidates: list[dict]) -> bool:
+def _audit_uses_all_online_candidates(audit: dict, candidates: list[dict]) -> bool:
     online = audit.get("online_odds_found") or []
     if not online:
         return False
@@ -529,13 +504,10 @@ def _audit_uses_online_candidate(audit: dict, candidates: list[dict]) -> bool:
         bookmaker = str(candidate.get("bookmaker") or "").lower()
         url = str(candidate.get("url") or "").lower()
         contract = str(candidate.get("contract") or "").lower()
-        if bookmaker and bookmaker in text:
-            return True
-        if url and url in text:
-            return True
-        if contract and contract in text:
-            return True
-    return False
+        tokens = [token for token in (bookmaker, url, contract) if token]
+        if not tokens or not any(token in text for token in tokens):
+            return False
+    return True
 
 
 def write_audit_bundle(
@@ -547,28 +519,30 @@ def write_audit_bundle(
     directory: Path | None = None,
     model_label: str | None = None,
 ) -> tuple[Path, Path, Path]:
-    directory = directory or config.ROOT / "logs" / "llm_pricing_runs"
+    explicit_directory = directory is not None
+    directory = directory or config.ROOT / "logs" / "codex_runs"
     directory.mkdir(parents=True, exist_ok=True)
     match = evidence.get("match", {})
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     slug = _slug(f"{match.get('home') or 'home'}_vs_{match.get('away') or 'away'}")
-    audit_path = directory / f"{stamp}_{slug}_llm_audit.json"
-    report_path = directory / f"{stamp}_{slug}_llm_audit.md"
-    match_read_path = directory / f"{stamp}_{slug}_match_read.md"
+    prefix = "" if explicit_directory else f"{stamp}_{slug}_"
+    audit_path = directory / f"{prefix}audit.json"
+    report_path = directory / f"{prefix}audit.md"
+    match_read_path = directory / f"{prefix}match_read.md"
 
-    model = model_label or MODEL
+    model = model_label or "manual-codex"
     match_read_text = str(response.get("match_read_markdown") or "").strip()
     match_read_path.write_text(match_read_text + "\n")
-    result.llm_match_read_path = str(match_read_path)
+    result.codex_match_read_path = str(match_read_path)
     payload = {
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "model": model,
+        "analyst": model,
         "evidence_path": str(evidence_path) if evidence_path else None,
         "evidence_hash": evidence.get("evidence_hash"),
         "match_read_path": str(match_read_path),
         "match_read_sources": response.get("match_read_sources") or [],
         "response": response,
-        "predictions": [p.llm_audit for p in result.predictions],
+        "predictions": [p.codex_audit for p in result.predictions],
         "skipped": [{"question": q, "why": why} for q, why in result.skipped],
     }
     audit_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
@@ -589,14 +563,14 @@ def _markdown_report(
 ) -> str:
     match = evidence.get("match", {})
     lines = [
-        f"# LLM pricing audit: {match.get('home')} vs {match.get('away')}",
+        f"# Codex pricing audit: {match.get('home')} vs {match.get('away')}",
         "",
         f"- kickoff: {match.get('kickoff')}",
-        f"- model: {model_label or MODEL}",
+        f"- analyst: {model_label or 'manual-codex'}",
         f"- evidence: {evidence_path or 'not written'}",
         f"- evidence hash: {evidence.get('evidence_hash')}",
     ]
-    match_read_path = getattr(result, "llm_match_read_path", None)
+    match_read_path = getattr(result, "codex_match_read_path", None)
     if match_read_path:
         lines.append(f"- match read: {match_read_path}")
     if response.get("match_read_sources"):
@@ -612,7 +586,7 @@ def _markdown_report(
     context_avail = _context_available(evidence)
     lines.extend(_context_section(evidence, context_avail))
 
-    audits = {p.market_id: p.llm_audit for p in result.predictions}
+    audits = {p.market_id: p.codex_audit for p in result.predictions}
     evidence_by_market = {
         item["market_id"]: item for item in evidence.get("question_evidence", [])
     }

@@ -1,4 +1,4 @@
-"""Public bookmaker odds snippets used as deterministic LLM evidence.
+"""Public bookmaker odds snippets used as deterministic Codex evidence.
 
 Provider APIs remain the primary odds source. This module fills narrow gaps for
 public bookmaker pages that quote stat markets our APIs do not expose, keeping

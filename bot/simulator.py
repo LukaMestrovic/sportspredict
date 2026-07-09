@@ -3,7 +3,7 @@
 The live-pricing package intentionally keeps its imports tiny. The heavier
 learned-rate stack lives under ``simulator/``, so this module invokes its stable
 JSON bridge in a child process and returns compact, auditable context for markets
-the LLM cannot price from a direct bookmaker contract.
+Codex cannot price from a direct bookmaker contract.
 
 The bridge accepts one JSON object on stdin with ``home``/``away``/``questions``
 and optional ``kickoff``/``stage``/``referee``/``lineups``/``n_sims``. Schema 2.2 returns
@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Iterable
 
 from . import config
-from .pricing import PriceCtx
+from .odds_context import PriceCtx
 
 
 SIMULATOR_ROOT = config.ROOT / "simulator"
@@ -211,7 +211,7 @@ def _reports_by_market(raw: dict, *, proxy_notes: dict[str, str] | None = None) 
     Brier comparisons against both 50/50 and prior empirical-rate baselines, with
     sample sizes for all-history and WC2026, each scope possibly ``available:
     false``). The evidence builder later projects these internals into the small
-    decision-only structure sent to the pricing LLM. Match-level internals, other
+    decision-only structure sent to the Codex agent. Match-level internals, other
     questions' probabilities and ``unsupported_questions`` are not attached here.
     """
     raw = raw or {}
@@ -235,7 +235,7 @@ def _reports_by_market(raw: dict, *, proxy_notes: dict[str, str] | None = None) 
             adjustment_guidance = f"{proxy_note} {adjustment_guidance}"
         note = (
             "Learned-rate simulator context only; not a final anchor. The "
-            "pricing LLM must weigh it against its disclosed conditioning inputs, "
+            "Codex must weigh it against its disclosed conditioning inputs, "
             "lineups, tactics, game state, referee, and market freshness."
         )
         if proxy_note:
@@ -260,7 +260,7 @@ def _reports_by_market(raw: dict, *, proxy_notes: dict[str, str] | None = None) 
 
 
 def _simulator_adjustment_guidance(rep: dict) -> str:
-    """Bot-side LLM directions for a simulator fallback estimate."""
+    """Codex-facing directions for a simulator fallback estimate."""
     family = str(rep.get("family") or "").lower()
     question = str(rep.get("question") or "").lower()
     key = str(rep.get("contract_key") or "").lower()
@@ -420,7 +420,7 @@ def _goal_method_estimates(
             "model": model,
             "note": (
                 "Goal-method model context only; not a final anchor. The pricing "
-                "LLM should still prefer exact/direct market odds when available "
+                "Codex should still prefer exact/direct market odds when available "
                 "and treat the 314-match StatsBomb label source as a conservative "
                 "fallback."
             ),

@@ -1,7 +1,7 @@
-"""Build auditable per-match evidence for the LLM pricing layer.
+"""Build auditable per-match evidence for manual Codex pricing.
 
 The evidence file is the deterministic handoff between provider odds and the
-raw LLM judgement. It contains per-book de-vigged probabilities for the exact
+Codex agent's judgement. It contains per-book de-vigged probabilities for the exact
 SportPredict contract, or one simulator fallback when no exact price exists.
 Broad related-market bundles are deliberately excluded.
 """
@@ -18,7 +18,6 @@ from typing import Iterable
 from . import (
     card_stoppage,
     config,
-    derive,
     parser as question_parser,
     public_odds,
     simulator,
@@ -35,11 +34,11 @@ from .matcher import (
     match_intent,
     match_intent_oddsapi,
 )
-from .pricing import PriceCtx
+from .odds_context import PriceCtx
 
 
-EVIDENCE_DIR = config.ROOT / "logs" / "llm_pricing_runs"
-EVIDENCE_SCHEMA_VERSION = 23
+EVIDENCE_DIR = config.ROOT / "logs" / "codex_runs"
+EVIDENCE_SCHEMA_VERSION = 24
 MIN_BASELINE_COMPARISON_OBSERVATIONS = 30
 SHRUNK_EMPIRICAL_RATE_SOURCE = "shrunk_empirical_rate"
 BASELINE_BRIER_KEYS = (
@@ -149,6 +148,7 @@ def build_match_evidence(
             item["simulator_estimate"] = simulator_estimate
         component_evidence = _compound_component_evidence(
             question, result.home, result.away, ctx,
+            compound=(getattr(result, "compounds", {}) or {}).get(mid),
         )
         if component_evidence:
             item["compound_component_evidence"] = component_evidence
@@ -185,6 +185,8 @@ def build_match_evidence(
         "injuries": context.get("injuries") or {},
         "question_evidence": question_evidence,
     }
+    if getattr(result, "context_error", None):
+        evidence["context_error"] = result.context_error
     evidence["evidence_hash"] = evidence_hash(evidence)
     return evidence
 
@@ -268,13 +270,21 @@ def _drop_static_wc2026_scopes(estimates: dict[str, dict]) -> None:
             rows.pop("wc2026_knockout", None)
 
 
-def write_evidence(evidence: dict, *, directory: Path = EVIDENCE_DIR) -> Path:
+def write_evidence(
+    evidence: dict,
+    *,
+    directory: Path = EVIDENCE_DIR,
+    filename: str | None = None,
+) -> Path:
     """Persist the evidence JSON and return its path."""
     directory.mkdir(parents=True, exist_ok=True)
     match = evidence.get("match", {})
     kickoff = str(match.get("kickoff") or "unknown").replace(":", "").replace("-", "")
     slug = _slug(f"{match.get('home') or 'home'}_vs_{match.get('away') or 'away'}")
-    path = directory / f"{kickoff}_{slug}_{evidence['evidence_hash'][:10]}_evidence.json"
+    path = directory / (
+        filename
+        or f"{kickoff}_{slug}_{evidence['evidence_hash'][:10]}_evidence.json"
+    )
     path.write_text(
         json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=False) + "\n"
     )
@@ -313,14 +323,39 @@ def _compound_component_evidence(
     home: str,
     away: str,
     ctx: PriceCtx,
+    *,
+    compound: dict | None = None,
 ) -> dict | None:
     """Deterministic component odds for recurring compound questions."""
-    split = derive.split_compound_template(question)
-    if not split:
-        return None
+    if compound:
+        operator = compound.get("op")
+        raw_components = compound.get("components") or []
+        if operator not in {"AND", "OR"} or len(raw_components) != 2:
+            return None
+        parsed_components = [
+            (item.get("question"), item.get("intent"))
+            for item in raw_components
+            if isinstance(item, dict)
+        ]
+        if len(parsed_components) != 2:
+            return None
+    else:
+        split = question_parser.split_compound_template(question)
+        if not split:
+            return None
+        operator = split["op"]
+        parsed_components = [
+            (split["a"], question_parser.parse_question_template(
+                split["a"], home, away,
+            )),
+            (split["b"], question_parser.parse_question_template(
+                split["b"], home, away,
+            )),
+        ]
     components = []
-    for label, component_question in (("A", split["a"]), ("B", split["b"])):
-        intent = question_parser.parse_question_template(component_question, home, away)
+    for label, (component_question, intent) in zip(("A", "B"), parsed_components):
+        if not component_question or not intent:
+            return None
         direct, spec = _direct_odds(intent, ctx)
         direct_compact = [_compact_direct_odd(obs) for obs in direct]
         components.append({
@@ -332,7 +367,7 @@ def _compound_component_evidence(
             "decision_basis": _decision_basis(direct_compact, [], None),
         })
     return {
-        "operator": split["op"],
+        "operator": operator,
         "components": components,
         "note": (
             "Use exact combined online odds first. If none exist, use these "
@@ -809,7 +844,7 @@ def _player_form_guidance(intent: dict | None) -> str | None:
 def _stat_market_guidance(
     intent: dict | None, question: str, home: str, away: str
 ) -> str | None:
-    """Push the LLM toward exact online stat markets when providers lack them."""
+    """Push Codex toward exact online stat markets when providers lack them."""
     intent = intent or {}
     market = intent.get("market")
     lower = question.lower()
@@ -1086,7 +1121,7 @@ def _compact_direct_odd(observation: dict) -> dict:
 
 
 def _compact_simulator_estimate(estimate: dict, *, stage: str | None = None) -> dict:
-    """Project the verbose internal simulator report into LLM decision inputs."""
+    """Project the verbose internal simulator report into Codex decision inputs."""
     probability_pct = estimate.get("probability_pct")
     if probability_pct is None and estimate.get("probability") is not None:
         probability_pct = round(float(estimate["probability"]) * 100.0, 2)

@@ -7,7 +7,7 @@ set -uo pipefail
 case "${1:-}" in
   manual)
     shift
-    exec python -m scripts.manual_submit "$@"
+    exec python -m scripts.codex_workflow "$@"
     ;;
   settle)
     shift

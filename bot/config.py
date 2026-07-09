@@ -22,7 +22,6 @@ _load_env()
 
 SPORTSPREDICT_KEY = os.environ.get("SPORTSPREDICT_KEY", "")
 APIFOOTBALL_KEY = os.environ.get("APIFOOTBALL_KEY", "")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
 
 SP_BASE = "https://api.sportspredict.com/api/v1"
@@ -66,10 +65,3 @@ REFEREE_SCAN_LEAGUES = _int_list(os.environ.get(
 REFEREE_SCAN_SEASONS = _int_list(os.environ.get(
     "REFEREE_SCAN_SEASONS", f"{WC_SEASON - 1},{WC_SEASON - 2}",
 ))
-
-# Model for structured question parsing. Parser responses are cached to disk
-# (see parser.chat_json), so the model is a one-time tournament cost and we use
-# the most reliable affordable option rather than the cheapest. gpt-5.4-mini
-# parses period/market extraction reliably and accepts temperature=0 + seed on
-# chat/completions, so re-runs stay deterministic and then cost $0.
-PARSER_MODEL = os.environ.get("PARSER_MODEL", "gpt-5.4-mini")

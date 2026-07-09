@@ -1,20 +1,20 @@
-"""Orchestrates one match end-to-end.
+"""Prepare deterministic match evidence and submit audited Codex prices.
 
-Live path:
-  questions -> parser -> evidence -> audited LLM prices
-
-The older deterministic cascade is retained only for explicit validation/backtest
-calls that must not run web-grounded LLM pricing after kickoff.
+The application never invokes a language model.  Preparation stops if a
+question needs a manual Codex intent resolution; once every intent is known it
+collects provider evidence and returns an immutable handoff for the external
+Codex agent/subagent workflow.
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 
-from . import derive, evidence, ledger, lineups as lineup_fetcher, match_context
+from . import evidence, ledger, match_context
 from .apifootball import APIFootball
 from .oddsapi import OddsAPI
+from .odds_context import PriceCtx
 from .parser import parse_questions
-from .pricing import PriceCtx, price_intent
 from .sportspredict import SportPredict
 
 @dataclass
@@ -27,11 +27,9 @@ class Prediction:
     market_label: str
     source: str = "api-football"  # odds or derivation source that priced it
     book_probabilities: list[float] = field(default_factory=list)
-    # Final LLM pricing audit fields.
-    llm_audit: dict = field(default_factory=dict)
-    llm_sources: list = field(default_factory=list)
-    llm_reasoning_summary: str | None = None
-
+    codex_audit: dict = field(default_factory=dict)
+    codex_sources: list = field(default_factory=list)
+    codex_reasoning_summary: str | None = None
 
 @dataclass
 class MatchResult:
@@ -43,6 +41,9 @@ class MatchResult:
     skipped: list[tuple[str, str]] = field(default_factory=list)  # (question, why)
     markets: list[dict] = field(default_factory=list)
     intents: dict[str, dict] = field(default_factory=dict)
+    compounds: dict[str, dict] = field(default_factory=dict)
+    intent_sources: dict[str, str] = field(default_factory=dict)
+    intent_resolutions: dict[str, dict] = field(default_factory=dict)
     market_specs: dict[str, dict | None] = field(default_factory=dict)
     skip_reasons: dict[str, str] = field(default_factory=dict)
     af_books: list[dict] = field(default_factory=list)
@@ -51,12 +52,22 @@ class MatchResult:
     evidence_path: str | None = None
     evidence_hash: str | None = None
     match_context: dict | None = None
-    llm_pricing_briefing: str | None = None
-    llm_pricing_sources: list = field(default_factory=list)
-    llm_pricing_response: dict | None = None
-    llm_pricing_audit_path: str | None = None
-    llm_pricing_report_path: str | None = None
-    llm_match_read_path: str | None = None
+    context_error: str | None = None
+    codex_briefing: str | None = None
+    codex_sources: list = field(default_factory=list)
+    codex_response: dict | None = None
+    codex_audit_path: str | None = None
+    codex_report_path: str | None = None
+    codex_match_read_path: str | None = None
+    session_id: str | None = None
+    session_manifest_path: str | None = None
+
+class UnresolvedQuestionsError(RuntimeError):
+    """Raised before provider-odds work when parser resolutions are required."""
+
+    def __init__(self, unresolved: list[dict]):
+        super().__init__(f"{len(unresolved)} question(s) require intent resolution")
+        self.unresolved = unresolved
 
 
 class PlatformVerificationError(RuntimeError):
@@ -65,21 +76,15 @@ class PlatformVerificationError(RuntimeError):
         self.verification = verification
 
 
-def _clamp_int(p: float) -> int:
-    return max(1, min(99, round(p * 100)))
-
-
-def run_match(
+def prepare_match(
     sp_match: dict,
     markets: list[dict],
     af: APIFootball,
     oa: OddsAPI | None = None,
     *,
-    llm_pricing_enabled: bool = True,
-    llm_pricing_refresh: bool = False,
-    llm_pricing_call: bool = True,
     lineups: list[dict] | None = None,
     minutes_before: float | None = None,
+    evidence_directory: Path | None = None,
 ) -> MatchResult:
     fixture = af.find_fixture(sp_match["opening_time"], sp_match.get("name"))
     res = MatchResult(
@@ -98,7 +103,14 @@ def run_match(
     res.home, res.away = home, away
 
     intents = parse_questions(markets, home, away)
+    if getattr(intents, "unresolved", None):
+        raise UnresolvedQuestionsError(intents.unresolved)
     res.intents = intents
+    res.compounds = dict(getattr(intents, "compounds", {}))
+    res.intent_sources = dict(getattr(intents, "intent_sources", {}))
+    res.intent_resolutions = dict(
+        getattr(intents, "resolution_provenance", {})
+    )
     ctx = PriceCtx(
         home=home, away=away,
         af_books=af.odds(fixture["fixture"]["id"]),
@@ -108,83 +120,35 @@ def run_match(
     )
     res.af_books = ctx.af_books
 
-    if llm_pricing_enabled:
-        from . import llm_pricing
-
-        if minutes_before is None:
-            kickoff_dt = datetime.fromisoformat(
-                sp_match["opening_time"].replace("Z", "+00:00")
-            )
-            minutes_before = (
-                kickoff_dt - datetime.now(timezone.utc)
-            ).total_seconds() / 60.0
-        if not lineups:
-            lineups = lineup_fetcher.fetch_lineups(
-                af, fixture, refresh=llm_pricing_refresh,
-            )
-        try:
-            res.match_context = match_context.build(af, fixture, home, away, lineups)
-        except Exception:
-            res.match_context = {}
-        bundle = evidence.build_match_evidence(res, ctx, lineups, minutes_before, af=af)
-        path = evidence.write_evidence(bundle)
-        res.evidence_json = bundle
-        res.evidence_path = str(path)
-        res.evidence_hash = bundle.get("evidence_hash")
-        res.market_specs = {
-            item["market_id"]: item.get("direct_market_spec")
-            for item in bundle.get("question_evidence", [])
-        }
-        res.oa_observations = list(getattr(ctx.oa, "observations", [])) if ctx.oa else []
-        if llm_pricing_call:
-            llm_pricing.price_match(
-                res, bundle, path, minutes_before, refresh=llm_pricing_refresh,
-            )
-        return res
-
-    for m in markets:
-        q = m["question"]
-        intent = intents.get(m["id"])
-        out = src = spec = None
-        skip_reason = "no source could price it"
-        if derive.is_compound_question(q):
-            # 1) compound -> derive from the two component markets
-            out, src = derive.price_compound(q, ctx)
-            if not out:
-                out, src = derive.price_empirical(q, intent, ctx)
-            skip_reason = "compound component unavailable"
-        else:
-            # 2) single market: API-Football -> Odds API
-            if intent:
-                out, src, spec = price_intent(intent, ctx)
-                if intent.get("market") == "none":
-                    skip_reason = "parser marked unsupported"
-                elif spec:
-                    skip_reason = "mapped contract or line unavailable"
-                else:
-                    skip_reason = "no direct market mapping"
-            else:
-                skip_reason = "parser returned no intent"
-            if not out:
-                out, src = derive.price_empirical(q, intent, ctx)
-        res.market_specs[m["id"]] = spec
-        if out:
-            res.predictions.append(_mk_pred(m, out, src))
-        else:
-            res.skipped.append((q, skip_reason))
-            res.skip_reasons[m["id"]] = skip_reason
-    res.af_books = ctx.af_books
-    res.oa_observations = list(getattr(ctx.oa, "observations", []))
-    return res
-
-
-def _mk_pred(m: dict, out: dict, source: str) -> Prediction:
-    return Prediction(
-        market_id=m["id"], question=m["question"],
-        probability=out["probability"], probability_int=_clamp_int(out["probability"]),
-        n_books=out["n_books"], market_label=out["label"], source=source,
-        book_probabilities=out.get("book_probabilities", []),
+    if minutes_before is None:
+        kickoff_dt = datetime.fromisoformat(
+            sp_match["opening_time"].replace("Z", "+00:00")
+        )
+        minutes_before = (
+            kickoff_dt - datetime.now(timezone.utc)
+        ).total_seconds() / 60.0
+    try:
+        res.match_context = match_context.build(af, fixture, home, away, lineups)
+    except Exception as exc:
+        res.match_context = {}
+        res.context_error = str(exc)
+    bundle = evidence.build_match_evidence(res, ctx, lineups, minutes_before, af=af)
+    path = evidence.write_evidence(
+        bundle,
+        **(
+            {"directory": evidence_directory, "filename": "evidence.json"}
+            if evidence_directory else {}
+        ),
     )
+    res.evidence_json = bundle
+    res.evidence_path = str(path)
+    res.evidence_hash = bundle.get("evidence_hash")
+    res.market_specs = {
+        item["market_id"]: item.get("direct_market_spec")
+        for item in bundle.get("question_evidence", [])
+    }
+    res.oa_observations = list(getattr(ctx.oa, "observations", [])) if ctx.oa else []
+    return res
 
 
 def submit_predictions(
@@ -365,35 +329,6 @@ def json_dumps_compact(value) -> str:
     import json
 
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
-
-
-def predict_open_matches(
-    submit: bool = False,
-    limit: int | None = None,
-    llm_pricing_enabled: bool = True,
-):
-    """Run the pipeline over all open SP matches. Optionally submit predictions."""
-    sp = SportPredict()
-    af = APIFootball()
-    oa = OddsAPI()
-    event = sp.event()
-    lobby = sp.lobby(event["id"])
-    matches = sp.matches(event["id"], lobby["id"])
-    if limit:
-        matches = matches[:limit]
-
-    results = []
-    for sp_match in matches:
-        markets = sp.markets(lobby["id"], sp_match["id"])
-        result = run_match(
-            sp_match, markets, af, oa,
-            llm_pricing_enabled=llm_pricing_enabled,
-        )
-        results.append(result)
-
-    if submit:
-        submit_with_ledger(sp, event["id"], lobby["id"], results)
-    return results
 
 
 def _fixture_stage(fixture: dict) -> str | None:

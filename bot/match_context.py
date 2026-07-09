@@ -1,4 +1,4 @@
-"""Structured, primary-source match context for the LLM pricing layer.
+"""Structured, primary-source match context for manual Codex pricing.
 
 The evidence bundle used to be odds-only. This module adds four deterministic,
 API-Football-derived blocks the model otherwise has to scrape from betting blogs:

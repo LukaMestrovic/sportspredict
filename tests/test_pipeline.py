@@ -1,12 +1,12 @@
 import unittest
 from unittest.mock import patch
 
-from bot.derive import is_compound_question
+from bot.parser import is_compound_question
 from bot.pipeline import (
     MatchResult,
     Prediction,
     PlatformVerificationError,
-    run_match,
+    prepare_match,
     submit_predictions,
     submit_with_ledger,
     verify_platform_predictions,
@@ -35,42 +35,6 @@ class CompoundDetectionTests(unittest.TestCase):
         self.assertFalse(is_compound_question(question))
 
 
-class SkipReasonTests(unittest.TestCase):
-    def test_unmapped_intent_has_specific_reason(self):
-        fixture = {
-            "fixture": {"id": 1},
-            "teams": {"home": {"name": "Home"}, "away": {"name": "Away"}},
-        }
-        af = _AF(fixture)
-        market = {"id": "m", "question": "Will something unsupported happen?"}
-        with patch("bot.pipeline.parse_questions", return_value={
-            "m": {"market": "none", "subject": "match"}
-        }):
-            result = run_match(
-                {"name": "HOME vs AWAY", "opening_time": "2026-01-01T00:00:00Z"},
-                [market], af, None,
-                llm_pricing_enabled=False,
-            )
-        self.assertEqual(result.skipped[0][1], "parser marked unsupported")
-
-    def test_unparsed_question_is_skipped_without_a_fallback_call(self):
-        fixture = {
-            "fixture": {"id": 1},
-            "teams": {"home": {"name": "Home"}, "away": {"name": "Away"}},
-        }
-        market = {"id": "m", "question": "Will something unsupported happen?"}
-        with patch("bot.pipeline.parse_questions", return_value={}):
-            result = run_match(
-                {"name": "Home vs Away", "opening_time": "2026-01-01T00:00:00Z"},
-                [market],
-                _AF(fixture),
-                llm_pricing_enabled=False,
-            )
-        self.assertEqual(len(result.skipped), 1)
-        self.assertEqual(result.markets, [market])
-        self.assertEqual(result.skip_reasons["m"], "parser returned no intent")
-
-
 class MatchContextWiringTests(unittest.TestCase):
     _FIXTURE = {
         "fixture": {"id": 1, "referee": "R"},
@@ -85,23 +49,20 @@ class MatchContextWiringTests(unittest.TestCase):
             "bot.pipeline.match_context.build", **build_side_effect
         ), patch("bot.pipeline.evidence.build_match_evidence", return_value={}), patch(
             "bot.pipeline.evidence.write_evidence", return_value="path"
-        ), patch("bot.llm_pricing.price_match") as price:
-            result = run_match(
+        ):
+            result = prepare_match(
                 self._MATCH, [self._MARKET], _AF(self._FIXTURE), None,
-                llm_pricing_enabled=True,
             )
-        return result, price
+        return result
 
-    def test_run_match_attaches_built_context(self):
+    def test_prepare_match_attaches_built_context(self):
         sentinel = {"team_form": {"home": {"games": 3}}}
-        result, price = self._run({"return_value": sentinel})
+        result = self._run({"return_value": sentinel})
         self.assertEqual(result.match_context, sentinel)
-        price.assert_called_once()
 
-    def test_context_build_failure_does_not_break_pricing(self):
-        result, price = self._run({"side_effect": RuntimeError("boom")})
+    def test_context_build_failure_does_not_break_evidence(self):
+        result = self._run({"side_effect": RuntimeError("boom")})
         self.assertEqual(result.match_context, {})
-        price.assert_called_once()  # pricing still runs
 
 
 class SubmissionTests(unittest.TestCase):

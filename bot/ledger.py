@@ -8,12 +8,11 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config
-from .parser import PROMPT_VERSION
+from . import config, parser as question_parser
 
 
 LEDGER_PATH = config.ROOT / "logs" / "prediction_ledger.sqlite3"
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 def _now() -> str:
@@ -64,7 +63,9 @@ def connect(path: Path = LEDGER_PATH) -> sqlite3.Connection:
             llm_match_read_path TEXT,
             llm_pricing_audit_path TEXT,
             llm_pricing_report_path TEXT,
-            llm_pricing_briefing_json TEXT
+            llm_pricing_briefing_json TEXT,
+            session_id TEXT,
+            session_manifest_path TEXT
         );
 
         CREATE TABLE IF NOT EXISTS questions (
@@ -83,6 +84,8 @@ def connect(path: Path = LEDGER_PATH) -> sqlite3.Connection:
             llm_audit_json TEXT,
             llm_sources_json TEXT,
             llm_reasoning_summary TEXT,
+            intent_source TEXT,
+            intent_resolution_json TEXT,
             outcome INTEGER,
             brier_score REAL,
             settled_at TEXT,
@@ -105,6 +108,8 @@ def connect(path: Path = LEDGER_PATH) -> sqlite3.Connection:
         ("llm_audit_json", "TEXT"),
         ("llm_sources_json", "TEXT"),
         ("llm_reasoning_summary", "TEXT"),
+        ("intent_source", "TEXT"),
+        ("intent_resolution_json", "TEXT"),
     ))
     _ensure_columns(db, "runs", (
         ("evidence_path", "TEXT"),
@@ -113,6 +118,8 @@ def connect(path: Path = LEDGER_PATH) -> sqlite3.Connection:
         ("llm_pricing_audit_path", "TEXT"),
         ("llm_pricing_report_path", "TEXT"),
         ("llm_pricing_briefing_json", "TEXT"),
+        ("session_id", "TEXT"),
+        ("session_manifest_path", "TEXT"),
     ))
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     return db
@@ -138,11 +145,11 @@ def record_run(
     predictions = {p.market_id: p for p in result.predictions}
 
     with closing(connect(path)) as db, db:
-        llm_briefing = getattr(result, "llm_pricing_briefing", None)
-        llm_pricing_json = _json({
-            "briefing": llm_briefing,
-            "sources": getattr(result, "llm_pricing_sources", []),
-        }) if llm_briefing else None
+        codex_briefing = getattr(result, "codex_briefing", None)
+        codex_pricing_json = _json({
+            "briefing": codex_briefing,
+            "sources": getattr(result, "codex_sources", []),
+        }) if codex_briefing else None
         db.execute(
             """INSERT INTO runs (
                 id, recorded_at, event_id, lobby_id, match_id, fixture_id,
@@ -150,21 +157,25 @@ def record_run(
                 parser_version, parser_model, status, af_odds_json, oa_odds_json,
                 evidence_path, evidence_hash, llm_match_read_path,
                 llm_pricing_audit_path, llm_pricing_report_path,
-                llm_pricing_briefing_json
+                llm_pricing_briefing_json, session_id, session_manifest_path
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'priced',
-                      ?, ?, ?, ?, ?, ?, ?, ?)""",
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 run_id, recorded_at, event_id, lobby_id, result.sp_match["id"],
                 fixture_id, result.sp_match.get("name", result.sp_match["id"]),
                 result.home, result.away, result.sp_match["opening_time"],
-                window_min, minutes_before, PROMPT_VERSION, config.PARSER_MODEL,
+                window_min, minutes_before,
+                getattr(question_parser, "PARSER_SCHEMA_VERSION", "deterministic-v1"),
+                "deterministic",
                 _json(result.af_books), _json(result.oa_observations),
                 getattr(result, "evidence_path", None),
                 getattr(result, "evidence_hash", None),
-                getattr(result, "llm_match_read_path", None),
-                getattr(result, "llm_pricing_audit_path", None),
-                getattr(result, "llm_pricing_report_path", None),
-                llm_pricing_json,
+                getattr(result, "codex_match_read_path", None),
+                getattr(result, "codex_audit_path", None),
+                getattr(result, "codex_report_path", None),
+                codex_pricing_json,
+                getattr(result, "session_id", None),
+                getattr(result, "session_manifest_path", None),
             ),
         )
         for market in result.markets:
@@ -175,8 +186,9 @@ def record_run(
                     run_id, market_id, question, intent_json, market_spec_json,
                     probability, probability_int, source, n_books, market_label,
                     book_probabilities_json, skip_reason,
-                    llm_audit_json, llm_sources_json, llm_reasoning_summary
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    llm_audit_json, llm_sources_json, llm_reasoning_summary,
+                    intent_source, intent_resolution_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     run_id, market_id, market["question"],
                     _json(result.intents[market_id])
@@ -190,13 +202,17 @@ def record_run(
                     prediction.market_label if prediction else None,
                     _json(prediction.book_probabilities) if prediction else None,
                     result.skip_reasons.get(market_id),
-                    _json(getattr(prediction, "llm_audit", {}))
-                    if prediction and getattr(prediction, "llm_audit", None)
+                    _json(getattr(prediction, "codex_audit", {}))
+                    if prediction and getattr(prediction, "codex_audit", None)
                     else None,
-                    _json(getattr(prediction, "llm_sources", []))
+                    _json(getattr(prediction, "codex_sources", []))
                     if prediction else None,
-                    getattr(prediction, "llm_reasoning_summary", None)
+                    getattr(prediction, "codex_reasoning_summary", None)
                     if prediction else None,
+                    getattr(result, "intent_sources", {}).get(market_id),
+                    _json(getattr(result, "intent_resolutions", {}).get(market_id))
+                    if getattr(result, "intent_resolutions", {}).get(market_id)
+                    is not None else None,
                 ),
             )
     return run_id
@@ -322,7 +338,7 @@ def match_detail(query: str, *, path: Path = LEDGER_PATH) -> dict:
     """Latest submitted run for a match (by match_id or name substring).
 
     Returns ``{"run": {...}, "questions": [...]}`` for post-match review of every
-    prediction and its LLM pricing reasoning, or ``{}`` if none is found.
+    prediction and its Codex pricing reasoning, or ``{}`` if none is found.
     """
     with closing(connect(path)) as db, db:
         like = f"%{query}%"

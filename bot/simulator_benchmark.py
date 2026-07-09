@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import config, simulator, wc2026_evidence
-from .pricing import PriceCtx
+from .odds_context import PriceCtx
 from .simulator_contracts import observation_unit, questions_for_contract
 
 

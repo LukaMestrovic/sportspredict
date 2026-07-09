@@ -86,7 +86,7 @@ _PLAYER_MARKETS = [
     "player_card",             # to be booked / receive a card
 ]
 
-# The vocabulary the LLM parser is allowed to emit.
+# Canonical market vocabulary emitted by the deterministic parser/registry.
 MARKET_KEYS = (
     ["match_winner", "match_draw", "btts", "highest_scoring_half_2h",
      "highest_scoring_half_draw", "double_chance", "first_team_to_score",

@@ -35,10 +35,14 @@ class LedgerRecordingTests(unittest.TestCase):
 
         self.assertEqual(run["status"], "priced")
         self.assertEqual(run["match_id"], "match")
-        self.assertEqual(run["evidence_path"], "logs/llm_pricing_runs/evidence.json")
+        self.assertEqual(run["evidence_path"], "logs/codex_runs/session/evidence.json")
         self.assertEqual(run["evidence_hash"], "hash123")
-        self.assertEqual(run["llm_match_read_path"], "logs/llm_pricing_runs/match_read.md")
-        self.assertEqual(run["llm_pricing_report_path"], "logs/llm_pricing_runs/audit.md")
+        self.assertEqual(run["llm_match_read_path"], "logs/codex_runs/session/match_read.md")
+        self.assertEqual(run["llm_pricing_report_path"], "logs/codex_runs/session/audit.md")
+        self.assertEqual(run["session_id"], "session")
+        self.assertEqual(
+            run["session_manifest_path"], "logs/codex_runs/session/manifest.json"
+        )
         self.assertEqual(json.loads(run["af_odds_json"]), [{"book": "af"}])
         self.assertEqual(json.loads(run["oa_odds_json"]), [{"book": "oa"}])
         self.assertEqual(len(questions), 2)
@@ -50,6 +54,11 @@ class LedgerRecordingTests(unittest.TestCase):
         )
         self.assertEqual(json.loads(questions[0]["llm_audit_json"])["probability_int"], 63)
         self.assertEqual(questions[0]["llm_reasoning_summary"], "audited rationale")
+        self.assertEqual(questions[0]["intent_source"], "deterministic-template")
+        self.assertEqual(
+            json.loads(questions[0]["intent_resolution_json"])["rule"],
+            "match_winner",
+        )
         self.assertEqual(questions[1]["skip_reason"], "no direct market mapping")
 
     def test_submission_status_is_updated(self):
@@ -120,7 +129,7 @@ def _result(probability=0.634, probability_int=63):
         "a", markets[0]["question"], probability, probability_int, 4, "Home win",
         book_probabilities=[0.61, 0.65],
     )
-    prediction.llm_audit = {
+    prediction.codex_audit = {
         "market_id": "a",
         "base_probability_int": probability_int,
         "probability_int": probability_int,
@@ -141,8 +150,8 @@ def _result(probability=0.634, probability_int=63):
         "reasoning_summary": "audited rationale",
         "sources": [],
     }
-    prediction.llm_sources = []
-    prediction.llm_reasoning_summary = "audited rationale"
+    prediction.codex_sources = []
+    prediction.codex_reasoning_summary = "audited rationale"
     return MatchResult(
         sp_match={
             "id": "match", "name": "HOME vs AWAY",
@@ -156,14 +165,22 @@ def _result(probability=0.634, probability_int=63):
             "a": {"market": "match_winner", "subject": "home"},
             "b": {"market": "none", "subject": "match"},
         },
+        intent_sources={
+            "a": "deterministic-template", "b": "deterministic-template",
+        },
+        intent_resolutions={
+            "a": {"rule": "match_winner"}, "b": {"rule": "unsupported"},
+        },
         market_specs={"a": {"type": "select", "bet_id": 1}, "b": None},
         skip_reasons={"b": "no direct market mapping"},
         af_books=[{"book": "af"}],
         oa_observations=[{"book": "oa"}],
-        evidence_path="logs/llm_pricing_runs/evidence.json",
+        evidence_path="logs/codex_runs/session/evidence.json",
         evidence_hash="hash123",
-        llm_match_read_path="logs/llm_pricing_runs/match_read.md",
-        llm_pricing_report_path="logs/llm_pricing_runs/audit.md",
+        codex_match_read_path="logs/codex_runs/session/match_read.md",
+        codex_report_path="logs/codex_runs/session/audit.md",
+        session_id="session",
+        session_manifest_path="logs/codex_runs/session/manifest.json",
     )
 
 
