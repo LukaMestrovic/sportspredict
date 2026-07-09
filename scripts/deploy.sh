@@ -10,6 +10,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 IMAGE="${SPLLM_IMAGE:-sportspredict-llm}"
+
+# The image tag and deployment metadata name a Git commit, so refuse to build
+# source that is not exactly that commit. Ignored retained cache/log state is
+# intentionally excluded by Git and does not make the tree dirty.
+if ! git diff --quiet || ! git diff --cached --quiet \
+  || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+  echo "FATAL: working tree is dirty; commit the deployable increment first." >&2
+  exit 1
+fi
 COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 TAG="${SPLLM_TAG:-${COMMIT}-${STAMP}}"
@@ -90,7 +99,10 @@ echo ">> writing active deployed runner ..."
 DEPLOYED_DIR="$ROOT/cache/deployed"
 DEPLOYED_RUNNER="$DEPLOYED_DIR/run.sh"
 mkdir -p "$DEPLOYED_DIR"
-cat > "$DEPLOYED_RUNNER" <<EOF
+RUNNER_TMP="$(mktemp "$DEPLOYED_DIR/.run.sh.XXXXXX")"
+CURRENT_TMP="$(mktemp "$DEPLOYED_DIR/.current.json.XXXXXX")"
+trap 'rm -f "$RUNNER_TMP" "$CURRENT_TMP"' EXIT
+cat > "$RUNNER_TMP" <<EOF
 #!/usr/bin/env bash
 set -uo pipefail
 export PATH="/usr/local/bin:/usr/bin:/bin:\${PATH:-}"
@@ -130,10 +142,13 @@ exec docker run -i --rm --user "\$(id -u):\$(id -g)" -e HOME=/tmp \\
   -v "\$ROOT/logs:/app/logs" \\
   "\$IMAGE:\$TAG" "\$@"
 EOF
-chmod +x "$DEPLOYED_RUNNER"
-cat > "$DEPLOYED_DIR/current.json" <<EOF
+chmod +x "$RUNNER_TMP"
+cat > "$CURRENT_TMP" <<EOF
 {"image":"$IMAGE","tag":"$TAG","alias_tag":"$ALIAS_TAG","commit":"$COMMIT","deployed_at":"$STAMP","runner":"$DEPLOYED_RUNNER"}
 EOF
+mv -f "$RUNNER_TMP" "$DEPLOYED_RUNNER"
+mv -f "$CURRENT_TMP" "$DEPLOYED_DIR/current.json"
+trap - EXIT
 
 # 6) Install the cron schedule (idempotent: replace any sportspredict-llm block).
 echo ">> installing cron schedule ..."
