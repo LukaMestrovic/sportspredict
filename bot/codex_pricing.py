@@ -39,16 +39,6 @@ MATCH_READ_ASPECTS = (
     "broad_market_consensus",
 )
 
-_prompt_cache: str | None = None
-
-
-def _load_prompt() -> str:
-    global _prompt_cache
-    if _prompt_cache is None:
-        _prompt_cache = PROMPT_PATH.read_text(encoding="utf-8")
-    return _prompt_cache
-
-
 def _extract_json(text: str) -> dict:
     text = text.strip()
     try:

@@ -439,7 +439,7 @@ def match_intent_oddsapi(
 ) -> dict | None:
     """Map an intent to an Odds API market spec (fallback source).
 
-    Returns a spec for `oddsapi.predict`, including the `market` key to fetch.
+    Returns a spec for `oddsapi.observations`, including the `market` key to fetch.
     """
     market = intent.get("market")
     subject = intent.get("subject")

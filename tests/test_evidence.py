@@ -998,6 +998,45 @@ class ContextEvidenceTests(unittest.TestCase):
         )
         self.assertTrue(all(part["direct_odds"] for part in component["components"]))
 
+    def test_runtime_resolved_compound_keeps_component_evidence(self):
+        result = _result({
+            "compound": {"market": "none", "subject": "match", "player": None,
+                         "comparator": "yes", "threshold": None, "period": "match"},
+        }, question="Could either of these two unrelated things occur?")
+        result.compounds = {"compound": {
+            "op": "OR",
+            "components": [
+                {
+                    "question": "Will both teams score?",
+                    "intent": {
+                        "market": "btts", "subject": "match", "player": None,
+                        "comparator": "yes", "threshold": None, "period": "match",
+                        "time_scope": "full_match", "excludes_own_goals": False,
+                    },
+                },
+                {
+                    "question": "Will the match have 3 or more total goals?",
+                    "intent": {
+                        "market": "total_goals", "subject": "match", "player": None,
+                        "comparator": "gte", "threshold": 3, "period": "match",
+                        "time_scope": "full_match", "excludes_own_goals": False,
+                    },
+                },
+            ],
+        }}
+        ctx = PriceCtx("Home", "Away", _af_btts_total_books(), None, None)
+
+        with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
+            evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+        component = evidence["question_evidence"][0]["compound_component_evidence"]
+        self.assertEqual(component["operator"], "OR")
+        self.assertEqual(
+            [part["intent"]["market"] for part in component["components"]],
+            ["btts", "total_goals"],
+        )
+        self.assertTrue(all(part["direct_odds"] for part in component["components"]))
+
     def test_non_player_market_has_no_player_form_key(self):
         result = _result({
             "win": {"market": "match_winner", "subject": "home", "player": None,
@@ -1026,6 +1065,19 @@ class ContextEvidenceTests(unittest.TestCase):
         self.assertEqual(evidence["player_form"], {})
         self.assertEqual(evidence["referee_profile"], {})
         self.assertEqual(evidence["injuries"], {})
+
+    def test_context_provider_failure_is_explicit_in_evidence(self):
+        result = _result({
+            "win": {"market": "match_winner", "subject": "home",
+                    "comparator": "win", "threshold": None, "period": "match"},
+        })
+        result.context_error = "injury endpoint unavailable"
+        ctx = PriceCtx("Home", "Away", _af_h2h_books(), None, None)
+
+        with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
+            evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
+
+        self.assertEqual(evidence["context_error"], "injury endpoint unavailable")
 
     def test_write_evidence_preserves_question_evidence_key_order(self):
         result = _result({

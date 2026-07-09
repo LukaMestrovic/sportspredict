@@ -63,6 +63,7 @@ class MatchContextWiringTests(unittest.TestCase):
     def test_context_build_failure_does_not_break_evidence(self):
         result = self._run({"side_effect": RuntimeError("boom")})
         self.assertEqual(result.match_context, {})
+        self.assertEqual(result.context_error, "boom")
 
 
 class SubmissionTests(unittest.TestCase):
