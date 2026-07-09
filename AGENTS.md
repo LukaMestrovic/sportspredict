@@ -1,109 +1,106 @@
-# AGENTS.md — guidance for AI coding agents in this repo
+# AGENTS.md — guidance for coding agents
 
-## What this is
-A minimal LLM bot that prices SportPredict Probability Cup questions for FIFA
-WC2026 from bookmaker odds. The production bot, learned simulator, fitted model
-artifacts, and deployment scripts all live in this repository. See
-[README.md](README.md) for the architecture.
+## Purpose
 
-## Commit regularly
-**Commit after every working increment** — a new market mapping, a bug fix, a
-doc change. Keep commits small and focused with a clear message. Do not let
-working changes pile up uncommitted. Never commit `.env` or any secret (it is
-git-ignored; keep it that way).
+This repository is the production SportPredict Probability Cup workflow for
+FIFA World Cup 2026. It deterministically prepares provider/simulator evidence;
+a manually operated Codex agent and subagents research and price the match. See
+`README.md` for the operator flow and architecture.
 
-## Conventions
-- Pure standard library + `requests` for the bot. No heavy frameworks. (The
-  bundled numerical runtime has its own `simulator/requirements.txt`; analysis
-  may use pandas/matplotlib. Keep both dependency sets out of `bot/`.)
-- `simulator/` is a production runtime component, not a generated deploy
-  snapshot. Keep its source, config, compact lookup data, and fitted artifacts
-  tracked here. Do not reintroduce sibling-checkout imports, copied deploy
-  trees, or a prebuilt project wheel. Training/ingestion tooling stays out of
-  the production runtime.
-- The parser LLM only extracts intent. The live pricing LLM prices raw markets
-  from a deterministic evidence JSON plus web research. All provider market
-  mapping and bookmaker probability conversion stays deterministic and auditable
-  in `matcher.py` / `predictor.py` / `oddsapi.py` / `derive.py` / `evidence.py`.
-- **Live pricing flow** (`bot/evidence.py`, `bot/llm_pricing.py`,
-  `bot/pipeline.py`): collect direct and related API-Football / Odds API odds
-  into one evidence JSON per match, include deterministic estimates only as
-  labeled context (including the bundled simulator), then make one cached
-  web-grounded LLM call that returns the submitted probabilities and a complete
-  per-market audit. There are no pre-LLM anchors or hidden tilt math in the live
-  path.
-- De-vig only coherent outcome sets from the **same bookmaker and contract**.
-  Compounds are composed from **separately priced components**, not from
-  marginal lines of one book.
-- Submit probabilities as integers **1–99**.
-- Every submission path must use `pipeline.submit_with_ledger`; do not call the
-  raw batch submitter from a user-facing or scheduled workflow. The SQLite
-  ledger records real questions, raw odds, pricing traces and the submission
-  window. Settle it only through explicit SportPredict `current_value` outcomes
-  (`python -m scripts.settle_ledger`), never by web search or score inference.
-- **Determinism is required.** Every parser and compound-splitter LLM call goes
-  through `parser.chat_json`, which caches on `(PROMPT_VERSION, model, messages)`
-  so the same question always maps to the same intent across
-  runs. Never add an uncached LLM call. Bump `PROMPT_VERSION` when you change
-  parser semantics. The web-grounded pricing layer (`llm_pricing.py`) is the
-  documented exception — non-deterministic on first call, but still cached
-  (ttl=0) so re-runs are stable. The pricing prompt lives in
-  `prompts/llm_pricing_prompt.md`; editing it auto-invalidates the cache through
-  the prompt hash. Bump `LLM_PRICING_VERSION` when the output contract changes.
-  The pricing LLM must return `subagent_memos`, a `probability_int` value and
-  complete audit fields for every submitted market; if a market lacks audit
-  detail, skip it.
-- Recurring question and compound templates are parsed deterministically. The
-  parser uses `PARSER_MODEL` (default `gpt-5.4-mini`) for unfamiliar wording only,
-  with **at most one batched fallback call per match**. Because the call is
-  cached, the model is a one-time cost — favour reliability over the cheapest
-  model. Document any per-match cost change in the README "Cost" table.
+## Non-negotiable architecture
 
-## Quota & caching (important)
-- **The Odds API is paid/metered** and **API-Football is rate-limited (450/min)**.
-  Always go through `bot/cache.py` — every odds response is cached to disk under
-  `cache/` (git-ignored). Never add an uncached odds fetch in a hot loop.
-- The Odds API bills `markets × regions`: request only needed markets; the cache
-  key is per `(event, market, regions)`. `ODDS_REGIONS` tunes breadth vs cost.
-- Manual prepare with `--fresh` intentionally refreshes odds once. Keep refreshes
-  deduplicated within the run so identical Odds API market requests never incur
-  repeated credits.
-- The LLM pricing layer (`gpt-5.4-mini` + web search by default) is
-  web-grounded spend. It is cached per match/evidence hash for manual
-  repeatability and can be disabled with `LLM_PRICING_ENABLED=0` for deterministic
-  validation. Manual Codex submission is the production submission path for the
-  rest of the competition. Don't run LLM pricing on settled matches — a web
-  search can leak the result. `llm_pricing.price_match()` refuses to run once
-  kickoff has passed, and ledger review reads frozen rows only.
-- Treat `cache/` and `logs/` as retained runtime state. Never remove them during
-  cleanup, tests, image builds, or deployment.
+- The application makes no language-model API call. Do not add an OpenAI SDK,
+  model endpoint, model environment setting, or `OPENAI_API_KEY`.
+- Prediction status, preparation, unfamiliar-intent resolution, and submission
+  are explicit `scripts.codex_workflow` actions. Do not add a prediction cron or
+  generic auto-predict entrypoint. Cron runs settlement only.
+- Known questions and compound templates are parsed deterministically in
+  `bot/parser.py`. Unfamiliar wording produces a strict offline request handled
+  through `bot/intent_resolution.py`; its accepted result is stored in the
+  versioned append-only runtime registry. Never add an uncached or hidden parser
+  fallback.
+- Codex prices only from the prepared evidence plus disclosed pre-kickoff
+  research. `bot/codex_pricing.py` is a pure local JSON validator/audit renderer,
+  not a model client.
+- Submit integer probabilities from 1 through 99. Every user-facing path must
+  call `pipeline.submit_with_ledger`, then verify the values from SportPredict.
+- Settlement accepts only explicit SportPredict `current_value` outcomes. Never
+  infer an outcome from a score, web search, or Brier value.
 
-## Deployment
-- When instructed to deploy, run `scripts/deploy.sh`. Do not hand-edit crontab or
-  run the working tree directly for production.
-- `scripts/deploy.sh` builds an immutable Docker image, writes
-  `cache/deployed/run.sh` pinned to that image, and installs only the settlement
-  cron entry. Manual submissions must use the deployed runner so later
-  working-tree edits cannot affect live submissions until the next deploy.
-- Lineup-backed manual Codex prepare/submit still writes the retained marker as
-  soon as confirmed XIs are present and the manual flow starts, before
-  SportPredict verification. Manual submissions without confirmed lineups do not
-  create the marker automatically.
+## Production boundaries
 
-## Keys / env
-`config.py` loads `.env`. Required: `SPORTSPREDICT_KEY`, `APIFOOTBALL_KEY`,
-`ODDS_API_KEY`, `OPENAI_API_KEY`. Mask keys in any terminal output you share.
+- Keep the lightweight bot to the standard library plus `requests`.
+  `simulator/requirements.txt` is the separate numerical dependency set.
+- `simulator/` is a production runtime containing source, config, compact
+  lookups, and fitted artifacts. Training, ingestion, notebooks, and offline
+  backtests belong elsewhere and must not be reintroduced.
+- Provider mapping and conversion remain deterministic and auditable in
+  `matcher.py`, `predictor.py`, `oddsapi.py`, and `evidence.py`.
+- De-vig only coherent outcomes from the same bookmaker and exact contract.
+  Retain per-book observations; do not hide disagreement behind a final average.
+- Compose compounds from separately priced components with disclosed
+  correlation. Never relabel a marginal market as an exact compound contract.
+- Exact bookmaker evidence has priority. Simulator values are labeled context,
+  not hidden anchors.
+- Provider fixture/event matching must verify kickoff and both teams, even for
+  a single kickoff candidate. Ambiguity or mismatch fails closed.
 
-## Test before committing
-- `python -m unittest discover -s tests -p 'test_*.py'` — unit and bundled
-  simulator integration coverage.
-- `python run.py predict --limit 1` — cheap end-to-end smoke test (uses cache).
-- `python validate.py --days 7` — backtest against settled matches.
-- `python -m scripts.settle_ledger` — settle completed matches and report Brier.
+## Run integrity
 
-## Useful facts
-- WC2026 in API-Football: `league=1`, `season=2026`; Odds API sport
-  `soccer_fifa_world_cup`.
-- Provider fixtures/events are linked by kickoff datetime and both teams.
-- Pre-match odds are purged a few days after kickoff (both providers) — backtests
-  on old fixtures price fewer markets.
+- New runs live in `logs/codex_runs/<session>/` and contain a copied prompt,
+  evidence, provider snapshot, task, manifest, response, and audit outputs.
+- Preserve response-schema, parser-schema, evidence-schema, session, match, and
+  artifact-hash checks. Submission must refuse stale/cross-run input and kickoff
+  that has passed.
+- A successfully submitted session is single-use. A deliberate update requires
+  a newly prepared session.
+- Missing lineups are warning-only, but their absence or provider error must be
+  visible in evidence and the manifest.
+- Preserve legacy ledger column names and validated schema-1 session reading for
+  historical audit compatibility. New application code uses Codex naming.
+
+## Quota, caching, and secrets
+
+- The Odds API is paid/metered; API-Football is rate-limited. Every reusable
+  response goes through `bot/cache.py`. Keep writes atomic and refreshes
+  deduplicated.
+- Odds API billing scales with requested markets × regions. Request only exact
+  needed markets and keep the cache key bound to event, market set, and regions.
+- `--fresh` deliberately refreshes once. Do not add repeated paid fetches inside
+  market loops.
+- Do not convert authentication, quota, rate, network, or server errors into
+  empty evidence. Provider exceptions must not expose query-string keys.
+- `.env` is ignored and must never be committed or printed. Required keys are
+  only `SPORTSPREDICT_KEY`, `APIFOOTBALL_KEY`, and `ODDS_API_KEY`.
+- Treat ignored `cache/` and `logs/` as durable production state. Never remove
+  them during cleanup, testing, image builds, or deployment.
+
+## Git and deployment
+
+- Commit after every working increment. Keep commits focused and messages clear.
+- Preserve unrelated user changes in a dirty worktree.
+- Deploy only with `scripts/deploy.sh`; do not hand-edit crontab or run the
+  working tree as production.
+- Deployment requires a clean tree, builds an immutable image, smoke-tests it,
+  atomically publishes the pinned runner, and installs only settlement cron.
+- Manual production actions must use `cache/deployed/run.sh`.
+
+## Validation before committing
+
+```bash
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+  .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+bash -n docker/entrypoint.sh scripts/deploy.sh
+git diff --check
+```
+
+Deployment performs additional simulator and live status checks. Avoid a live
+`manual prepare --fresh` merely as a smoke test because it can consume Odds API
+credits.
+
+## Useful constants
+
+- API-Football World Cup: `league=1`, `season=2026`.
+- The Odds API sport: `soccer_fifa_world_cup`.
+- New audits: `logs/codex_runs/`; historical audit/log names remain readable.
+- Ledger: `logs/prediction_ledger.sqlite3`.
