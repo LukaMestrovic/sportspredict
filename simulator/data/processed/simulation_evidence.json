@@ -294,10 +294,10 @@
       "empirical_rate": {
         "all_history": {
           "available": true,
-          "matches": 4058,
-          "observations": 4058,
-          "rate": 0.320848,
-          "yes_events": 1302
+          "matches": 4487,
+          "observations": 4487,
+          "rate": 0.318698,
+          "yes_events": 1430
         },
         "all_history_knockout": {
           "available": true,
@@ -1821,10 +1821,10 @@
       "empirical_rate": {
         "all_history": {
           "available": true,
-          "matches": 4058,
-          "observations": 4058,
-          "rate": 0.530064,
-          "yes_events": 2151
+          "matches": 4144,
+          "observations": 4144,
+          "rate": 0.527268,
+          "yes_events": 2185
         },
         "all_history_knockout": {
           "available": true,
@@ -2027,10 +2027,10 @@
       "empirical_rate": {
         "all_history": {
           "available": true,
-          "matches": 4058,
-          "observations": 8116,
-          "rate": 0.77415,
-          "yes_events": 6283
+          "matches": 4144,
+          "observations": 8288,
+          "rate": 0.7757,
+          "yes_events": 6429
         },
         "all_history_knockout": {
           "available": true,
@@ -2138,10 +2138,10 @@
       "empirical_rate": {
         "all_history": {
           "available": true,
-          "matches": 4058,
-          "observations": 8116,
-          "rate": 0.635288,
-          "yes_events": 5156
+          "matches": 4144,
+          "observations": 8288,
+          "rate": 0.63598,
+          "yes_events": 5271
         },
         "all_history_knockout": {
           "available": true,
@@ -2217,10 +2217,10 @@
       "empirical_rate": {
         "all_history": {
           "available": true,
-          "matches": 4058,
-          "observations": 8116,
-          "rate": 0.481395,
-          "yes_events": 3907
+          "matches": 4144,
+          "observations": 8288,
+          "rate": 0.480454,
+          "yes_events": 3982
         },
         "all_history_knockout": {
           "available": true,
@@ -2328,10 +2328,10 @@
       "empirical_rate": {
         "all_history": {
           "available": true,
-          "matches": 4058,
-          "observations": 8116,
-          "rate": 0.353376,
-          "yes_events": 2868
+          "matches": 4144,
+          "observations": 8288,
+          "rate": 0.35111,
+          "yes_events": 2910
         },
         "all_history_knockout": {
           "available": true,
@@ -2439,10 +2439,10 @@
       "empirical_rate": {
         "all_history": {
           "available": true,
-          "matches": 4058,
-          "observations": 8116,
-          "rate": 0.253696,
-          "yes_events": 2059
+          "matches": 4144,
+          "observations": 8288,
+          "rate": 0.251327,
+          "yes_events": 2083
         },
         "all_history_knockout": {
           "available": true,
@@ -2518,10 +2518,10 @@
       "empirical_rate": {
         "all_history": {
           "available": true,
-          "matches": 4058,
-          "observations": 8116,
-          "rate": 0.174347,
-          "yes_events": 1415
+          "matches": 4144,
+          "observations": 8288,
+          "rate": 0.172659,
+          "yes_events": 1431
         },
         "all_history_knockout": {
           "available": true,
@@ -2593,10 +2593,10 @@
       "empirical_rate": {
         "all_history": {
           "available": true,
-          "matches": 4058,
-          "observations": 8116,
-          "rate": 0.118038,
-          "yes_events": 958
+          "matches": 4144,
+          "observations": 8288,
+          "rate": 0.116675,
+          "yes_events": 967
         },
         "all_history_knockout": {
           "available": true,
@@ -2836,95 +2836,6 @@
         }
       }
     },
-    "goal_window:after_second_hydration:et": {
-      "contract_key": "goal_window:after_second_hydration:et",
-      "contract_performance": {
-        "all_history": {
-          "available": true,
-          "brier": {
-            "always_50": 0.25,
-            "empirical_rate": 0.240025,
-            "simulator": 0.2421
-          },
-          "comparison_signal": "inconclusive",
-          "matches": 284,
-          "observations": 284,
-          "sample_size": {
-            "basis": "unique unseen matches, with uncertainty clustered by match",
-            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
-            "level": "large"
-          },
-          "scope": "rolling_origin_all_history",
-          "simulator_minus_empirical_rate_95pct_ci": [
-            -0.005397,
-            0.009547
-          ]
-        },
-        "all_history_knockout": {
-          "available": true,
-          "brier": {
-            "always_50": 0.25,
-            "empirical_rate": 0.240025,
-            "simulator": 0.2421
-          },
-          "comparison_signal": "inconclusive",
-          "matches": 284,
-          "observations": 284,
-          "sample_size": {
-            "basis": "unique unseen matches, with uncertainty clustered by match",
-            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
-            "level": "large"
-          },
-          "scope": "rolling_origin_all_history_knockout",
-          "simulator_minus_empirical_rate_95pct_ci": [
-            -0.005397,
-            0.009547
-          ]
-        }
-      },
-      "empirical_rate": {
-        "all_history": {
-          "available": true,
-          "matches": 4173,
-          "observations": 4173,
-          "rate": 0.536305,
-          "yes_events": 2238
-        },
-        "all_history_knockout": {
-          "available": true,
-          "matches": 343,
-          "observations": 343,
-          "population": "historical_knockout_labelable_observations",
-          "rate": 0.548105,
-          "yes_events": 188
-        },
-        "knockout_history": {
-          "available": true,
-          "matches": 343,
-          "observations": 343,
-          "rate": 0.548105,
-          "yes_events": 188
-        },
-        "wc2026": {
-          "available": false,
-          "reason": "Runtime T-30 refresh supplies the target-time WC2026 scope."
-        },
-        "wc2026_knockout": {
-          "available": false,
-          "reason": "Runtime T-30 refresh supplies the target-time WC2026 knockout scope."
-        }
-      },
-      "model_performance": {
-        "all_history": {
-          "available": false,
-          "reason": "No leakage-safe out-of-sample scores for this exact extra-time contract."
-        },
-        "wc2026": {
-          "available": false,
-          "reason": "No unseen settled questions for this contract."
-        }
-      }
-    },
     "goal_window:after_second_hydration:reg": {
       "contract_key": "goal_window:after_second_hydration:reg",
       "contract_performance": {
@@ -2963,13 +2874,6 @@
           "matches": 343,
           "observations": 343,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.521866,
-          "yes_events": 179
-        },
-        "knockout_history": {
-          "available": true,
-          "matches": 343,
-          "observations": 343,
           "rate": 0.521866,
           "yes_events": 179
         },
@@ -3736,10 +3640,10 @@
         "all_history": {
           "always_50_brier": 0.25,
           "available": true,
-          "brier": 0.1746,
-          "delta_vs_always_50": -0.0754,
-          "matches": 2652,
-          "questions": 2652,
+          "brier": 0.173244,
+          "delta_vs_always_50": -0.076756,
+          "matches": 2936,
+          "questions": 2936,
           "test_folds": [
             2021,
             2022,
@@ -3761,62 +3665,11 @@
     },
     "penalty_or_red:match": {
       "contract_key": "penalty_or_red:match",
-      "contract_performance": {
-        "all_history": {
-          "available": true,
-          "brier": {
-            "always_50": 0.25,
-            "empirical_rate": 0.207137,
-            "simulator": 0.217098
-          },
-          "comparison_signal": "inconclusive",
-          "matches": 284,
-          "observations": 284,
-          "sample_size": {
-            "basis": "unique unseen matches, with uncertainty clustered by match",
-            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
-            "level": "large"
-          },
-          "scope": "rolling_origin_all_history",
-          "simulator_minus_empirical_rate_95pct_ci": [
-            -0.001224,
-            0.021144
-          ]
-        },
-        "all_history_knockout": {
-          "available": true,
-          "brier": {
-            "always_50": 0.25,
-            "empirical_rate": 0.207137,
-            "simulator": 0.217098
-          },
-          "comparison_signal": "inconclusive",
-          "matches": 284,
-          "observations": 284,
-          "sample_size": {
-            "basis": "unique unseen matches, with uncertainty clustered by match",
-            "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
-            "level": "large"
-          },
-          "scope": "rolling_origin_all_history_knockout",
-          "simulator_minus_empirical_rate_95pct_ci": [
-            -0.001224,
-            0.021144
-          ]
-        }
-      },
+      "contract_performance": {},
       "empirical_rate": {
         "all_history": {
           "available": false,
           "reason": "No exact historical labels for this contract."
-        },
-        "all_history_knockout": {
-          "available": true,
-          "matches": 284,
-          "observations": 284,
-          "population": "historical_knockout_labelable_observations",
-          "rate": 0.31338,
-          "yes_events": 89
         },
         "wc2026": {
           "available": true,
@@ -3919,10 +3772,10 @@
         "all_history": {
           "always_50_brier": 0.25,
           "available": true,
-          "brier": 0.216382,
-          "delta_vs_always_50": -0.033618,
-          "matches": 2652,
-          "questions": 2652,
+          "brier": 0.216451,
+          "delta_vs_always_50": -0.033549,
+          "matches": 2936,
+          "questions": 2936,
           "test_folds": [
             2021,
             2022,
@@ -4183,23 +4036,16 @@
       "empirical_rate": {
         "all_history": {
           "available": true,
-          "matches": 4173,
-          "observations": 4173,
-          "rate": 0.130601,
-          "yes_events": 545
+          "matches": 343,
+          "observations": 343,
+          "rate": 0.151603,
+          "yes_events": 52
         },
         "all_history_knockout": {
           "available": true,
           "matches": 343,
           "observations": 343,
           "population": "historical_knockout_labelable_observations",
-          "rate": 0.151603,
-          "yes_events": 52
-        },
-        "knockout_history": {
-          "available": true,
-          "matches": 343,
-          "observations": 343,
           "rate": 0.151603,
           "yes_events": 52
         },
@@ -4210,10 +4056,6 @@
       },
       "model_performance": {
         "all_history": {
-          "available": false,
-          "reason": "Existing rolling-origin rows cover knockout matches only."
-        },
-        "knockout_history": {
           "always_50_brier": 0.25,
           "available": true,
           "brier": 0.137126,
@@ -4485,6 +4327,47 @@
           "delta_vs_always_50": -0.177975,
           "matches": 1,
           "questions": 1
+        }
+      }
+    },
+    "substitute_score_or_assist:reg": {
+      "contract_key": "substitute_score_or_assist:reg",
+      "contract_performance": {},
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "matches": 2702,
+          "observations": 2702,
+          "rate": 0.46077,
+          "yes_events": 1245
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 245,
+          "observations": 245,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.420408,
+          "yes_events": 103
+        },
+        "wc2026": {
+          "available": true,
+          "basis": "all exact-labelable matches in the shipped WC2026 stat/event data",
+          "data_matches": 34,
+          "data_through": "2026-06-20",
+          "matches": 34,
+          "observations": 34,
+          "rate": 0.5,
+          "yes_events": 17
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "No unseen settled questions for this contract."
         }
       }
     },
@@ -5168,7 +5051,7 @@
         "available": true,
         "brier": {
           "always_50": 0.25,
-          "empirical_rate": 0.251207,
+          "empirical_rate": 0.251611,
           "simulator": 0.243172
         },
         "comparison_signal": "inconclusive_small_sample",
@@ -5182,17 +5065,17 @@
         "delta_brier": {
           "negative_favors_simulator": true,
           "simulator_minus_always_50": -0.006828,
-          "simulator_minus_empirical_rate": -0.008036
+          "simulator_minus_empirical_rate": -0.00844
         },
         "empirical_baseline": {
           "rate_range": [
-            0.320848,
-            0.320848
+            0.318698,
+            0.318698
           ],
           "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
           "training_observations_range": [
-            4058,
-            4058
+            4487,
+            4487
           ]
         },
         "evaluation": "Frozen pre-2026 simulator predictions are scored on settled WC2026 questions. The empirical baseline uses the exact contract's YES rate estimated before the tournament.",
@@ -5206,8 +5089,8 @@
         },
         "scope": "wc2026_frozen_pre2026_simulator_replay",
         "simulator_minus_empirical_rate_95pct_ci": [
-          -0.028049,
-          0.011978
+          -0.028805,
+          0.011926
         ],
         "test_folds": [
           2026
@@ -5274,7 +5157,7 @@
         "available": true,
         "brier": {
           "always_50": 0.25,
-          "empirical_rate": 0.534899,
+          "empirical_rate": 0.491645,
           "simulator": 0.627264
         },
         "comparison_signal": "inconclusive_small_sample",
@@ -5288,12 +5171,12 @@
         "delta_brier": {
           "negative_favors_simulator": true,
           "simulator_minus_always_50": 0.377264,
-          "simulator_minus_empirical_rate": 0.092365
+          "simulator_minus_empirical_rate": 0.135619
         },
         "empirical_baseline": {
           "rate_range": [
-            0.731368,
-            0.731368
+            0.701174,
+            0.701174
           ],
           "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
           "training_observations_range": [
@@ -5483,7 +5366,7 @@
         "available": true,
         "brier": {
           "always_50": 0.25,
-          "empirical_rate": 0.244548,
+          "empirical_rate": 0.244807,
           "simulator": 0.219755
         },
         "comparison_signal": "inconclusive",
@@ -5497,12 +5380,12 @@
         "delta_brier": {
           "negative_favors_simulator": true,
           "simulator_minus_always_50": -0.030245,
-          "simulator_minus_empirical_rate": -0.024793
+          "simulator_minus_empirical_rate": -0.025052
         },
         "empirical_baseline": {
           "rate_range": [
-            0.253696,
-            0.77415
+            0.251327,
+            0.7757
           ],
           "rule": "Always predict the prior-fold empirical YES rate for the exact contract.",
           "training_observations_range": [
@@ -5521,8 +5404,8 @@
         },
         "scope": "wc2026_frozen_pre2026_simulator_replay",
         "simulator_minus_empirical_rate_95pct_ci": [
-          -0.049917,
-          0.000332
+          -0.050229,
+          0.000125
         ],
         "test_folds": [
           2026
@@ -5640,21 +5523,21 @@
         "available": true,
         "brier": {
           "always_50": 0.25,
-          "empirical_rate": 0.156213,
-          "simulator": 0.157022
+          "empirical_rate": 0.154136,
+          "simulator": 0.154913
         },
         "comparison_signal": "inconclusive",
-        "contracts": 5,
+        "contracts": 4,
         "coverage": {
-          "comparable_questions": 11744,
-          "family_questions": 11744,
+          "comparable_questions": 11460,
+          "family_questions": 11460,
           "fraction": 1.0
         },
         "data_through": "2026-06-20",
         "delta_brier": {
           "negative_favors_simulator": true,
-          "simulator_minus_always_50": -0.092978,
-          "simulator_minus_empirical_rate": 0.000809
+          "simulator_minus_always_50": -0.095087,
+          "simulator_minus_empirical_rate": 0.000777
         },
         "empirical_baseline": {
           "rate_range": [
@@ -5670,7 +5553,7 @@
         "evaluation": "Predictions are scored only on later, unseen matches. The empirical-rate baseline uses the exact contract's YES rate estimated before each test fold.",
         "family": "goal_window",
         "matches": 2936,
-        "questions": 11744,
+        "questions": 11460,
         "sample_size": {
           "basis": "unique unseen matches, with uncertainty clustered by match",
           "guidance": "The sample is broad enough to use as a meaningful family-level reliability signal.",
@@ -5678,8 +5561,8 @@
         },
         "scope": "rolling_origin_all_history",
         "simulator_minus_empirical_rate_95pct_ci": [
-          -7.3e-05,
-          0.00169
+          -0.000107,
+          0.001661
         ],
         "test_folds": [
           2021,

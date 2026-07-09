@@ -36,6 +36,10 @@ EVENT_TABLE = "data/processed/exotic_event_table.parquet"
 HISTORY_TABLE = "data/processed/history_stat_table.parquet"
 PLAYER_TABLE = "data/processed/player_stat_table.parquet"
 DEFAULT_TEST_YEARS = (2021, 2022, 2023, 2024, 2025, 2026)
+FIVE_SUB_ERA_START = pd.Timestamp("2020-05-08")
+FIVE_SUB_ERA_CONTRACTS = {
+    "substitute_score_or_assist:reg",
+}
 
 MARKET_NAMES = {
     "penalty_awarded": "Penalty awarded",
@@ -58,6 +62,7 @@ MARKET_NAMES = {
     "corners_before_first_hydration_2plus": "2+ corners before first hydration break",
     "substitution_before_halftime": "Substitution before halftime",
     "substitute_scores": "A substitute scores",
+    "substitute_score_or_assist": "A substitute scores or assists",
     "any_player_sot_2plus": "Any player 2+ SoT",
     "any_player_brace": "Any player scores 2+ goals",
     "red_card": "A red card is shown",
@@ -302,6 +307,7 @@ def _generated_contract_key(market: str, stage: str) -> str:
         "any_player_sot_2plus": ("any_player_threshold", {"stat": "shots_on_target", "comparator": ">=", "threshold": 2}),
         "any_player_brace": ("any_player_threshold", {"stat": "goals", "comparator": ">", "threshold": 1}),
         "substitute_scores": ("substitute_score", {"regulation": True}),
+        "substitute_score_or_assist": ("substitute_score_or_assist", {"regulation": True}),
         "total_shots_full_20plus": ("total_shots_threshold", {"stat": "shots_total", "comparator": ">=", "threshold": 20}),
         "total_shots_full_22plus": ("total_shots_threshold", {"stat": "shots_total", "comparator": ">=", "threshold": 22}),
     }
@@ -515,21 +521,50 @@ def build_question_table(
     api_lookup = {
         int(row.match_id): row for row in history[history["source"] == "apifootball"].itertuples(index=False)
     }
+    api_event_coverage = {
+        int(match_id)
+        for source, match_id in coverage
+        if source == "apifootball"
+    }
+    api_event_has_et = {
+        int(match_id)
+        for (source, match_id), group in event_groups.items()
+        if source == "apifootball" and bool(group["phase"].astype(str).eq("ET").any())
+    }
     for match_id, group in players.groupby("match_id", sort=False):
         row = api_lookup.get(int(match_id))
-        if row is None or row.stage == "knockout" or group["team_side"].nunique() < 2:
+        if row is None or group["team_side"].nunique() < 2:
             continue
-        if bool(group["reconciles_sot"].all()):
-            _add_case(records, row, "any_player_sot_2plus",
-                      "Will any player record 2 or more shots on target in regulation "
-                      "(90 minutes + stoppage time)?", (group["shots_on"] >= 2).any())
-        _add_case(records, row, "any_player_brace",
-                  "Will any player score more than 1 goal (excluding own goals) in regulation "
-                  "(90 minutes + stoppage time)?", (group["goals"] >= 2).any())
-        _add_case(records, row, "substitute_scores",
-                  "Will a substitute score a goal in regulation (90 minutes + stoppage time)?",
-                  (group["substitute"] & (group["goals"] >= 1)).any())
-        if "shots_total" in group:
+        q11_only = False
+        if row.stage == "knockout":
+            # API-Football player aggregates are match totals and may include extra time.
+            # They are regulation-safe for this Q11 evidence only when the event feed covers
+            # the match, shows no ET phase, and player minutes do not look like an extra-time
+            # appearance. Keep older player-market histories unchanged unless/until each
+            # contract is deliberately re-audited for knockout inclusion.
+            if int(match_id) not in api_event_coverage or int(match_id) in api_event_has_et:
+                continue
+            max_minutes = float(group["minutes"].fillna(0).max()) if "minutes" in group else 0.0
+            if max_minutes > 105.0:
+                continue
+            q11_only = True
+        if not q11_only:
+            if bool(group["reconciles_sot"].all()):
+                _add_case(records, row, "any_player_sot_2plus",
+                          "Will any player record 2 or more shots on target in regulation "
+                          "(90 minutes + stoppage time)?", (group["shots_on"] >= 2).any())
+            _add_case(records, row, "any_player_brace",
+                      "Will any player score more than 1 goal (excluding own goals) in regulation "
+                      "(90 minutes + stoppage time)?", (group["goals"] >= 2).any())
+            _add_case(records, row, "substitute_scores",
+                      "Will a substitute score a goal in regulation (90 minutes + stoppage time)?",
+                      (group["substitute"] & (group["goals"] >= 1)).any())
+        assists = group["assists"] if "assists" in group else 0
+        _add_case(records, row, "substitute_score_or_assist",
+                  "Will a substitute score or assist a goal in regulation "
+                  "(90 minutes + stoppage time)?",
+                  (group["substitute"] & ((group["goals"] >= 1) | (assists >= 1))).any())
+        if not q11_only and "shots_total" in group:
             total_shots = float(group["shots_total"].sum())
             for threshold in (20, 22):
                 market = f"total_shots_full_{threshold}plus"
@@ -719,9 +754,22 @@ def _empirical_summary(questions: pd.DataFrame) -> pd.DataFrame:
         questions.groupby("contract_key", as_index=False, observed=True)
         .agg(market=("market", "first"), market_name=("market_name", "first"),
              n_all=("outcome", "size"), matches_all=("match_id", "nunique"),
+             yes_events=("outcome", "sum"),
              empirical_rate=("outcome", "mean"))
         .sort_values("empirical_rate")
     )
+
+
+def _apply_empirical_era_filters(questions: pd.DataFrame) -> pd.DataFrame:
+    """Restrict exact-contract empirical rows where law-era changes are material."""
+    if questions.empty:
+        return questions
+    if "match_date" not in questions:
+        return questions
+    dates = pd.to_datetime(questions["match_date"], errors="coerce")
+    five_sub_contract = questions["contract_key"].astype(str).isin(FIVE_SUB_ERA_CONTRACTS)
+    keep = ~five_sub_contract | (dates >= FIVE_SUB_ERA_START)
+    return questions[keep].copy()
 
 
 def all_data_empirical_rates(
@@ -734,9 +782,29 @@ def all_data_empirical_rates(
     events = pd.read_parquet(settings.path(event_path))
     players = pd.read_parquet(settings.path(player_path), columns=[
         "match_id", "team_side", "reconciles_sot", "shots_total", "shots_on", "goals",
-        "substitute",
+        "assists", "minutes", "substitute",
     ])
-    return _empirical_summary(build_question_table(history, events, players))
+    return _empirical_summary(_apply_empirical_era_filters(
+        build_question_table(history, events, players)
+    ))
+
+
+def knockout_data_empirical_rates(
+    settings: Settings | None = None, *, history_path: str | Path = HISTORY_TABLE,
+    event_path: str | Path = EVENT_TABLE, player_path: str | Path = PLAYER_TABLE,
+) -> pd.DataFrame:
+    """Empirical base rates over every eligible knockout match in shipped history."""
+    settings = settings or default_settings()
+    history = pd.read_parquet(settings.path(history_path))
+    events = pd.read_parquet(settings.path(event_path))
+    players = pd.read_parquet(settings.path(player_path), columns=[
+        "match_id", "team_side", "reconciles_sot", "shots_total", "shots_on", "goals",
+        "assists", "minutes", "substitute",
+    ])
+    questions = build_question_table(history, events, players)
+    questions = questions[questions["stage"].astype(str).eq("knockout")]
+    questions = _apply_empirical_era_filters(questions)
+    return _empirical_summary(questions)
 
 
 def tournament_empirical_rates(
@@ -756,10 +824,12 @@ def tournament_empirical_rates(
     api_ids = set(history.loc[history.source.eq("apifootball"), "match_id"].astype(int))
     players = pd.read_parquet(settings.path(player_path), columns=[
         "match_id", "team_side", "reconciles_sot", "shots_total", "shots_on", "goals",
-        "substitute",
+        "assists", "minutes", "substitute",
     ])
     players = players[players.match_id.isin(api_ids)]
-    result = _empirical_summary(build_question_table(history, events, players))
+    result = _empirical_summary(_apply_empirical_era_filters(
+        build_question_table(history, events, players)
+    ))
     result["tournament"] = tournament
     result["data_matches"] = int(history[["source", "match_id"]].drop_duplicates().shape[0])
     result["data_through"] = str(pd.to_datetime(history.match_date).max().date())
@@ -947,7 +1017,10 @@ def _main(argv: list[str] | None = None) -> int:
         out.mkdir(parents=True, exist_ok=True)
         empirical = all_data_empirical_rates(settings, event_path=event_path)
         empirical.to_csv(out / "exotic_empirical_rates.csv", index=False)
+        knockout = knockout_data_empirical_rates(settings, event_path=event_path)
+        knockout.to_csv(out / "exotic_empirical_rates_knockout.csv", index=False)
         print(empirical.to_string(index=False))
+        print(f"[exotic-oos] knockout empirical rows={len(knockout)}")
         return 0
     if args.prepare_fold_artifacts:
         prepare_fold_artifacts(

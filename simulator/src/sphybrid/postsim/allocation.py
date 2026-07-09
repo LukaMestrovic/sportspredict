@@ -27,9 +27,35 @@ import numpy as np
 
 from sportspredict.config import Settings, default_settings
 from sportspredict.model.outcome import MatchOutcome
-from sportspredict.types import H1, H2, TEAM_A, TEAM_B
+from sportspredict.types import GOALS, H1, H2, TEAM_A, TEAM_B
 
 _LABEL = {"A": TEAM_A, "B": TEAM_B}
+SUBSTITUTE_INVOLVEMENT_GOAL_MODEL = {
+    # Fitted on 2,702 API-Football labelable matches in the five-substitute era
+    # (2020-05-08 onward). The curve is:
+    #   p(lambda) = 1 - exp(-beta * lambda)
+    # where lambda is total expected regulation goals. Its fitted average
+    # prediction over the training rows is 0.462987, centered on the 0.460770
+    # empirical rate while preserving the required p(0 goals)=0 behavior.
+    #
+    # WC2026 has been materially hotter so far for this contract, but the sample
+    # is still small. The tournament layer treats historical all-era evidence as
+    # 300 effective observations and shifts the goal curve toward the current
+    # WC2026 rate on the logit scale, preserving the xG ordering.
+    "beta": 0.261798762,
+    "empirical_rate": 0.4607698001480385,
+    "mean_goals": 2.7472242783123613,
+    "mean_prediction": 0.462987,
+    "observations": 2702,
+    "tournament_shrinkage": {
+        "enabled": True,
+        "competition": "wc2026",
+        "target_kickoff": "2026-07-09T20:00:00+00:00",
+        "observations": 90,
+        "yes_events": 48,
+        "historical_effective_observations": 300,
+    },
+}
 
 
 def _fold(s: str) -> str:
@@ -195,25 +221,88 @@ def prob_substitute_goal_involvement(
     fallback_assist_share: float,
     own_goal_share: float = 0.0,
 ) -> float:
-    """Probability a substitute scores or assists, conditional on regulation goals."""
-    no_sub_involvement = np.ones(outcome.n_sims, dtype=float)
-    assisted = float(settings.players.get("prob_goal_assisted", 0.70))
-    goal_scale = 1.0 - float(own_goal_share)
-    for team_idx in (TEAM_A, TEAM_B):
-        goal_probs, goal_bench = _team_share_vector(ctx, team_idx, "goals", shares, settings)
-        assist_probs, assist_bench = _team_share_vector(ctx, team_idx, "assists", shares, settings)
-        sub_goal_share = (
-            float(goal_probs[goal_bench].sum()) if goal_bench.any() else float(fallback_goal_share)
+    """Probability a substitute scores or assists, conditional on expected regulation goals."""
+    del shares, settings, fallback_goal_share, fallback_assist_share, own_goal_share
+    expected_goals = float(np.mean(outcome.match_total(GOALS, include_et=False)))
+    calibration = _substitute_involvement_calibration_for_context(ctx)
+    return prob_substitute_goal_involvement_from_expected_goals(
+        expected_goals, calibration=calibration,
+    )
+
+
+def prob_substitute_goal_involvement_from_expected_goals(
+    expected_total_goals: float,
+    *,
+    beta: float = SUBSTITUTE_INVOLVEMENT_GOAL_MODEL["beta"],
+    calibration: dict | None = None,
+) -> float:
+    """Five-sub-era P(substitute score or assist) from total expected regulation goals."""
+    lam = max(float(expected_total_goals), 0.0)
+    beta = max(float(beta), 1e-9)
+    probability = 1.0 - np.exp(-beta * lam)
+    if calibration is not None:
+        probability = _apply_substitute_involvement_shrinkage(
+            float(probability), calibration=calibration,
         )
-        sub_assist_share = (
-            float(assist_probs[assist_bench].sum())
-            if assist_bench.any() else float(fallback_assist_share)
-        )
-        per_goal = goal_scale * (sub_goal_share + assisted * sub_assist_share)
-        per_goal = float(np.clip(per_goal, 0.01, 0.85))
-        goals = np.asarray(outcome.goals_team(team_idx, include_et=False), dtype=int)
-        no_sub_involvement *= (1.0 - per_goal) ** goals
-    return float(np.clip(np.mean(1.0 - no_sub_involvement), 0.0, 1.0))
+    return float(np.clip(probability, 0.0, 0.95))
+
+
+def _substitute_involvement_calibration_for_context(ctx) -> dict | None:
+    if ctx is not None and getattr(ctx, "extra", None):
+        calibration = ctx.extra.get("substitute_score_or_assist_calibration")
+        if calibration is not None:
+            return calibration
+
+    calibration = SUBSTITUTE_INVOLVEMENT_GOAL_MODEL.get("tournament_shrinkage")
+    if not calibration or calibration.get("enabled") is False:
+        return None
+    kickoff = str(getattr(ctx, "date", "") or "")
+    target_kickoff = str(calibration.get("target_kickoff") or "")
+    if kickoff and target_kickoff and kickoff >= target_kickoff:
+        return calibration
+    return None
+
+
+def _apply_substitute_involvement_shrinkage(
+    probability: float, *, calibration: dict | None = None,
+) -> float:
+    if not calibration or calibration.get("enabled") is False:
+        return probability
+
+    yes_events = calibration.get("yes_events", calibration.get("tournament_yes_events"))
+    observations = calibration.get("observations", calibration.get("tournament_observations"))
+    try:
+        yes = float(yes_events)
+        n = float(observations)
+        effective_history = float(calibration.get(
+            "historical_effective_observations",
+            calibration.get("history_effective_observations", 300),
+        ))
+        historical_rate = float(calibration.get(
+            "historical_rate", SUBSTITUTE_INVOLVEMENT_GOAL_MODEL["empirical_rate"],
+        ))
+        model_center = float(calibration.get(
+            "model_center", SUBSTITUTE_INVOLVEMENT_GOAL_MODEL["mean_prediction"],
+        ))
+    except (TypeError, ValueError):
+        return probability
+    if n <= 0 or effective_history <= 0:
+        return probability
+
+    target_center = (historical_rate * effective_history + yes) / (effective_history + n)
+    target_center = float(np.clip(target_center, 0.01, 0.99))
+    model_center = float(np.clip(model_center, 0.01, 0.99))
+    probability = float(np.clip(probability, 0.01, 0.99))
+    return float(_inv_logit(_logit(probability) + _logit(target_center) - _logit(model_center)))
+
+
+def _logit(probability: float) -> float:
+    p = float(np.clip(probability, 1e-9, 1.0 - 1e-9))
+    return float(np.log(p / (1.0 - p)))
+
+
+def _inv_logit(value: float) -> float:
+    return float(1.0 / (1.0 + np.exp(-float(value))))
 
 
 def allocate_player_prob(

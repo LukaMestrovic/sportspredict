@@ -201,8 +201,9 @@ def _explanation(market: str, params: dict, notes: str | None) -> str:
         )
     if market == SUBSTITUTE_GOAL_INVOLVEMENT:
         return (
-            "Estimated by assigning simulated regulation goals and assisted-goal involvement to "
-            "substitutes using lineup exposure, learned scoring shares, and assist-share priors."
+            "Estimated from a five-substitute-era historical curve that maps total expected "
+            "regulation goals to the probability a substitute scores or assists, then "
+            "logit-shifted toward a shrunk current-WC2026 tournament rate."
         )
     if market == ANY_PLAYER_THRESHOLD:
         return (
