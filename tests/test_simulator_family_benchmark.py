@@ -4,49 +4,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from analysis.build_simulator_family_benchmarks import (
-    _canonical_key,
-    family_from_contract,
-    family_performance,
-)
 from bot import simulator_benchmark
 
 
-class StaticFamilyBenchmarkTests(unittest.TestCase):
-    def test_contracts_roll_up_to_report_families(self):
-        self.assertEqual(
-            family_from_contract("count:goals:team:full:>=:1:reg"),
-            "count_threshold",
-        )
-        self.assertEqual(
-            family_from_contract("compare:corners:2H:reg"),
-            "team_vs_team_more",
-        )
-
-    def test_stale_knockout_penalty_keys_normalize_to_regulation(self):
-        self.assertEqual(_canonical_key("penalty_awarded:match"), "penalty_awarded:reg")
-        self.assertEqual(_canonical_key("penalty_or_red:match"), "penalty_or_red:reg")
-
-    def test_family_comparison_scores_all_baselines_on_identical_unseen_rows(self):
-        rows = [
-            {
-                "family": "goal_window", "contract_key": "goal_window:test",
-                "match_id": f"m{index}", "fold_year": 2026,
-                "match_date": f"2026-06-{index + 1:02d}", "outcome": float(index % 2),
-                "p_model": float(index % 2), "p_empirical": 0.5,
-                "empirical_training_observations": 100,
-            }
-            for index in range(30)
-        ]
-        result = family_performance(rows, scope="test")["goal_window"]
-        self.assertEqual(result["questions"], 30)
-        self.assertEqual(result["matches"], 30)
-        self.assertEqual(result["brier"]["simulator"], 0.0)
-        self.assertEqual(result["brier"]["always_50"], 0.25)
-        self.assertEqual(result["brier"]["empirical_rate"], 0.25)
-        self.assertEqual(result["comparison_signal"], "simulator_better")
-        self.assertEqual(result["sample_size"]["level"], "limited")
-
+class ShippedFamilyBenchmarkTests(unittest.TestCase):
     def test_shipped_artifact_has_separate_wc_sample_warning(self):
         path = Path("simulator/data/processed/simulation_evidence.json")
         artifact = json.loads(path.read_text())

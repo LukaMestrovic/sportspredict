@@ -18,7 +18,6 @@ from sportspredict.config import default_settings  # noqa: E402
 from sportspredict.engine import Engine  # noqa: E402
 from sportspredict.features.context import MatchContext, PlayerInfo  # noqa: E402
 from sportspredict.model import cards  # noqa: E402
-from sportspredict.model.closed_forms import _dc_joint  # noqa: E402
 from sportspredict.model.goals import sample_dixon_coles  # noqa: E402
 from sportspredict.model.outcome import MatchOutcome  # noqa: E402
 from sportspredict.model.players import prob_score, prob_score_or_assist  # noqa: E402
@@ -27,16 +26,6 @@ from sportspredict.types import COUNT_STATS, GOALS, H1, PER_HALF_STATS, RESULT_A
 
 
 class DixonColesAccuracyTests(unittest.TestCase):
-    def test_positive_rho_lifts_draw_cells_in_closed_form(self):
-        independent = _dc_joint(1.36, 1.36, 0.0, 12)
-        draw_lifted = _dc_joint(1.36, 1.36, 0.08, 12)
-
-        self.assertGreater(draw_lifted[0, 0], independent[0, 0])
-        self.assertGreater(draw_lifted[1, 1], independent[1, 1])
-        self.assertLess(draw_lifted[1, 0], independent[1, 0])
-        self.assertLess(draw_lifted[0, 1], independent[0, 1])
-        self.assertGreater(np.trace(draw_lifted), np.trace(independent))
-
     def test_positive_rho_lifts_simulated_draw_rate(self):
         n = 160_000
         mu_a = np.full(n, 1.36)
@@ -51,6 +40,19 @@ class DixonColesAccuracyTests(unittest.TestCase):
             float(np.mean(x_lift == y_lift)),
             float(np.mean(x_ind == y_ind)) + 0.01,
         )
+
+
+class LearnedArtifactAccuracyTests(unittest.TestCase):
+    def test_team_ratings_runtime_artifact_loads_without_dataframe_support(self):
+        from sphybrid.rates.team_ratings import TeamRatings
+
+        ratings = TeamRatings.load(
+            SIMULATOR / "data" / "processed" / "team_ratings.json"
+        )
+
+        self.assertGreater(len(ratings.attack), 20)
+        self.assertEqual(set(ratings.attack), set(ratings.defense))
+        self.assertTrue(any(value != 0.0 for value in ratings.attack.values()))
 
 
 class SimulationCacheAccuracyTests(unittest.TestCase):

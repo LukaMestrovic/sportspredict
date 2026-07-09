@@ -118,8 +118,7 @@ def _team_needles(ctx: MatchContext, label: str, name: str) -> set[str]:
 
 def _token_eq(a: str, b: str) -> bool:
     """Exact word match, or a 4+ char shared prefix ("czech" ~ "czechia", "korea" ~
-    "korean") — the same loose rule as :func:`ingest.apifootball.name_match`. Short
-    identifiers (3-letter codes) only match exactly."""
+    "korean"). Short identifiers (3-letter codes) only match exactly."""
     if a == b:
         return True
     return len(a) >= 4 and len(b) >= 4 and (a.startswith(b[:4]) or b.startswith(a[:4]))

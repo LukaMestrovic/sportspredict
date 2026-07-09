@@ -1,9 +1,8 @@
 """Baseline Layer-1 rate model.
 
 Turns a :class:`MatchContext` into :class:`MatchRates` using the documented priors in
-``config/settings.yaml``. This is the runnable default; once event data is ingested,
-``rates.hierarchical`` overwrites the coefficient blocks via partial-pooling fits and
-this same class consumes the fitted ``Settings``.
+``config/settings.yaml``. This is the runtime fallback when the bundled learned-rate
+artifact cannot be loaded.
 
 Construction (per statistic):
 
