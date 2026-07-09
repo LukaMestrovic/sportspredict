@@ -4,7 +4,8 @@
 # source is baked in, so once deployed the running bot is a frozen snapshot:
 # editing the working tree never affects a live manual/settle run until the next
 # scripts/deploy.sh rebuild. Secrets are NEVER baked — the API keys are passed
-# at `docker run` via -e (see scripts/run.sh). Build context = repo root.
+# at `docker run` via -e by the generated deployed runner. Build context = repo
+# root.
 FROM python:3.14-slim AS runtime
 
 ENV PYTHONUNBUFFERED=1 \
@@ -23,14 +24,13 @@ RUN pip install -r requirements.txt -r simulator/requirements.txt
 COPY simulator/ /app/simulator/
 
 # Bake the source. No .env, no secrets (enforced by .dockerignore). cache/ and
-# logs/ are intentionally absent — they are bind-mounted at run time so state
-# (paid odds cache, parser cache, markers, ledger) persists across runs.
+# logs/ are intentionally absent — they are bind-mounted at run time so retained
+# odds, intent-resolution, run-audit, and ledger state persists across runs.
 COPY bot/ /app/bot/
 COPY scripts/ /app/scripts/
 COPY prompts/ /app/prompts/
-COPY run.py validate.py /app/
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Deployed entrypoint; args (--status, --dry-run, --settle, manual ...) pass through.
+# Deployed entrypoint accepts only `manual ...` and `settle ...`.
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # One-command deploy. Builds the immutable v1 image from the CURRENT source and
-# installs the settlement cron schedule. Editing the
-# working tree never affects a live manual or cron run until you re-run this
-# script.
+# installs the settlement cron schedule. Editing the working tree never affects
+# a live manual or settlement run until you re-run this script.
 # Re-running is safe and idempotent — it rebuilds the image and rewrites only the
 # sportspredict-llm cron block.
 #
@@ -16,11 +15,16 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 TAG="${SPLLM_TAG:-${COMMIT}-${STAMP}}"
 ALIAS_TAG="${SPLLM_ALIAS_TAG:-v1}"
 
-# 1) Require the live keys.
+# 1) Require the three live provider keys. Values are loaded by reference and
+#    are never passed in argv or copied into the image.
 if [ ! -f .env ]; then
-  echo "FATAL: no .env — set SPORTSPREDICT_KEY, APIFOOTBALL_KEY, ODDS_API_KEY, OPENAI_API_KEY." >&2
+  echo "FATAL: no .env — set SPORTSPREDICT_KEY, APIFOOTBALL_KEY, and ODDS_API_KEY." >&2
   exit 1
 fi
+set -a; . ./.env; set +a
+: "${SPORTSPREDICT_KEY:?SPORTSPREDICT_KEY not set in .env}"
+: "${APIFOOTBALL_KEY:?APIFOOTBALL_KEY not set in .env}"
+: "${ODDS_API_KEY:?ODDS_API_KEY not set in .env}"
 
 # 2) Build the immutable image from this repository (secrets never baked).
 #    --provenance=false keeps this a single image manifest: the default BuildKit
@@ -43,7 +47,7 @@ echo ">> smoke-test image simulator bridge ..."
 docker run --rm --entrypoint python -e SPORTSPREDICT_SIMULATOR_N_SIMS=500 \
   "$IMAGE:$TAG" -c '
 from bot.simulator import simulator_estimates
-from bot.pricing import PriceCtx
+from bot.odds_context import PriceCtx
 markets = [
     {"id": "pen", "question": "Will a penalty kick be awarded in the match?"},
     {"id": "goal", "question": "Will a goal be scored before the first hydration break?"},
@@ -52,7 +56,7 @@ markets = [
 ]
 ctx = PriceCtx("Argentina", "Austria", [], None, None)
 # Empty lists => no direct price => every market is sent to the simulator, which
-# resolves what it can. No parser/LLM (and so no secrets) needed for selection.
+# resolves what it can. No provider credentials are needed for selection.
 direct = {m["id"]: [] for m in markets}
 out = simulator_estimates(markets, ctx, direct_by_market=direct,
                           kickoff="2026-06-22T17:00:00Z", stage="knockout")
@@ -72,18 +76,13 @@ print("simulator bridge OK:", {k: (v["family"], v["contract_key"], v["probabilit
 
 # 4) Smoke-test the image without submitting: it must reach SportPredict and
 #    report the next match. Keys are read from .env by reference, never argv.
-echo ">> smoke-test image (--status, no submit) ..."
-set -a; . ./.env; set +a
-export LLM_PRICING_MODEL="${LLM_PRICING_MODEL:-gpt-5.5}"
-export LLM_PRICING_REASONING_EFFORT="${LLM_PRICING_REASONING_EFFORT:-high}"
-export LLM_PRICING_SEARCH_CONTEXT_SIZE="${LLM_PRICING_SEARCH_CONTEXT_SIZE:-medium}"
+echo ">> smoke-test image (manual status, no submit) ..."
 docker run -i --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
-  -e SPORTSPREDICT_KEY -e APIFOOTBALL_KEY -e ODDS_API_KEY -e OPENAI_API_KEY \
-  -e LLM_PRICING_MODEL -e LLM_PRICING_REASONING_EFFORT \
-  -e LLM_PRICING_SEARCH_CONTEXT_SIZE \
+  -e SPORTSPREDICT_KEY -e APIFOOTBALL_KEY -e ODDS_API_KEY \
+  -e ODDS_REGIONS -e SPORTSPREDICT_SIMULATOR_N_SIMS \
   -e SPLLM_HOST_ROOT="$ROOT" \
   -v "$ROOT/cache:/app/cache" -v "$ROOT/logs:/app/logs" \
-  "$IMAGE:$TAG" --status
+  "$IMAGE:$TAG" manual status --next
 
 # 5) Write the active deployed runner. Cron and manual submissions use this
 #    untracked script, pinned to the immutable image tag above.
@@ -99,6 +98,14 @@ ROOT="$ROOT"
 IMAGE="$IMAGE"
 TAG="$TAG"
 
+case "\${1:-}" in
+  manual|settle) ;;
+  *)
+    echo "usage: \$0 {manual|settle} ..." >&2
+    exit 64
+    ;;
+esac
+
 if ! docker info >/dev/null 2>&1 && [ -z "\${_RR_SG:-}" ] && command -v sg >/dev/null 2>&1; then
   export _RR_SG=1
   exec sg docker -c "\$(printf '%q ' "\$0" "\$@")"
@@ -111,17 +118,14 @@ if [ ! -f "\$ROOT/.env" ]; then
 fi
 set -a; . "\$ROOT/.env"; set +a
 : "\${SPORTSPREDICT_KEY:?SPORTSPREDICT_KEY not set in .env}"
-export LLM_PRICING_MODEL="\${LLM_PRICING_MODEL:-gpt-5.5}"
-export LLM_PRICING_REASONING_EFFORT="\${LLM_PRICING_REASONING_EFFORT:-high}"
-export LLM_PRICING_SEARCH_CONTEXT_SIZE="\${LLM_PRICING_SEARCH_CONTEXT_SIZE:-medium}"
+: "\${APIFOOTBALL_KEY:?APIFOOTBALL_KEY not set in .env}"
+: "\${ODDS_API_KEY:?ODDS_API_KEY not set in .env}"
 
 mkdir -p "\$ROOT/cache" "\$ROOT/logs"
 exec docker run -i --rm --user "\$(id -u):\$(id -g)" -e HOME=/tmp \\
-  -e SPORTSPREDICT_KEY -e APIFOOTBALL_KEY -e ODDS_API_KEY -e OPENAI_API_KEY \\
-  -e PARSER_MODEL -e ODDS_REGIONS -e LLM_PRICING_ENABLED -e LLM_PRICING_MODEL \\
-  -e LLM_PRICING_REASONING_EFFORT -e LLM_PRICING_SEARCH_CONTEXT_SIZE \\
+  -e SPORTSPREDICT_KEY -e APIFOOTBALL_KEY -e ODDS_API_KEY \\
+  -e ODDS_REGIONS -e SPORTSPREDICT_SIMULATOR_N_SIMS \\
   -e SPLLM_HOST_ROOT="\$ROOT" \\
-  -e SPORTSPREDICT_SIMULATOR_N_SIMS \\
   -v "\$ROOT/cache:/app/cache" \\
   -v "\$ROOT/logs:/app/logs" \\
   "\$IMAGE:\$TAG" "\$@"
@@ -139,7 +143,7 @@ block="$(cat <<EOF
 $begin
 # Every five minutes: settle explicit SportPredict outcomes, extend the
 # tournament-wide frozen-simulator replay, and refresh WC2026 empirical rates.
-2-59/5 * * * * $DEPLOYED_RUNNER --settle >> $ROOT/logs/settle.log 2>&1
+2-59/5 * * * * $DEPLOYED_RUNNER settle >> $ROOT/logs/settle.log 2>&1
 $end
 EOF
 )"

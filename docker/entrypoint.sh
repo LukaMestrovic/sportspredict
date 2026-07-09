@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
-# Container entrypoint: run settlement/status utilities, or the deployed manual
-# Codex bridge. Arguments pass straight through, so `docker run <img> --status`,
-# `--dry-run`, `--settle`, and `manual ...` work. The bot API key MUST be
-# supplied as $SPORTSPREDICT_KEY (passed via -e by scripts/run.sh).
+# Container entrypoint for the two deployed workflows. Prediction preparation
+# and submission are explicit Codex/manual actions; cron invokes settlement
+# only. Secrets are supplied at `docker run` time by cache/deployed/run.sh.
 set -uo pipefail
-: "${SPORTSPREDICT_KEY:?SPORTSPREDICT_KEY must be provided via -e}"
-if [ "${1:-}" = "manual" ]; then
-  shift
-  exec python -m scripts.manual_submit "$@"
-fi
-exec python -m scripts.cron_submit "$@"
+
+case "${1:-}" in
+  manual)
+    shift
+    exec python -m scripts.manual_submit "$@"
+    ;;
+  settle)
+    shift
+    exec python -m scripts.settle_ledger "$@"
+    ;;
+  *)
+    echo "usage: entrypoint.sh {manual|settle} ..." >&2
+    exit 64
+    ;;
+esac
