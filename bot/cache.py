@@ -2,13 +2,14 @@
 
 The Odds API is a **paid, metered** provider, so every event-odds response is
 cached to disk and reused — a given (event, markets, regions) request hits the
-network at most once per TTL window. Clear with `rm -rf cache/` or
-`python -c "from bot.cache import clear; clear()"`.
+network at most once per TTL window. Runtime state is retained across deploys.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -38,16 +39,29 @@ def get_or_fetch(
     callers reuse the newly fetched value rather than triggering another call.
     """
     p = _path(namespace, key)
-    if (not refresh and p.exists()
-            and (ttl <= 0 or time.time() - p.stat().st_mtime < ttl)):
-        return json.loads(p.read_text())["value"]
+    if not refresh:
+        try:
+            if p.exists() and (
+                ttl <= 0 or time.time() - p.stat().st_mtime < ttl
+            ):
+                cached = json.loads(p.read_text(encoding="utf-8"))
+                return cached["value"]
+        except (OSError, ValueError, KeyError, TypeError):
+            # A killed legacy writer may have left a partial entry. Refetch and
+            # atomically replace it instead of failing the production run.
+            pass
     value = fetch()
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps({"key": key, "fetched": time.time(), "value": value}))
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{p.name}.", suffix=".tmp", dir=p.parent,
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump({"key": key, "fetched": time.time(), "value": value}, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, p)
+    finally:
+        temporary.unlink(missing_ok=True)
     return value
-
-
-def clear() -> None:
-    import shutil
-    if CACHE_DIR.exists():
-        shutil.rmtree(CACHE_DIR)

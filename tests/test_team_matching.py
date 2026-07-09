@@ -40,6 +40,22 @@ class ProviderMatchingTests(unittest.TestCase):
         found = oa.find_event("2026-06-27T23:30:00Z", "Congo DR", "Uzbekistan")
         self.assertEqual(found["id"], "b")
 
+    def test_api_football_rejects_wrong_solo_kickoff_candidate(self):
+        af = APIFootball("unused")
+        af._fixtures_cache = [
+            _fixture(1, "2026-06-24T19:00:00Z", "Switzerland", "Canada"),
+        ]
+        self.assertIsNone(
+            af.find_fixture("2026-06-24T19:00:00Z", "BIH vs QAT")
+        )
+
+    def test_odds_api_rejects_wrong_solo_kickoff_candidate(self):
+        oa = OddsAPI("unused")
+        oa._events = [_event("a", "Colombia", "Portugal")]
+        self.assertIsNone(
+            oa.find_event("2026-06-27T23:30:00Z", "Congo DR", "Uzbekistan")
+        )
+
 
 def _fixture(fixture_id, kickoff, home, away):
     return {

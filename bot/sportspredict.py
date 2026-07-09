@@ -43,16 +43,26 @@ class SportPredict:
         for e in events:
             if e.get("title") == EVENT_TITLE:
                 return e
-        return events[0]
+        available = ", ".join(
+            f"{event.get('title', '<untitled>')} ({event.get('id', '?')})"
+            for event in events
+        ) or "none"
+        raise LookupError(
+            f"required SportPredict event {EVENT_TITLE!r} not found; "
+            f"available events: {available}"
+        )
 
     def lobby(self, event_id: str) -> dict:
         lobbies = self._get("/lobbies", event_id=event_id)
+        if not lobbies:
+            raise LookupError(f"no SportPredict lobby found for event {event_id}")
         lob = lobbies[0]
         if not lob.get("joined"):
             try:
                 self._post(f"/lobbies/{lob['id']}/join", {})
-            except requests.HTTPError:
-                pass  # 409 = already joined
+            except requests.HTTPError as exc:
+                if getattr(exc.response, "status_code", None) != 409:
+                    raise
         return lob
 
     def matches(self, event_id: str, lobby_id: str) -> list[dict]:

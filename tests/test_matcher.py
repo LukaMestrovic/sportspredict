@@ -209,10 +209,10 @@ class AsianHandicapDevigTests(unittest.TestCase):
 
     def test_devig_isolates_the_requested_pair(self):
         spec = {"type": "ah", "bet_id": 4, "side": "Home", "line": 1.5, "label": "x"}
-        out = afpred.predict([self._book(), self._book()], spec)
-        self.assertIsNotNone(out)
+        out = afpred.observations([self._book(), self._book()], spec)
+        self.assertEqual(len(out), 2)
         # fair Home -1.5 = (1/3.0)/(1/3.0 + 1/1.4) ~ 0.318, not blended with -0.5.
-        self.assertAlmostEqual(out["probability"], 0.3186, places=3)
+        self.assertAlmostEqual(out[0]["probability"], 0.3186, places=3)
 
     def test_devig_ignores_opposite_handicap_row(self):
         book = {"name": "b", "bets": [{"id": 4, "values": [
@@ -222,10 +222,10 @@ class AsianHandicapDevigTests(unittest.TestCase):
             {"value": "Away +1.5", "odd": "13.00"},
         ]}]}
         spec = {"type": "ah", "bet_id": 4, "side": "Home", "line": 1.5, "label": "x"}
-        out = afpred.predict([book], spec)
-        self.assertIsNotNone(out)
+        out = afpred.observations([book], spec)
+        self.assertEqual(len(out), 1)
         # Regression: do not pair Home -1.5 with Away +1.5, which would be ~87%.
-        self.assertAlmostEqual(out["probability"], 0.464, places=3)
+        self.assertAlmostEqual(out[0]["probability"], 0.464, places=3)
 
     def test_away_win_margin_uses_positive_home_handicap_row(self):
         book = {"name": "b", "bets": [{"id": 4, "values": [
@@ -241,7 +241,7 @@ class AsianHandicapDevigTests(unittest.TestCase):
 
     def test_missing_pair_returns_no_price(self):
         spec = {"type": "ah", "bet_id": 4, "side": "Home", "line": 2.5, "label": "x"}
-        self.assertIsNone(afpred.predict([self._book()], spec))
+        self.assertEqual(afpred.observations([self._book()], spec), [])
 
 
 class CategoricalDevigTests(unittest.TestCase):
@@ -253,10 +253,10 @@ class CategoricalDevigTests(unittest.TestCase):
             {"value": "more 3", "odd": "4.00"},
         ]}]}
         spec = {"type": "select", "bet_id": 38, "value": 2, "label": "exact 2"}
-        out = afpred.predict([book], spec)
-        self.assertIsNotNone(out)
+        out = afpred.observations([book], spec)
+        self.assertEqual(len(out), 1)
         self.assertAlmostEqual(
-            out["probability"],
+            out[0]["probability"],
             (1 / 3.5) / (1 / 9.0 + 1 / 4.5 + 1 / 3.5 + 1 / 4.0),
             places=4,
         )
@@ -274,11 +274,11 @@ class CategoricalDevigTests(unittest.TestCase):
                 "fallback_specs": [{"type": "select_sum", "bet_id": 298,
                                     "value_patterns": [r"/\s*Penalties\b"],
                                     "label": "method pens"}]}
-        out = afpred.predict([book], spec)
-        self.assertIsNotNone(out)
+        out = afpred.observations([book], spec)
+        self.assertEqual(len(out), 1)
         target = 1 / 11.0 + 1 / 10.0
         total = target + 1 / 19.0 + 1 / 9.5 + 1 / 5.25 + 1 / 1.75
-        self.assertAlmostEqual(out["probability"], target / total, places=4)
+        self.assertAlmostEqual(out[0]["probability"], target / total, places=4)
 
 
 if __name__ == "__main__":

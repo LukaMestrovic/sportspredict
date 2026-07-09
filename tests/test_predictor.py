@@ -1,6 +1,6 @@
 import unittest
 
-from bot.predictor import predict
+from bot.predictor import observations
 
 
 class PlayerPropTests(unittest.TestCase):
@@ -9,28 +9,27 @@ class PlayerPropTests(unittest.TestCase):
             {"value": "Marcel Sabitzer - 1+", "odd": "2.00"},
             {"value": "Marcel Sabitzer - 2+", "odd": "5.00"},
         ])]
-        out = predict(books, {
+        out = observations(books, {
             "type": "player_threshold", "bet_id": 242, "player": "Marcel Sabitzer",
             "side": "Over", "line": 0.5, "label": "player SoT",
         })
-        self.assertAlmostEqual(out["probability"], 0.425)  # 0.50 * SINGLE_SIDE_DEVIG
-        self.assertEqual(out["book_probabilities"], [0.425])
+        self.assertAlmostEqual(out[0]["probability"], 0.425)  # 0.50 * SINGLE_SIDE_DEVIG
 
     def test_player_name_match_is_accent_insensitive(self):
         books = [_book(92, [{"value": "Luka Sucic", "odd": "4.00"}])]
-        out = predict(books, {
+        out = observations(books, {
             "type": "player_yes", "bet_id": 92, "player": "Luka Sučić",
             "label": "player scorer",
         })
-        self.assertAlmostEqual(out["probability"], 0.2125)  # 0.25 * SINGLE_SIDE_DEVIG
+        self.assertAlmostEqual(out[0]["probability"], 0.2125)  # 0.25 * SINGLE_SIDE_DEVIG
 
     def test_single_book_extreme_player_price_is_not_discarded(self):
         books = [_book(251, [{"value": "Harry Kane", "odd": "13.50"}])]
-        out = predict(books, {
+        out = observations(books, {
             "type": "player_yes", "bet_id": 251, "player": "Harry Kane",
             "label": "player booked",
         })
-        self.assertIsNotNone(out)
+        self.assertEqual(len(out), 1)
 
 
 def _book(bet_id, values):

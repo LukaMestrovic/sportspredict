@@ -1,13 +1,12 @@
-"""Predictor: bookmaker odds -> de-vigged probability for a matched market.
+"""API-Football bookmaker odds -> auditable de-vigged observations.
 
 De-vig rule (per integration checklist): only normalize coherent outcome sets
-from the SAME bookmaker and contract. We de-vig per bookmaker, then average the
-fair probability across all bookmakers that quote the contract.
+from the SAME bookmaker and contract. We retain one fair-probability observation
+per bookmaker; the Codex agent sees the spread instead of a hidden average.
 """
 from __future__ import annotations
 
 import re
-from statistics import mean
 
 from .teams import player_matches
 
@@ -167,57 +166,11 @@ def _price_player_threshold(
     return None
 
 
-def predict(bookmakers: list[dict], spec: dict) -> dict | None:
-    """Return {probability: float 0-1, n_books: int, label} or None to skip."""
-    for candidate in _candidate_specs(spec):
-        out = _predict_one(bookmakers, candidate)
-        if out:
-            return out
-    return None
-
-
-def _predict_one(bookmakers: list[dict], spec: dict) -> dict | None:
-    probs: list[float] = []
-    for bm in bookmakers:
-        bet = _bets_by_id(bm, spec["bet_id"])
-        if not bet:
-            continue
-        if spec["type"] == "select":
-            p = _devig_select(bet["values"], spec["value"])
-        elif spec["type"] == "select_sum":
-            p = _devig_select_sum(bet["values"], spec.get("value_patterns") or [])
-        elif spec["type"] == "ou":
-            p = _devig_ou(bet["values"], spec["side"], spec["line"])
-        elif spec["type"] == "ah":
-            p = _devig_ah_pair(bet["values"], spec["side"], spec["line"])
-        elif spec["type"] == "player_yes":
-            p = _price_player_yes(bet["values"], spec.get("player"))
-        elif spec["type"] == "player_threshold":
-            p = _price_player_threshold(bet["values"], spec.get("player"),
-                                        spec["side"], spec["line"])
-        else:
-            p = None
-        if p is not None and 0.0 < p < 1.0:
-            probs.append(p)
-    if not probs:
-        return None
-    p = mean(probs)
-    # A lone book on an AF market usually means a mis-mapped/odd contract; trust
-    # it only if it isn't an extreme (extreme + thin = the unreliable case).
-    if (spec["type"] not in ("player_yes", "player_threshold")
-            and len(probs) < 2 and (p > 0.9 or p < 0.1)):
-        return None
-    return {"probability": p, "n_books": len(probs),
-            "book_probabilities": probs,
-            "label": spec.get("label", "")}
-
-
 def observations(bookmakers: list[dict], spec: dict | None) -> list[dict]:
     """Per-book fair-probability observations for an API-Football spec.
 
-    This mirrors ``predict`` but keeps the bookmaker name, raw contract odds and
-    de-vig method so the LLM pricing layer can audit exactly which bookmaker
-    probabilities it saw instead of only receiving an averaged anchor.
+    The bookmaker name, raw contract odds, and de-vig method are retained so the
+    Codex pricing agent can audit every input without an averaged anchor.
     """
     if not spec:
         return []

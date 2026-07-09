@@ -72,8 +72,10 @@ class APIFootball:
             fx for fx in self.fixtures()
             if fx["fixture"]["date"][:16] == target
         ]
-        if len(candidates) <= 1 or not match_name:
-            return candidates[0] if candidates else None
+        if not candidates:
+            return None
+        if not match_name:
+            return candidates[0] if len(candidates) == 1 else None
         teams = split_match_name(match_name)
         if not teams:
             return None

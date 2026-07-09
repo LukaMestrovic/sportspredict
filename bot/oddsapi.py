@@ -17,7 +17,6 @@ Outcome shapes:
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from statistics import mean
 from typing import Any
 
 import requests
@@ -30,6 +29,16 @@ from .teams import player_matches, same_team
 SINGLE_SIDE_DEVIG = 0.92
 
 
+class OddsAPIRequestError(RuntimeError):
+    """Secret-safe Odds API transport/status failure."""
+
+    def __init__(self, path: str, status_code: int | None):
+        self.path = path
+        self.status_code = status_code
+        status = str(status_code) if status_code is not None else "network"
+        super().__init__(f"Odds API request failed ({status}) for {path}")
+
+
 class OddsAPI:
     def __init__(self, key: str | None = None, *, refresh_odds: bool = False):
         self.key = key or config.ODDS_API_KEY
@@ -40,8 +49,14 @@ class OddsAPI:
 
     def _get(self, path: str, **params) -> Any:
         params["apiKey"] = self.key
-        r = requests.get(f"{config.ODDS_BASE}{path}", params=params, timeout=30)
-        r.raise_for_status()
+        try:
+            r = requests.get(f"{config.ODDS_BASE}{path}", params=params, timeout=30)
+            r.raise_for_status()
+        except requests.RequestException as exc:
+            response = getattr(exc, "response", None)
+            raise OddsAPIRequestError(
+                path, getattr(response, "status_code", None),
+            ) from None
         return r.json()
 
     def events(self) -> list[dict]:
@@ -50,6 +65,7 @@ class OddsAPI:
                 "oddsapi_events", config.ODDS_SPORT,
                 lambda: self._get(f"/sports/{config.ODDS_SPORT}/events"),
                 ttl=3 * 3600,
+                refresh=self.refresh_odds,
             )
         return self._events
 
@@ -58,8 +74,10 @@ class OddsAPI:
     ) -> dict | None:
         target = kickoff_iso[:16]
         candidates = [e for e in self.events() if e["commence_time"][:16] == target]
-        if len(candidates) <= 1 or not (home and away):
-            return candidates[0] if candidates else None
+        if not candidates:
+            return None
+        if not (home and away):
+            return candidates[0] if len(candidates) == 1 else None
         return next((
             e for e in candidates
             if same_team(home, e["home_team"]) and same_team(away, e["away_team"])
@@ -82,8 +100,10 @@ class OddsAPI:
                     regions=config.ODDS_REGIONS, markets=mkey, oddsFormat="decimal",
                 )
                 return data.get("bookmakers", [])
-            except requests.HTTPError:
-                return []  # some market bundles 422 if none available
+            except OddsAPIRequestError as exc:
+                if exc.status_code == 422:
+                    return []  # requested market bundle is unavailable
+                raise
 
         books = cache.get_or_fetch(
             "oddsapi_odds", key, fetch, refresh=self.refresh_odds,
@@ -136,25 +156,6 @@ def market_present(bookmakers: list[dict], market_key: str) -> bool:
         m.get("key") == market_key
         for bm in bookmakers for m in bm.get("markets", [])
     )
-
-
-def predict(bookmakers: list[dict], spec: dict) -> dict | None:
-    """spec kinds: h2h | totals | yesno | player_yesno | player_ou. Returns
-    {probability, n_books, label} averaged across books, or None to skip."""
-    probs: list[float] = []
-    for bm in bookmakers:
-        for m in bm.get("markets", []):
-            if m["key"] != spec["market"]:
-                continue
-            outs = m["outcomes"]
-            p = _price_from_market(outs, spec)
-            if p is not None and 0.0 < p < 1.0:
-                probs.append(p)
-    if not probs:
-        return None
-    return {"probability": mean(probs), "n_books": len(probs),
-            "book_probabilities": probs,
-            "label": spec.get("label", spec["market"])}
 
 
 def observations(bookmakers: list[dict], spec: dict | None) -> list[dict]:
