@@ -668,11 +668,7 @@ def _markdown_report(
                 if baseline.get("comparison_n") is not None:
                     details.append(f"obs={baseline.get('comparison_n')}")
                 if brier:
-                    details.append(
-                        f"Brier sim={brier.get('simulator')} "
-                        f"emp={brier.get('empirical_rate')} "
-                        f"50={brier.get('always_50')}"
-                    )
+                    details.append(f"Brier {_brier_summary(brier)}")
                 suffix = f" ({'; '.join(details)})" if details else ""
                 lines.append(
                     f"- calibrated baseline: {baseline.get('probability_pct')}% "
@@ -691,18 +687,16 @@ def _markdown_report(
                 or {}
             )
             if comparison.get("available"):
+                brier = comparison.get("brier") or {}
                 suffix = (
-                    f", contract Brier sim={comparison.get('brier', {}).get('simulator')} "
-                    f"emp={comparison.get('brier', {}).get('empirical_rate')} "
-                    f"50={comparison.get('brier', {}).get('always_50')} "
+                    f", contract Brier {_brier_summary(brier)} "
                     f"signal={comparison.get('comparison_signal')} "
                     f"(obs={comparison.get('observations')})"
                 )
             elif comparison.get("brier"):
+                brier = comparison["brier"]
                 suffix = (
-                    f", contract Brier sim={comparison['brier'].get('simulator')} "
-                    f"emp={comparison['brier'].get('empirical_rate')} "
-                    f"50={comparison['brier'].get('always_50')} "
+                    f", contract Brier {_brier_summary(brier)} "
                     f"signal={comparison.get('signal')} "
                     f"(obs={comparison.get('n_observations')})"
                 )
@@ -720,6 +714,19 @@ def _markdown_report(
         if context_avail:
             lines.append(f"- structured context available: {', '.join(context_avail)}")
     return "\n".join(lines)
+
+
+def _brier_summary(brier: dict) -> str:
+    pieces = []
+    for key, label in (
+        ("simulator", "sim"),
+        ("shrunk_empirical_rate", "shrunk"),
+        ("empirical_rate", "emp"),
+        ("always_50", "50"),
+    ):
+        if brier.get(key) is not None:
+            pieces.append(f"{label}={brier.get(key)}")
+    return " ".join(pieces)
 
 
 def _context_available(evidence: dict) -> list[str]:

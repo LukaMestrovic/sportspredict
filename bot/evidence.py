@@ -40,6 +40,12 @@ from .pricing import PriceCtx
 EVIDENCE_DIR = config.ROOT / "logs" / "llm_pricing_runs"
 EVIDENCE_SCHEMA_VERSION = 22
 MIN_BASELINE_COMPARISON_OBSERVATIONS = 30
+SHRUNK_EMPIRICAL_RATE_SOURCE = "shrunk_empirical_rate"
+BASELINE_BRIER_KEYS = (
+    "simulator", SHRUNK_EMPIRICAL_RATE_SOURCE, "empirical_rate", "always_50",
+)
+LATE_HYDRATION_GOAL_REG_CONTRACT = "goal_window:after_second_hydration:reg"
+LATE_HYDRATION_GOAL_EFFECTIVE_HISTORY = 300
 MATCH_READ_ASPECTS = [
     "tactics_tempo_game_state",
     "lineups_minutes_availability",
@@ -392,8 +398,9 @@ def _decision_basis(
             "source": baseline.get("source"),
             "probability_pct": baseline.get("probability_pct"),
             "instruction": (
-                "Start from calibrated_baseline. If its source is empirical_rate "
-                "or always_50, treat the raw simulator as downweighted context."
+                "Start from calibrated_baseline. If its source is empirical_rate, "
+                "shrunk_empirical_rate, or always_50, treat the raw simulator as "
+                "downweighted context."
             ),
         }
         if baseline.get("scope"):
@@ -1091,7 +1098,7 @@ def _compact_simulator_estimate(estimate: dict, *, stage: str | None = None) -> 
             brier = row.get("brier") or {}
             comparison["brier"] = {
                 key: brier.get(key)
-                for key in ("simulator", "empirical_rate", "always_50")
+                for key in BASELINE_BRIER_KEYS
                 if brier.get(key) is not None
             }
             comparisons[scope] = {
@@ -1171,6 +1178,10 @@ def _baseline_candidates(compact: dict, comparison: dict, scope: str) -> list[di
             "brier": simulator_brier,
         })
 
+    shrunk = _shrunk_empirical_rate_candidate(compact, brier, scope)
+    if shrunk is not None:
+        candidates.append(shrunk)
+
     empirical_row = (compact.get("empirical_rates") or {}).get(scope) or {}
     empirical_rate = _safe_float(empirical_row.get("rate"))
     empirical_brier = _safe_float(brier.get("empirical_rate"))
@@ -1193,6 +1204,60 @@ def _baseline_candidates(compact: dict, comparison: dict, scope: str) -> list[di
     return candidates
 
 
+def _shrunk_empirical_rate_candidate(
+    compact: dict,
+    brier: dict,
+    scope: str,
+) -> dict | None:
+    if compact.get("contract_key") != LATE_HYDRATION_GOAL_REG_CONTRACT:
+        return None
+    if scope != "wc2026":
+        return None
+
+    empirical_rates = compact.get("empirical_rates") or {}
+    current = empirical_rates.get(scope) or {}
+    prior = empirical_rates.get("all_history") or {}
+    current_rate = _safe_float(current.get("rate"))
+    current_n = _safe_int(current.get("n"))
+    prior_rate = _safe_float(prior.get("rate"))
+    if current_rate is None or current_n is None or prior_rate is None:
+        return None
+    if current_n <= 0:
+        return None
+
+    effective_history = LATE_HYDRATION_GOAL_EFFECTIVE_HISTORY
+    yes_events = current_rate * current_n
+    shrunk_rate = (
+        prior_rate * effective_history + yes_events
+    ) / (effective_history + current_n)
+
+    explicit_brier = _safe_float(brier.get(SHRUNK_EMPIRICAL_RATE_SOURCE))
+    empirical_brier = _safe_float(brier.get("empirical_rate"))
+    selected_brier = explicit_brier if explicit_brier is not None else empirical_brier
+    if selected_brier is None:
+        return None
+
+    return {
+        "source": SHRUNK_EMPIRICAL_RATE_SOURCE,
+        "probability_pct": shrunk_rate * 100.0,
+        "brier": selected_brier,
+        "rate_n": current_n,
+        "population": current.get("population"),
+        "shrinkage": {
+            "method": "empirical_rate_mean_shrinkage",
+            "prior_scope": "all_history",
+            "prior_rate": round(prior_rate, 6),
+            "historical_effective_observations": effective_history,
+            "current_scope": scope,
+            "current_rate": round(current_rate, 6),
+            "current_observations": current_n,
+        },
+        "brier_proxy_source": (
+            None if explicit_brier is not None else "empirical_rate"
+        ),
+    }
+
+
 def _baseline_payload(
     selected: dict,
     compact: dict,
@@ -1204,9 +1269,14 @@ def _baseline_payload(
 ) -> dict:
     brier = {
         key: value
-        for key in ("simulator", "empirical_rate", "always_50")
+        for key in BASELINE_BRIER_KEYS
         if (value := _safe_float((comparison.get("brier") or {}).get(key))) is not None
     }
+    if (
+        selected["source"] == SHRUNK_EMPIRICAL_RATE_SOURCE
+        and SHRUNK_EMPIRICAL_RATE_SOURCE not in brier
+    ):
+        brier[SHRUNK_EMPIRICAL_RATE_SOURCE] = round(float(selected["brier"]), 6)
     payload = {
         "source": selected["source"],
         "probability_pct": round(float(selected["probability_pct"]), 2),
@@ -1220,6 +1290,15 @@ def _baseline_payload(
         payload["rate_n"] = selected["rate_n"]
     if selected.get("population"):
         payload["population"] = selected["population"]
+    if selected.get("shrinkage"):
+        payload["shrinkage"] = selected["shrinkage"]
+    if selected.get("brier_proxy_source"):
+        payload["brier_proxy_source"] = selected["brier_proxy_source"]
+        payload["reason"] = (
+            payload["reason"]
+            + " Shrunk-rate Brier was unavailable in the benchmark snapshot; "
+            + f"{selected['brier_proxy_source']} Brier was used as a proxy."
+        )
     simulator_probability = _safe_float(compact.get("probability_pct"))
     if simulator_probability is not None and selected["source"] != "simulator":
         payload["simulator_probability_pct"] = round(simulator_probability, 2)
@@ -1235,6 +1314,7 @@ def _baseline_reason(
     labels = {
         "simulator": "simulator",
         "empirical_rate": "empirical rate",
+        SHRUNK_EMPIRICAL_RATE_SOURCE: "shrunk empirical rate",
         "always_50": "50/50 baseline",
     }
     pieces = [

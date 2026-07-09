@@ -320,6 +320,51 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(baseline["simulator_probability_pct"], 55.45)
         self.assertIn("Smaller current-tournament scope was ignored", baseline["reason"])
 
+    def test_late_hydration_goal_uses_shrunk_wc2026_empirical_rate(self):
+        compact = _compact_simulator_estimate({
+            "contract_key": "goal_window:after_second_hydration:reg",
+            "probability": 0.4536,
+            "probability_pct": 45.36,
+            "historical_evidence": {
+                "empirical_rate": {
+                    "all_history": {
+                        "available": True, "rate": 0.533669,
+                        "observations": 4173,
+                    },
+                    "wc2026": {
+                        "available": True, "rate": 0.59375,
+                        "observations": 96,
+                    },
+                },
+                "contract_performance": {
+                    "wc2026": {
+                        "available": True,
+                        "comparison_signal": "inconclusive",
+                        "observations": 96,
+                        "brier": {
+                            "simulator": 0.247501,
+                            "shrunk_empirical_rate": 0.243283,
+                            "empirical_rate": 0.244821,
+                            "always_50": 0.25,
+                        },
+                    },
+                },
+            },
+        })
+
+        baseline = compact["calibrated_baseline"]
+        self.assertEqual(baseline["source"], "shrunk_empirical_rate")
+        self.assertEqual(baseline["scope"], "wc2026")
+        self.assertEqual(baseline["probability_pct"], 54.82)
+        self.assertEqual(baseline["rate_n"], 96)
+        self.assertEqual(baseline["simulator_probability_pct"], 45.36)
+        self.assertEqual(
+            baseline["shrinkage"]["historical_effective_observations"], 300,
+        )
+        self.assertEqual(
+            baseline["brier"]["shrunk_empirical_rate"], 0.243283,
+        )
+
     def test_unmapped_question_omits_broad_related_odds(self):
         result = _result({
             "odd": {"market": "none", "subject": "match",

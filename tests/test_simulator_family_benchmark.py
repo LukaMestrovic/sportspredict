@@ -145,6 +145,35 @@ class TournamentFamilyBenchmarkTests(unittest.TestCase):
         self.assertEqual(summary["brier"]["always_50"], 0.25)
         self.assertNotIn("empirical_rate", summary["brier"])
 
+    def test_late_hydration_goal_summary_scores_shrunk_empirical_rate(self):
+        key = "goal_window:after_second_hydration:reg"
+        rows = [
+            {
+                "fixture_id": index,
+                "family": "goal_window",
+                "contract_key": key,
+                "p_model": 0.5,
+                "p_empirical": 0.5,
+                "outcome": int(index < 60),
+            }
+            for index in range(100)
+        ]
+
+        summary = simulator_benchmark._summary(
+            rows, scope="wc2026_exhaustive_exact_contract", contracts=1,
+        )
+
+        self.assertAlmostEqual(
+            summary["shrunk_empirical_rate"]["probability"], 0.525,
+        )
+        self.assertEqual(
+            summary["shrunk_empirical_rate"]["historical_effective_observations"],
+            300,
+        )
+        self.assertAlmostEqual(
+            summary["brier"]["shrunk_empirical_rate"], 0.245625,
+        )
+
     def test_catalog_hash_mismatch_forces_replay_rebuild(self):
         with tempfile.TemporaryDirectory() as directory:
             replay_dir = Path(directory)

@@ -28,6 +28,9 @@ ARTIFACT_PATH = (
 )
 SCHEMA_VERSION = 4
 REPLAY_VERSION = 3
+LATE_HYDRATION_GOAL_REG_CONTRACT = "goal_window:after_second_hydration:reg"
+SHRUNK_EMPIRICAL_RATE_SOURCE = "shrunk_empirical_rate"
+LATE_HYDRATION_GOAL_EFFECTIVE_HISTORY = 300
 
 
 def _now() -> str:
@@ -315,6 +318,9 @@ def _summary(rows: list[dict], *, scope: str, contracts: int) -> dict:
     empirical_brier = sum(
         (row["p_empirical"] - row["outcome"]) ** 2 for row in comparable
     ) / len(comparable)
+    shrunk_probability = _shrunk_empirical_probability(
+        comparable, scope=scope, contracts=contracts,
+    )
     ci = _clustered_ci(comparable)
     if summary["sample_size"]["level"] == "too_small":
         signal = "inconclusive_small_sample"
@@ -325,6 +331,21 @@ def _summary(rows: list[dict], *, scope: str, contracts: int) -> dict:
     else:
         signal = "inconclusive"
     summary["brier"]["empirical_rate"] = round(empirical_brier, 6)
+    if shrunk_probability is not None:
+        shrunk_brier = sum(
+            (shrunk_probability - row["outcome"]) ** 2
+            for row in comparable
+        ) / len(comparable)
+        summary["brier"][SHRUNK_EMPIRICAL_RATE_SOURCE] = round(shrunk_brier, 6)
+        summary["shrunk_empirical_rate"] = {
+            "probability": round(shrunk_probability, 6),
+            "prior": "all_history_empirical_rate",
+            "historical_effective_observations": (
+                LATE_HYDRATION_GOAL_EFFECTIVE_HISTORY
+            ),
+            "observed_yes_events": int(sum(row["outcome"] for row in comparable)),
+            "observed_observations": len(comparable),
+        }
     summary["delta_brier"] = {
         "simulator_minus_always_50": round(model_brier - 0.25, 6),
         "simulator_minus_empirical_rate": round(model_brier - empirical_brier, 6),
@@ -333,6 +354,33 @@ def _summary(rows: list[dict], *, scope: str, contracts: int) -> dict:
     summary["simulator_minus_empirical_rate_95pct_ci"] = ci
     summary["comparison_signal"] = signal
     return summary
+
+
+def _shrunk_empirical_probability(
+    rows: list[dict],
+    *,
+    scope: str,
+    contracts: int,
+) -> float | None:
+    if scope != "wc2026_exhaustive_exact_contract" or contracts != 1:
+        return None
+    if not rows:
+        return None
+    keys = {str(row.get("contract_key")) for row in rows}
+    if keys != {LATE_HYDRATION_GOAL_REG_CONTRACT}:
+        return None
+    priors = [
+        float(row["p_empirical"]) for row in rows
+        if row.get("p_empirical") is not None
+    ]
+    if len(priors) != len(rows):
+        return None
+    prior_rate = sum(priors) / len(priors)
+    observations = len(rows)
+    yes_events = sum(float(row["outcome"]) for row in rows)
+    return (
+        prior_rate * LATE_HYDRATION_GOAL_EFFECTIVE_HISTORY + yes_events
+    ) / (LATE_HYDRATION_GOAL_EFFECTIVE_HISTORY + observations)
 
 
 def _summaries(rows: list[dict], group_key: str, scope: str) -> dict[str, dict]:
