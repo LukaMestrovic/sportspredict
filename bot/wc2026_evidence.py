@@ -24,6 +24,8 @@ FINAL_STATUSES = {"FT", "AET", "PEN"}
 CORE_CONTRACTS = {
     "goal_window:after_second_hydration:et",
     "goal_window:after_second_hydration:reg",
+    "goal_window:stoppage:any:reg",
+    "first_card_before_first_goal:reg",
     "red_card:match",
 }
 FIRST_HYDRATION_MINUTE = 22
@@ -243,6 +245,7 @@ def _scope_rate(key: str, eligible: list[dict], covered: list[dict], *, stage, c
 def _supports(key: str) -> bool:
     return bool(
         key.startswith("goal_window:")
+        or key.startswith("first_card_before_first_goal:")
         or key.startswith("card_window:cards:")
         or key.startswith("red_card:")
         or key.startswith("both_teams_card:")
@@ -515,6 +518,31 @@ def _event_label(key: str, facts: dict) -> bool | None:
         return any(event["minute"] <= 45 and event["extra"] > 0 for event in goals)
     if key == "goal_window:stoppage:2H":
         return any(45 < event["minute"] <= 90 and event["extra"] > 0 for event in goals)
+    if key == "goal_window:stoppage:any:reg":
+        return any(
+            event["minute"] <= 90 and event["extra"] > 0
+            for event in goals
+        )
+    if key == "first_card_before_first_goal:reg":
+        regulation_goals = [event for event in goals if event["minute"] <= 90]
+        regulation_cards = [event for event in cards if event["minute"] <= 90]
+        if not regulation_cards:
+            return False
+        first_card = min(
+            regulation_cards,
+            key=lambda event: (event["minute"], event["extra"], event["sequence"]),
+        )
+        if not regulation_goals:
+            return True
+        first_goal = min(
+            regulation_goals,
+            key=lambda event: (event["minute"], event["extra"], event["sequence"]),
+        )
+        return (
+            first_card["minute"], first_card["extra"], first_card["sequence"]
+        ) < (
+            first_goal["minute"], first_goal["extra"], first_goal["sequence"]
+        )
     if key.startswith("red_card:"):
         scoped = reds if key.endswith(":match") else [e for e in reds if e["minute"] <= 90]
         return bool(scoped)
@@ -586,7 +614,7 @@ def _fixture_facts(
         (teams.get("home") or {}).get("id"),
         (teams.get("away") or {}).get("id"),
     ]
-    for event in events or []:
+    for sequence, event in enumerate(events or []):
         event_type = str(event.get("type") or "").lower()
         detail = str(event.get("detail") or "").lower()
         comments = str(event.get("comments") or "").lower()
@@ -605,6 +633,7 @@ def _fixture_facts(
                 if (event.get("team") or {}).get("id") in team_ids else None
             ),
             "detail": detail,
+            "sequence": sequence,
         }
         if event_type == "goal":
             if "penalty" in detail:
@@ -665,9 +694,10 @@ def _fixture_facts(
             for index in (0, 1)
         ] if events is not None else None,
     }
-    ordered = sorted(regulation_goals, key=lambda event: (event["minute"], event["extra"]))
-    match_ordered = sorted(match_goals, key=lambda event: (event["minute"], event["extra"]))
-    second_ordered = sorted(second_half_goals, key=lambda event: (event["minute"], event["extra"]))
+    event_order = lambda event: (event["minute"], event["extra"], event["sequence"])
+    ordered = sorted(regulation_goals, key=event_order)
+    match_ordered = sorted(match_goals, key=event_order)
+    second_ordered = sorted(second_half_goals, key=event_order)
     facts["first_goal_team"] = ordered[0]["team_index"] if ordered else None
     facts["first_goal_match_team"] = match_ordered[0]["team_index"] if match_ordered else None
     facts["first_goal_2h_team"] = second_ordered[0]["team_index"] if second_ordered else None

@@ -40,7 +40,11 @@ def contract_key(market: str, params: dict | None, *, stage: str | None = None) 
         window = params.get("window", "unknown")
         if window == "stoppage":
             return f"goal_window:stoppage:{params.get('half', 'unknown')}"
+        if window == "stoppage_any":
+            return "goal_window:stoppage:any:reg"
         return f"goal_window:{window}:{'et' if params.get('include_et') else 'reg'}"
+    if market == "first_card_before_first_goal":
+        return "first_card_before_first_goal:reg"
     if market in {"card_window", "stat_window"}:
         stat = params.get("stat", "cards" if market == "card_window" else "event")
         return (

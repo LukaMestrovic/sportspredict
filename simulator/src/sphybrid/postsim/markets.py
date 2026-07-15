@@ -30,6 +30,7 @@ except Exception:  # pragma: no cover
 
 FIRST_GOAL = "first_goal"
 FIRST_GOAL_HALF = "first_goal_half"
+FIRST_CARD_BEFORE_FIRST_GOAL = "first_card_before_first_goal"
 GOAL_WINDOW = "goal_window"
 CARD_WINDOW = "card_window"
 STAT_WINDOW = "stat_window"
@@ -204,6 +205,8 @@ def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
         return ExtSpec(SUBSTITUTE_SCORE, {"regulation": True}, question)
     if "first goal" in core and "second half" in core and not _teams_in_text(core, ctx):
         return ExtSpec(FIRST_GOAL_HALF, {"half": "2H", "regulation": True}, question)
+    if "card" in core and "before the first goal" in core:
+        return ExtSpec(FIRST_CARD_BEFORE_FIRST_GOAL, {"regulation": True}, question)
     if "win both halves" in core and "either team" in core:
         return ExtSpec(WIN_BOTH_HALVES, {"regulation": True}, question)
     margin_exact = re.search(r"\bdecided by exactly\s+(\d+|one)\s+goals?\b", core)
@@ -351,6 +354,10 @@ def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
     if "goal" in core and re.search(
         r"stoppage(?:\s*\(added\))?\s+time|added\s+time", core
     ):
+        if re.search(r"first-?\s*(?:or|/|and)\s*second-half|first or second half|either half", core):
+            return ExtSpec(GOAL_WINDOW, {
+                "window": "stoppage_any", "include_et": False,
+            }, question)
         half = "1H" if "first-half" in core or "first half" in core else "2H"
         return ExtSpec(GOAL_WINDOW, {"window": "stoppage", "half": half}, question)
 
@@ -445,6 +452,8 @@ def _window_mask(timeline, params: dict) -> np.ndarray:
         return timeline.select(after=SECOND_HYDRATION_MINUTE, phases=phases)
     if window == "stoppage":
         return timeline.select(stoppage=params["half"])
+    if window == "stoppage_any":
+        return timeline.select(stoppage="1H") | timeline.select(stoppage="2H")
     if window == "first_half":
         return timeline.select(phases={"1H"})
     phases = {"1H", "2H", "ET"} if params.get("include_et") else {"1H", "2H"}
@@ -584,6 +593,18 @@ def resolve_extended(
         if spec.params.get("half") != "2H":
             raise ValueError(f"unknown first-goal half {spec.params.get('half')!r}")
         mask = (outcome.match_goals_half(H1) == 0) & (outcome.match_goals_half(H2) >= 1)
+    elif spec.market == FIRST_CARD_BEFORE_FIRST_GOAL:
+        card_events = cards()
+        first_card = np.full(outcome.n_sims, np.inf)
+        first_goal = np.full(outcome.n_sims, np.inf)
+        card_mask = card_events.select(phases={"1H", "2H"})
+        goal_mask = timeline.select(phases={"1H", "2H"})
+        if card_mask.any():
+            np.minimum.at(first_card, card_events.world[card_mask], card_events.order[card_mask])
+        if goal_mask.any():
+            np.minimum.at(first_goal, timeline.world[goal_mask], timeline.order[goal_mask])
+        # Card + no goal is YES. Neither event is NO because first_card is infinite.
+        mask = np.isfinite(first_card) & (first_card < first_goal)
     elif spec.market == GOAL_WINDOW:
         mask = timeline.any(_window_mask(timeline, spec.params))
     elif spec.market == CARD_WINDOW:

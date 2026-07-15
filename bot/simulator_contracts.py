@@ -41,6 +41,12 @@ def questions_for_contract(key: str, home: str, away: str) -> list[str]:
         "goal_window:stoppage:2H": [
             "Will a goal be scored in second-half stoppage time?"
         ],
+        "goal_window:stoppage:any:reg": [
+            "Will a goal be scored during first- or second-half stoppage time in regulation?"
+        ],
+        "first_card_before_first_goal:reg": [
+            "Will a card be shown before the first goal in regulation?"
+        ],
         "card_window:cards:after_second_hydration:et:>=:1": [
             "Will a card be shown after the second hydration break, including extra time?"
         ],

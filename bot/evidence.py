@@ -18,6 +18,7 @@ from typing import Iterable
 from . import (
     card_stoppage,
     config,
+    empirical_specials,
     parser as question_parser,
     public_odds,
     simulator,
@@ -38,7 +39,7 @@ from .odds_context import PriceCtx
 
 
 EVIDENCE_DIR = config.ROOT / "logs" / "codex_runs"
-EVIDENCE_SCHEMA_VERSION = 24
+EVIDENCE_SCHEMA_VERSION = 25
 MIN_BASELINE_COMPARISON_OBSERVATIONS = 30
 SHRUNK_EMPIRICAL_RATE_SOURCE = "shrunk_empirical_rate"
 BASELINE_BRIER_KEYS = (
@@ -196,12 +197,40 @@ def _apply_live_context_models(estimates: dict[str, dict], ctx: PriceCtx) -> Non
     expected_cards = None
     expected_cards_loaded = False
     for estimate in estimates.values():
+        if estimate.get("contract_key") in empirical_specials.SUPPORTED_CONTRACTS:
+            _apply_empirical_special_model(estimate)
         if estimate.get("contract_key") != card_stoppage.CONTRACT_KEY:
             continue
         if not expected_cards_loaded:
             expected_cards = card_stoppage.expected_total_cards_from_context(ctx)
             expected_cards_loaded = True
         _apply_card_stoppage_model(estimate, expected_cards)
+
+
+def _apply_empirical_special_model(estimate: dict) -> None:
+    """Replace a raw new-contract resolver with its four-cohort calibration."""
+    raw_probability = estimate.get("probability")
+    model = empirical_specials.calibrate(
+        estimate.get("historical_evidence") or {}, raw_probability,
+    )
+    if not model:
+        return
+    probability = float(model["probability"])
+    estimate["probability"] = round(probability, 6)
+    estimate["probability_pct"] = round(probability * 100.0, 2)
+    estimate["explanation"] = (
+        "Exact-contract simulator resolver calibrated by a nested era-by-stage "
+        "binomial model using all-history, historical-knockout, WC2026, and "
+        "WC2026-knockout empirical labels without double-counting matches."
+    )
+    estimate["adjustment_guidance"] = (
+        "Use this calibrated exact-contract simulator estimate as the primary "
+        "structured baseline when exact bookmaker odds are absent. Do not replace "
+        "it with 50%; move only for concrete match-specific evidence and disclose it."
+    )
+    inputs = dict(estimate.get("conditioning_inputs") or {})
+    inputs["empirical_special_model"] = model
+    estimate["conditioning_inputs"] = inputs
 
 
 def _apply_card_stoppage_model(
@@ -1145,6 +1174,9 @@ def _compact_simulator_estimate(estimate: dict, *, stage: str | None = None) -> 
     expected_cards = inputs.get("expected_total_cards_signal")
     if isinstance(expected_cards, dict):
         conditioning["expected_total_cards_signal"] = expected_cards
+    empirical_special = inputs.get("empirical_special_model")
+    if isinstance(empirical_special, dict):
+        conditioning["empirical_special_model"] = empirical_special
     if conditioning:
         compact["conditioning"] = conditioning
 
@@ -1171,6 +1203,8 @@ def _compact_simulator_estimate(estimate: dict, *, stage: str | None = None) -> 
         }
         if observations is not None:
             rate["n"] = int(observations)
+        if row.get("yes_events") is not None:
+            rate["yes_events"] = int(row["yes_events"])
         empirical_rates[scope] = rate
     if empirical_rates:
         compact["empirical_rates"] = empirical_rates

@@ -307,6 +307,14 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
         threshold = count[1] if count and count[0] == "eq" else 1 if "exactly one" in lower else None
         if threshold is not None:
             return _intent("exact_goal_margin", comparator="eq", threshold=threshold)
+    if "card" in lower and "before the first goal" in lower:
+        return _intent("first_card_before_first_goal")
+    if (
+        "goal" in lower
+        and ("stoppage time" in lower or "added time" in lower)
+        and re.search(r"first-?\s*(?:or|/|and)\s*second-half|first or second half|either half", lower)
+    ):
+        return _intent("goal_window", comparator="yes", period="match")
     if "card" in lower and "each half" in lower:
         count = _threshold_in(lower) or ("gte", 1)
         return _intent("card_each_half", comparator=count[0], threshold=count[1])
@@ -352,7 +360,7 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
         and "each half" in lower
     ):
         return _intent("highest_scoring_half_draw")
-    if "first card" in lower and "before the first goal" in lower:
+    if "card" in lower and "before the first goal" in lower:
         return _intent("first_card_before_first_goal")
     if "total substitutions" in lower:
         count = _threshold_in(lower)
@@ -685,7 +693,7 @@ def _repair_intent(
     if "both halves" in lower and "same number of goals" in lower:
         intent.update(market="highest_scoring_half_draw", subject="match",
                       comparator="yes", period="match")
-    if "first card" in lower and "before the first goal" in lower:
+    if "card" in lower and "before the first goal" in lower:
         intent.update(market="first_card_before_first_goal", subject="match",
                       comparator="yes", period="match")
     if "total substitutions" in lower:

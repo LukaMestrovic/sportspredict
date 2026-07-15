@@ -679,6 +679,15 @@ class KnockoutWordingTests(unittest.TestCase):
             "in regulation (90 minutes + stoppage time)?",
             "Norway", "England",
         )
+        stoppage_goal = self._parse(
+            "Will a goal be scored during first- or second-half stoppage time in regulation?",
+            "England", "Argentina",
+        )
+        card_before_goal = self._parse(
+            "Will a card be shown before the first goal of the match in regulation "
+            "(90 minutes + stoppage time)? If neither a card nor a goal occurs, resolves No.",
+            "England", "Argentina",
+        )
         self.assertEqual((hydration["market"], hydration["period"]),
                          ("goal_window", "match"))
         self.assertEqual((substitute["market"], substitute["period"]),
@@ -692,6 +701,10 @@ class KnockoutWordingTests(unittest.TestCase):
         self.assertEqual((cards_each_half["market"], cards_each_half["threshold"]),
                          ("card_each_half", 1))
         self.assertEqual(stoppage_card["market"], "card_stoppage")
+        self.assertEqual((stoppage_goal["market"], stoppage_goal["time_scope"]),
+                         ("goal_window", "regulation"))
+        self.assertEqual((card_before_goal["market"], card_before_goal["time_scope"]),
+                         ("first_card_before_first_goal", "regulation"))
         self.assertEqual(
             (corners_and_shots["market"], corners_and_shots["subject"]),
             ("team_corners_and_total_shots_compare", "away"),

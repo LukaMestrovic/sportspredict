@@ -3011,6 +3011,84 @@
         }
       }
     },
+    "first_card_before_first_goal:reg": {
+      "cohort_overlap": {
+        "wc2026_in_all_history": {
+          "available": true,
+          "basis": "WC2026 group matches through 2026-06-20 already present in the frozen all-history artifact",
+          "observations": 34,
+          "yes_events": 11
+        }
+      },
+      "contract_key": "first_card_before_first_goal:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "basis": "exact ordered API-Football regulation event labels; card with no goal is Yes and neither event is No",
+          "matches": 4173,
+          "observations": 4173,
+          "rate": 0.458663,
+          "yes_events": 1914
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 343,
+          "observations": 343,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.524781,
+          "yes_events": 180
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "New exact contract; no frozen rolling-origin simulator comparison is available."
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "New exact contract; no unseen settled simulator comparison is available."
+        }
+      }
+    },
+    "goal_window:stoppage:any:reg": {
+      "cohort_overlap": {
+        "wc2026_in_all_history": {
+          "available": true,
+          "basis": "WC2026 group matches through 2026-06-20 already present in the frozen all-history artifact",
+          "observations": 34,
+          "yes_events": 1
+        }
+      },
+      "contract_key": "goal_window:stoppage:any:reg",
+      "empirical_rate": {
+        "all_history": {
+          "available": true,
+          "basis": "exact union of positive added-time goal clocks in either regulation half",
+          "matches": 4173,
+          "observations": 4173,
+          "rate": 0.142104,
+          "yes_events": 593
+        },
+        "all_history_knockout": {
+          "available": true,
+          "matches": 343,
+          "observations": 343,
+          "population": "historical_knockout_labelable_observations",
+          "rate": 0.163265,
+          "yes_events": 56
+        }
+      },
+      "model_performance": {
+        "all_history": {
+          "available": false,
+          "reason": "New exact union contract; no frozen rolling-origin simulator comparison is available."
+        },
+        "wc2026": {
+          "available": false,
+          "reason": "New exact union contract; no unseen settled simulator comparison is available."
+        }
+      }
+    },
     "goal_window:stoppage:1H": {
       "contract_key": "goal_window:stoppage:1H",
       "contract_performance": {

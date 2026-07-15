@@ -24,6 +24,7 @@ from .postsim import (
     EXACT_GOAL_MARGIN,
     FIRST_GOAL,
     FIRST_GOAL_HALF,
+    FIRST_CARD_BEFORE_FIRST_GOAL,
     GOAL_WINDOW,
     LEAD_ANY_TIME,
     PLAYER_FULL_MATCH,
@@ -90,6 +91,11 @@ def _explanation(market: str, params: dict, notes: str | None) -> str:
             "Estimated from shared simulated regulation goal worlds by requiring no first-half "
             "goal and at least one second-half goal."
         )
+    if market == FIRST_CARD_BEFORE_FIRST_GOAL:
+        return (
+            "Estimated as an ordered race between simulated regulation card and goal "
+            "timelines; a card with no goal is YES, while neither event is NO."
+        )
     if market == GOAL_WINDOW:
         if params.get("window") == "before_first_hydration":
             return (
@@ -111,6 +117,11 @@ def _explanation(market: str, params: dict, notes: str | None) -> str:
             return (
                 f"Estimated only from goals carrying a positive {params.get('half')} added-time "
                 "clock; ordinary goals in that half are excluded."
+            )
+        if params.get("window") == "stoppage_any":
+            return (
+                "Estimated as the exact union of goals carrying a positive added-time "
+                "clock in either regulation half; extra time is excluded."
             )
         return (
             "Estimated from learned goal counts and the historical within-half goal-time "

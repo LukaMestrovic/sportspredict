@@ -148,6 +148,54 @@ class WC2026EvidenceTests(unittest.TestCase):
         self.assertEqual(model["empirical_rate"], 0.5)
         self.assertEqual(model["mean_total_cards"], 1.5)
 
+    def test_new_exact_event_contract_labels(self):
+        fixture = _fixture(1, "2026-06-20T18:00:00Z")
+        facts = wc2026_evidence._fixture_facts(
+            fixture,
+            events=[
+                _event("Card", 12, detail="Yellow Card", team_id=2),
+                _event("Goal", 12, detail="Normal Goal", team_id=3),
+                _event("Goal", 45, detail="Normal Goal", team_id=2, extra=4),
+                _event("Card", 105, detail="Yellow Card", team_id=3),
+            ],
+            statistics=None,
+            players=None,
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract("goal_window:stoppage:any:reg", facts),
+            [True],
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract("first_card_before_first_goal:reg", facts),
+            [True],
+        )
+
+        neither = wc2026_evidence._fixture_facts(
+            fixture, events=[], statistics=None, players=None,
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract("first_card_before_first_goal:reg", neither),
+            [False],
+        )
+
+    def test_card_before_goal_uses_provider_sequence_for_same_clock(self):
+        fixture = _fixture(1, "2026-06-20T18:00:00Z")
+        goal_first = wc2026_evidence._fixture_facts(
+            fixture,
+            events=[
+                _event("Goal", 20, detail="Normal Goal", team_id=2),
+                _event("Card", 20, detail="Yellow Card", team_id=3),
+            ],
+            statistics=None,
+            players=None,
+        )
+        self.assertEqual(
+            wc2026_evidence.labels_for_contract(
+                "first_card_before_first_goal:reg", goal_first,
+            ),
+            [False],
+        )
+
     def test_first_half_after_first_hydration_boundary_starts_after_minute_22(self):
         af = _AF()
         af.events[1] = [_event("Goal", 22)]
