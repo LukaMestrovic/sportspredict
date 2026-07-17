@@ -4,7 +4,8 @@ Used as a FALLBACK when API-Football has no market / no bookmaker coverage.
 It adds player props (anytime scorer, score-or-assist, shots-on-target, cards)
 that API-Football rarely quotes for World Cup fixtures.
 
-**Paid + metered.** Every event-odds response is cached to disk (`bot/cache.py`).
+**Quota-metered.** Free and paid plans use the same credit accounting. Every
+event-odds response is cached to disk (`bot/cache.py`).
 The `/events` listing is free; `/events/{id}/odds` costs
 ``#markets × #regions`` credits.
 
@@ -84,7 +85,7 @@ class OddsAPI:
         ), None)
 
     def event_odds(self, event_id: str, markets: list[str]) -> list[dict]:
-        """Bookmaker blocks for the given markets (cached, one paid call)."""
+        """Bookmaker blocks for the given markets (cached, one metered call)."""
         if not markets:
             return []
         mkey = ",".join(sorted(set(markets)))

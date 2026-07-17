@@ -87,7 +87,7 @@ Required `.env` values:
 |---|---|
 | `SPORTSPREDICT_KEY` | SportPredict discovery, predictions, and results |
 | `APIFOOTBALL_KEY` | fixtures, lineups, statistics, injuries, and odds |
-| `ODDS_API_KEY` | exact secondary odds; paid/metered and cached |
+| `ODDS_API_KEY` | exact secondary odds; quota-metered and cached; free plans supported |
 
 Optional settings:
 
@@ -145,7 +145,7 @@ cannot make Codex read a different prompt from the one submission verifies.
 
 ### 3. Resolve unfamiliar wording when requested
 
-An unfamiliar question stops preparation before any paid Odds API request and
+An unfamiliar question stops preparation before any metered Odds API request and
 prints `STATUS=needs_intents`. Read `intent_task.md` and
 `intent_request.json`, have Codex write the strict canonical response to
 `intent_response.json`, then run the printed resume command:
@@ -269,7 +269,8 @@ identical requests remain deduplicated in memory.
 
 - SportPredict has no metered pricing call in this repository.
 - API-Football is rate-limited; its responses are cached by endpoint contract.
-- The Odds API is paid and bills approximately by requested markets × regions.
+- The Odds API is quota-metered (including its free plan) and bills credits by
+  requested markets × regions.
   The event/market/region cache is retained across deployments.
 - Codex work is manual through the user's Codex environment. This repository
   makes zero paid OpenAI API calls.

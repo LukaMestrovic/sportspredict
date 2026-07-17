@@ -61,12 +61,12 @@ a manually operated Codex agent and subagents research and price the match. See
 
 ## Quota, caching, and secrets
 
-- The Odds API is paid/metered; API-Football is rate-limited. Every reusable
+- The Odds API is quota-metered; API-Football is rate-limited. Every reusable
   response goes through `bot/cache.py`. Keep writes atomic and refreshes
   deduplicated.
 - Odds API billing scales with requested markets × regions. Request only exact
   needed markets and keep the cache key bound to event, market set, and regions.
-- `--fresh` deliberately refreshes once. Do not add repeated paid fetches inside
+- `--fresh` deliberately refreshes once. Do not add repeated metered fetches inside
   market loops.
 - Do not convert authentication, quota, rate, network, or server errors into
   empty evidence. Provider exceptions must not expose query-string keys.

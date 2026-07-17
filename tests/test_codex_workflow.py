@@ -29,7 +29,7 @@ class CodexWorkflowTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def test_unfamiliar_question_stops_before_paid_odds_work(self):
+    def test_unfamiliar_question_stops_before_metered_odds_work(self):
         parsed = SimpleNamespace(
             unresolved=[{
                 "market_id": "m", "question": MARKETS[0]["question"],

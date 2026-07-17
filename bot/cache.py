@@ -1,6 +1,6 @@
 """Persistent on-disk JSON cache.
 
-The Odds API is a **paid, metered** provider, so every event-odds response is
+The Odds API is a **quota-metered** provider, so every event-odds response is
 cached to disk and reused — a given (event, markets, regions) request hits the
 network at most once per TTL window. Runtime state is retained across deploys.
 """

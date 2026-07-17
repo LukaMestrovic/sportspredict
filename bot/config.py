@@ -29,8 +29,8 @@ AF_BASE = "https://v3.football.api-sports.io"
 FIFA_BASE = "https://api.fifa.com/api/v3"
 ODDS_BASE = "https://api.the-odds-api.com/v4"
 ODDS_SPORT = "soccer_fifa_world_cup"
-# Regions to query on the (paid) Odds API. More regions = more books but more
-# cost (billed markets × regions). US is included because some player props —
+# Regions to query on the quota-metered Odds API. More regions = more books but
+# more credit usage (billed markets × regions). US is included because some player props —
 # notably score-or-assist — are quoted only by US books (DraftKings, FanDuel),
 # and the extra books tighten the de-vig average on the markets EU/UK already
 # cover.

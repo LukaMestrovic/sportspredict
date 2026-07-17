@@ -1,5 +1,6 @@
 import unittest
 
+from bot.matcher import match_intent, match_intent_oddsapi
 from bot.parser import _normalize_question, _repair_intent, parse_questions
 
 
@@ -123,6 +124,62 @@ class DeterministicTemplateTests(unittest.TestCase):
             [part["intent"]["market"]
              for part in parsed.compounds["compound"]["components"]],
             ["btts", "total_goals"],
+        )
+
+    def test_final_slate_team_sot_compound_and_bronze_winner_are_tracked(self):
+        parsed = parse_questions(
+            [
+                {
+                    "id": "sot",
+                    "question": (
+                        "Will each team record 4 or more shots on target in regulation "
+                        "(90 minutes + stoppage time)?"
+                    ),
+                },
+                {
+                    "id": "winner",
+                    "question": "Will France win the third-place match (Bronze Final)?",
+                },
+            ],
+            "France", "England",
+        )
+
+        self.assertFalse(parsed.unresolved)
+        self.assertEqual(parsed["sot"]["market"], "none")
+        self.assertIsNone(parsed["sot"]["player"])
+        compound = parsed.compounds["sot"]
+        self.assertEqual(compound["op"], "AND")
+        components = [part["intent"] for part in compound["components"]]
+        self.assertEqual(
+            [
+                (
+                    intent["market"], intent["subject"], intent["comparator"],
+                    intent["threshold"], intent["time_scope"],
+                )
+                for intent in components
+            ],
+            [
+                ("team_shots_on_target", "home", "gte", 4, "regulation"),
+                ("team_shots_on_target", "away", "gte", 4, "regulation"),
+            ],
+        )
+        self.assertEqual(
+            [match_intent(intent, "France", "England", stage="knockout")["bet_id"]
+             for intent in components],
+            [88, 89],
+        )
+        self.assertTrue(all(
+            match_intent_oddsapi(
+                intent, "France", "England", stage="knockout",
+            ) is None
+            for intent in components
+        ))
+
+        winner = parsed["winner"]
+        self.assertEqual(
+            (winner["market"], winner["subject"], winner["comparator"],
+             winner["time_scope"]),
+            ("match_winner", "home", "win", "full_match"),
         )
 
     def test_unknown_compound_is_unresolved_not_silently_unsupported(self):

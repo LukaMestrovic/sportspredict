@@ -40,11 +40,17 @@ class ParseResult(dict):
 _COMPOUND_RE = re.compile(
     r"\b(?:AND|OR)\b|\bscore the first goal of the game and\b"
 )
+_IMPLICIT_TEAM_COMPOUND_RE = re.compile(
+    r"\b(?:each team|both teams)\b.*\bshots? on target\b", re.IGNORECASE,
+)
 
 
 def is_compound_question(question: str) -> bool:
     """Return whether wording uses one of the supported compound forms."""
-    return bool(_COMPOUND_RE.search(question))
+    return bool(
+        _COMPOUND_RE.search(question)
+        or _IMPLICIT_TEAM_COMPOUND_RE.search(question)
+    )
 
 
 def split_compound_template(question: str) -> dict | None:
@@ -72,6 +78,25 @@ def split_compound_template(question: str) -> dict | None:
             "b": f"Will {second} score in the {period} half?",
         }
     return None
+
+
+def _split_implicit_team_compound(
+    question: str, home: str, away: str,
+) -> dict | None:
+    """Expand an each-team threshold into two exact team-market components."""
+    match = re.fullmatch(
+        r"Will (?:each team|both teams) (?:record|have) "
+        r"(.+?shots? on target.*?)\?",
+        question.strip(), re.IGNORECASE,
+    )
+    if not match:
+        return None
+    threshold = match.group(1)
+    return {
+        "op": "AND",
+        "a": f"Will {home} record {threshold}?",
+        "b": f"Will {away} record {threshold}?",
+    }
 
 
 def _parse_compound(split: dict | None, home: str, away: str) -> dict | None:
@@ -117,7 +142,10 @@ def parse_questions(
         seen_ids.add(market_id)
         cleaned = _normalize_question(raw_question, home, away)
 
-        split = split_compound_template(cleaned)
+        split = (
+            _split_implicit_team_compound(raw_question.strip(), home, away)
+            or split_compound_template(cleaned)
+        )
         compound = _parse_compound(split, home, away) if split else None
         intent = _parse_template(cleaned, home, away)
         if intent and intent.get("market") != "none":
@@ -177,7 +205,10 @@ def parse_question_template(question: str, home: str, away: str) -> dict | None:
         return validate_intent(
             _repair_intent(cleaned, intent, home, away, raw_question=question),
         )
-    split = split_compound_template(cleaned)
+    split = (
+        _split_implicit_team_compound(question, home, away)
+        or split_compound_template(cleaned)
+    )
     if split and _parse_compound(split, home, away):
         return validate_intent(_repair_intent(
             cleaned, _intent("none"), home, away, raw_question=question,
@@ -419,7 +450,10 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
         return _intent("penalty_awarded", period=period)
     if "red card" in lower and "shown" in lower:
         return _intent("red_card", period=period)
-    if "both teams" in lower and "shot on target" in lower:
+    if (
+        ("both teams" in lower or "each team" in lower)
+        and re.search(r"\bshots? on target\b", lower)
+    ):
         return _intent("none", period=period)
 
     # Draw / tie contracts (full match or, when "halftime" is named, the 1st half).
@@ -466,6 +500,11 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
             count = _threshold_in(lower)
             if count and count[0] == "gte":
                 return _intent("win_margin", side, "gte", count[1])
+        if (
+            re.search(r"\bwin the (?:third-place|third place)(?: match)?\b", lower)
+            or "win the bronze final" in lower
+        ):
+            return _intent("match_winner", side, "win", period=period)
         if lower.endswith(" win the match?") or lower.endswith(" win?"):
             return _intent("match_winner", side, "win")
         if (
