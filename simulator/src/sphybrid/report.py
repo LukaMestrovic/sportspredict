@@ -23,17 +23,22 @@ from .postsim import (
     COMPOUND_AND,
     EXACT_GOAL_MARGIN,
     FIRST_GOAL,
+    FIRST_GOAL_ASSISTED,
     FIRST_GOAL_HALF,
     FIRST_CARD_BEFORE_FIRST_GOAL,
     GOAL_WINDOW,
     LEAD_ANY_TIME,
     PLAYER_FULL_MATCH,
+    PLAYER_SOT_COMPARE,
+    PENALTY_SCORED,
     RED_CARD,
     STAT_WINDOW,
     SUBSTITUTE_GOAL_INVOLVEMENT,
     SUBSTITUTE_SCORE,
     SUBSTITUTION_BEFORE_HALF,
     TEAM_CORNERS_AND_TOTAL_SHOTS_MORE,
+    TEAM_TWO_PLUS_SAME_HALF,
+    TEAM_UNIQUE_SHOOTERS,
     SECOND_HYDRATION_MINUTE,
     TOTAL_SHOTS_THRESHOLD,
     WIN_BOTH_HALVES,
@@ -86,10 +91,36 @@ def _explanation(market: str, params: dict, notes: str | None) -> str:
             "Estimated from learned team/half goal counts and historical goal timing, with the "
             f"first scorer resolved inside each shared simulated match world ({scope})."
         )
+    if market == FIRST_GOAL_ASSISTED:
+        return (
+            "Estimated from the simulated probability of at least one regulation goal and the "
+            "configured assisted-goal fraction; a goalless match is explicitly NO."
+        )
     if market == FIRST_GOAL_HALF:
         return (
             "Estimated from shared simulated regulation goal worlds by requiring no first-half "
             "goal and at least one second-half goal."
+        )
+    if market == TEAM_TWO_PLUS_SAME_HALF:
+        return (
+            "Estimated as the exact union of either team reaching two goals separately in either "
+            "regulation half inside each shared simulated match world."
+        )
+    if market == PENALTY_SCORED:
+        return (
+            "Estimated by analytically thinning simulated regulation penalty awards with the "
+            "penalty-conversion rate, constrained to worlds containing a regulation goal."
+        )
+    if market == PLAYER_SOT_COMPARE:
+        return (
+            "Estimated as the exact strict comparison of two conditional binomial player "
+            "allocations tied to the opposing teams' simulated regulation shots on target; ties "
+            "are NO."
+        )
+    if market == TEAM_UNIQUE_SHOOTERS:
+        return (
+            "Estimated from simulated regulation team total shots and an exact multinomial "
+            "occupancy calculation using disclosed player shot-allocation weights."
         )
     if market == FIRST_CARD_BEFORE_FIRST_GOAL:
         return (

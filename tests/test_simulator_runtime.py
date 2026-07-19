@@ -344,6 +344,124 @@ class BundledSimulatorTests(unittest.TestCase):
         self.assertEqual(by_id["corners_shots"]["contract_key"],
                          "compound:team_more_corners_and_total_shots:reg")
 
+    def test_final_specials_use_exact_dedicated_contracts(self):
+        report = self._run_bridge({
+            "home": "Spain",
+            "away": "Argentina",
+            "kickoff": "2026-07-19T19:00:00Z",
+            "stage": "knockout",
+            "n_sims": 400,
+            "questions": [
+                {
+                    "market_id": "assisted",
+                    "question": (
+                        "Will the first goal of the match be credited with an assist in "
+                        "regulation (90 minutes + stoppage time)? Settles No if the match "
+                        "is 0-0."
+                    ),
+                },
+                {
+                    "market_id": "same_half",
+                    "question": (
+                        "Will either team score 2 or more goals in the same half of "
+                        "regulation (90 minutes + stoppage time)?"
+                    ),
+                },
+                {
+                    "market_id": "penalty_scored",
+                    "question": (
+                        "Will a penalty kick be scored in regulation "
+                        "(90 minutes + stoppage time)?"
+                    ),
+                },
+                {
+                    "market_id": "player_compare",
+                    "question": (
+                        "Will Lamine Yamal (Spain, #19) record more shots on target than "
+                        "Lionel Messi (Argentina, #10) in regulation "
+                        "(90 minutes + stoppage time)?"
+                    ),
+                },
+                {
+                    "market_id": "unique_shooters",
+                    "question": (
+                        "Will 5 or more different Spain players attempt a shot in "
+                        "regulation (90 minutes + stoppage time)?"
+                    ),
+                },
+                {
+                    "market_id": "any_goal",
+                    "question": "Will there be at least 1 goal in regulation?",
+                },
+                {
+                    "market_id": "either_two",
+                    "question": "Will either team score 2 or more goals in regulation?",
+                },
+                {
+                    "market_id": "penalty_awarded",
+                    "question": "Will a penalty kick be awarded in regulation?",
+                },
+            ],
+        })
+        by_id = {item["market_id"]: item for item in report["question_reports"]}
+
+        self.assertEqual(report["unsupported_questions"], [])
+        self.assertEqual(by_id["assisted"]["family"], "first_goal_assisted")
+        self.assertEqual(by_id["assisted"]["contract_key"], "first_goal_assisted:reg")
+        self.assertEqual(by_id["same_half"]["family"], "team_two_plus_same_half")
+        self.assertEqual(by_id["same_half"]["contract_key"],
+                         "team_two_plus_same_half:reg")
+        self.assertEqual(by_id["penalty_scored"]["family"], "penalty_scored")
+        self.assertEqual(by_id["penalty_scored"]["contract_key"], "penalty_scored:reg")
+        self.assertEqual(by_id["player_compare"]["family"], "player_sot_compare")
+        self.assertEqual(by_id["player_compare"]["contract_key"],
+                         "player_sot_compare:reg:players")
+        self.assertEqual(by_id["unique_shooters"]["family"], "team_unique_shooters")
+        self.assertEqual(by_id["unique_shooters"]["contract_key"],
+                         "team_unique_shooters:>=:5:reg")
+
+        # Exact-contract sanity relations in the same deterministic simulated worlds.
+        self.assertAlmostEqual(
+            by_id["assisted"]["probability"],
+            0.70 * by_id["any_goal"]["probability"],
+            places=5,
+        )
+        self.assertLessEqual(
+            by_id["same_half"]["probability"], by_id["either_two"]["probability"],
+        )
+        self.assertLessEqual(
+            by_id["penalty_scored"]["probability"],
+            by_id["penalty_awarded"]["probability"],
+        )
+        for market_id in (
+            "assisted", "same_half", "penalty_scored", "player_compare", "unique_shooters",
+        ):
+            self.assertGreaterEqual(by_id[market_id]["probability"], 0.0)
+            self.assertLessEqual(by_id[market_id]["probability"], 1.0)
+
+    def test_player_comparison_and_unique_shooter_math_is_exact(self):
+        sys.path.insert(0, str(SIMULATOR / "src"))
+        import numpy as np
+
+        from sphybrid.postsim.allocation import (
+            _prob_binomial_strict_more,
+            _prob_distinct_at_least,
+        )
+
+        # X,Y ~ Binomial(1, 0.5): only X=1,Y=0 is a strict win.
+        self.assertAlmostEqual(_prob_binomial_strict_more(1, 1, 0.5, 0.5), 0.25)
+        self.assertEqual(_prob_binomial_strict_more(0, 0, 0.5, 0.5), 0.0)
+        self.assertEqual(_prob_binomial_strict_more(1, 1, 1.0, 0.0), 1.0)
+
+        uniform_five = np.full(5, 0.2)
+        self.assertEqual(_prob_distinct_at_least(4, uniform_five, 5), 0.0)
+        # Five labelled shots occupy all five players with probability 5!/5^5.
+        self.assertAlmostEqual(
+            _prob_distinct_at_least(5, uniform_five, 5),
+            120.0 / (5.0 ** 5),
+        )
+        self.assertEqual(_prob_distinct_at_least(3, np.array([1.0, 0.0]), 2), 0.0)
+
     def _run_bridge(self, payload):
         env = os.environ.copy()
         env["PYTHONPATH"] = str(SIMULATOR / "src")

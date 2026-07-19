@@ -58,6 +58,19 @@ def contract_key(market: str, params: dict | None, *, stage: str | None = None) 
         return f"first_goal:{period}{scope}:team"
     if market == "first_goal_half":
         return f"first_goal_half:{params.get('half', 'unknown')}:reg"
+    if market == "first_goal_assisted":
+        return "first_goal_assisted:reg"
+    if market == "team_two_plus_same_half":
+        return "team_two_plus_same_half:reg"
+    if market == "penalty_scored":
+        return "penalty_scored:reg"
+    if market == "player_sot_compare":
+        return "player_sot_compare:reg:players"
+    if market == "team_unique_shooters":
+        return (
+            f"team_unique_shooters:{params.get('comparator')}:"
+            f"{_number(params.get('threshold'))}:reg"
+        )
     if market == "compound_and":
         return "compound:first_goal_and_other_team_scores_2h"
     if market == "team_corners_and_total_shots_more":

@@ -12,7 +12,15 @@ import numpy as np
 from sportspredict.features.context import MatchContext
 from sportspredict.markets.schema import MarketSpec, MarketType, apply_comparator
 from sportspredict.model.outcome import MatchOutcome
-from sportspredict.types import CORNERS, GOALS, H1, H2, TEAM_A, TEAM_B
+from sportspredict.types import (
+    CORNERS,
+    GOALS,
+    H1,
+    H2,
+    SHOTS_ON_TARGET,
+    TEAM_A,
+    TEAM_B,
+)
 
 from .timing import TimingModel
 from .timeline import GoalTimeline, card_timeline, count_timeline
@@ -51,6 +59,11 @@ WIN_MARGIN = "win_margin"
 LEAD_ANY_TIME = "lead_any_time"
 CARDS_MORE_THAN_GOALS = "cards_more_than_goals"
 PLAYER_FULL_MATCH = "player_full_match"
+FIRST_GOAL_ASSISTED = "first_goal_assisted"
+TEAM_TWO_PLUS_SAME_HALF = "team_two_plus_same_half"
+PENALTY_SCORED = "penalty_scored"
+PLAYER_SOT_COMPARE = "player_sot_compare"
+TEAM_UNIQUE_SHOOTERS = "team_unique_shooters"
 FIRST_HYDRATION_MINUTE = 22.0
 SECOND_HYDRATION_MINUTE = 70.0
 
@@ -189,12 +202,95 @@ def _qualified_baseline_spec(question: str, ctx: MatchContext):
     return spec
 
 
+def _player_sot_comparison(question: str, ctx: MatchContext) -> ExtSpec | None:
+    """Parse the exact two-player strict shots-on-target comparison contract.
+
+    Requiring both team qualifiers is deliberate. Without this rule the frozen
+    parser sees the country names and silently turns a player comparison into a
+    team-vs-team comparison. A less explicit form remains unsupported instead
+    of guessing either player's team.
+    """
+    clean = re.sub(
+        r"\s*\(90 minutes \+ stoppage time\)", "", question, flags=re.IGNORECASE,
+    )
+    clean = re.sub(r"\s+in regulation\b", "", clean, flags=re.IGNORECASE)
+    match = re.fullmatch(
+        r"\s*will\s+(.+?)\s+\(([^()]*)\)\s+"
+        r"(?:record|register|have)\s+more\s+shots?\s+on\s+target\s+than\s+"
+        r"(.+?)\s+\(([^()]*)\)\s*\?\s*",
+        clean,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    left_player, left_qualifier, right_player, right_qualifier = (
+        part.strip() for part in match.groups()
+    )
+    left_teams = _teams_in_text(left_qualifier, ctx)
+    right_teams = _teams_in_text(right_qualifier, ctx)
+    if len(left_teams) != 1 or len(right_teams) != 1 or left_teams[0] == right_teams[0]:
+        return None
+    return ExtSpec(PLAYER_SOT_COMPARE, {
+        "left_player": left_player,
+        "left_team": _LABEL[left_teams[0]],
+        "right_player": right_player,
+        "right_team": _LABEL[right_teams[0]],
+        "stat": SHOTS_ON_TARGET,
+        "regulation": True,
+    }, question)
+
+
 def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
     """Claim only exact unsupported templates; every other question remains baseline-owned."""
     if not _PARSER_OK:
         return None
     core = _strip_lead(question)
     raw_lower = question.lower()
+
+    # These exact final-match specials must precede every generic baseline
+    # fallback. Four of them otherwise parse as a broader, incorrect contract:
+    # penalty scored -> awarded; player SOT -> team SOT; same-half goals ->
+    # full-match team goals; first-goal assist -> generic first-goal rejection.
+    player_compare = _player_sot_comparison(question, ctx)
+    if player_compare is not None:
+        return player_compare
+    if (
+        _regulation_only(raw_lower)
+        and "first goal" in core
+        and re.search(r"credited with an assist|be assisted|have an assist", core)
+    ):
+        return ExtSpec(FIRST_GOAL_ASSISTED, {"regulation": True}, question)
+    if (
+        _regulation_only(raw_lower)
+        and "either team" in core
+        and "same half" in core
+        and re.search(r"\bscore|\bgoals?", core)
+    ):
+        count = _threshold(core)
+        if count == (">=", 2.0):
+            return ExtSpec(TEAM_TWO_PLUS_SAME_HALF, {
+                "threshold": 2, "regulation": True,
+            }, question)
+    if (
+        _regulation_only(raw_lower)
+        and re.search(r"\bpenalty kick be scored\b|\bscored penalty\b", core)
+    ):
+        return ExtSpec(PENALTY_SCORED, {"regulation": True}, question)
+    if (
+        _regulation_only(raw_lower)
+        and re.search(r"\b(?:different|distinct)\b", core)
+        and re.search(r"\bplayers?\b", core)
+        and re.search(r"\b(?:attempt|take|record|have)s?\s+(?:at least\s+)?a\s+shot\b", core)
+    ):
+        count = _threshold(core)
+        teams = _teams_in_text(core, ctx)
+        if count and count[0] == ">=" and len(teams) == 1:
+            return ExtSpec(TEAM_UNIQUE_SHOOTERS, {
+                "team": _LABEL[teams[0]],
+                "comparator": count[0],
+                "threshold": int(count[1]),
+                "regulation": True,
+            }, question)
 
     # Match operations/player aggregate props must precede generic scoring parsing.
     if "substitution be made before halftime" in core:
@@ -584,7 +680,78 @@ def resolve_extended(
                 outcome, timing, stream("yellow_cards"), et_scale=et_scale, red=reds(),
             ),
         )
-    if spec.market == FIRST_GOAL:
+
+    def team_total_shots():
+        from .shots import sample_team_total_shots
+
+        model = (timing.data.get("models") or {}).get("total_shots")
+        return cached(
+            "team_total_shots",
+            lambda: sample_team_total_shots(
+                outcome, model, stream("team_total_shots"),
+            ),
+        )
+
+    if spec.market == FIRST_GOAL_ASSISTED:
+        # The configured assisted-goal fraction is conditional on a goal. No
+        # goal is explicitly NO, so averaging this conditional probability over
+        # the shared regulation goal worlds exactly enforces the 0-0 rule.
+        assisted_share = float(np.clip(
+            settings.players.get("prob_goal_assisted", 0.70) if settings is not None else 0.70,
+            0.0,
+            1.0,
+        ))
+        any_regulation_goal = outcome.match_total(GOALS, include_et=False) >= 1
+        return float(np.mean(any_regulation_goal.astype(float) * assisted_share))
+    if spec.market == TEAM_TWO_PLUS_SAME_HALF:
+        threshold = int(spec.params.get("threshold", 2))
+        regulation = np.asarray(outcome.reg_counts[GOALS])
+        mask = np.any(regulation >= threshold, axis=(0, 1))
+    elif spec.market == PENALTY_SCORED:
+        penalty_events = penalties()
+        selected = penalty_events.select(phases={"1H", "2H"})
+        attempts = penalty_events.counts(selected)
+        conversion = float(np.clip(
+            timing.parameter("penalty_conversion", 0.78), 0.0, 1.0,
+        ))
+        # Analytic binomial thinning avoids a second layer of Monte Carlo. A
+        # converted kick must also fit inside a world with a regulation goal;
+        # the baseline currently simulates goals and awards as correlated but
+        # separate counts, so this guard preserves that logical invariant.
+        probability = 1.0 - (1.0 - conversion) ** attempts
+        probability *= outcome.match_total(GOALS, include_et=False) >= 1
+        return float(np.clip(np.mean(probability), 0.0, 1.0))
+    elif spec.market == PLAYER_SOT_COMPARE:
+        if ctx is None or settings is None:
+            raise ValueError("player comparison requires context and settings")
+        from .allocation import prob_player_stat_more
+
+        return prob_player_stat_more(
+            outcome,
+            ctx,
+            stat=spec.params["stat"],
+            left_player=spec.params["left_player"],
+            left_team=spec.params["left_team"],
+            right_player=spec.params["right_player"],
+            right_team=spec.params["right_team"],
+            shares=player_shares,
+            settings=settings,
+        )
+    elif spec.market == TEAM_UNIQUE_SHOOTERS:
+        if ctx is None or settings is None:
+            raise ValueError("unique-shooter market requires context and settings")
+        from .allocation import prob_team_unique_shooters
+
+        team = spec.params["team"]
+        return prob_team_unique_shooters(
+            team_total_shots()[team],
+            ctx,
+            team,
+            int(spec.params["threshold"]),
+            player_shares,
+            settings,
+        )
+    elif spec.market == FIRST_GOAL:
         mask = timeline.first_scorer_is(
             spec.params["team"], spec.params.get("half"),
             include_et=bool(spec.params.get("include_et")),
@@ -698,12 +865,10 @@ def resolve_extended(
         mask = 1.0 - own_goal_share ** np.asarray(goals, dtype=int)
         return float(np.clip(np.mean(mask), 0.0, 1.0))
     elif spec.market == TOTAL_SHOTS_THRESHOLD:
-        from .shots import total_shots_probability
-
-        model = (timing.data.get("models") or {}).get("total_shots")
-        return total_shots_probability(
-            outcome, model, spec.params["comparator"], spec.params["threshold"],
-            stream("total_shots"),
+        values = team_total_shots()
+        match_total = values[TEAM_A] + values[TEAM_B]
+        mask = apply_comparator(
+            match_total, spec.params["comparator"], spec.params["threshold"],
         )
     elif spec.market == WIN_MARGIN:
         team = spec.params["team"]
@@ -726,16 +891,13 @@ def resolve_extended(
         )
         mask = margin == int(spec.params["margin"])
     elif spec.market == TEAM_CORNERS_AND_TOTAL_SHOTS_MORE:
-        from .shots import sample_team_total_shots
-
         team = spec.params["team"]
         other = TEAM_B if team == TEAM_A else TEAM_A
         corner_margin = (
             outcome.team_total(CORNERS, team, include_et=False)
             > outcome.team_total(CORNERS, other, include_et=False)
         )
-        shot_model = (timing.data.get("models") or {}).get("total_shots")
-        total_shots = sample_team_total_shots(outcome, shot_model, stream("team_total_shots"))
+        total_shots = team_total_shots()
         mask = corner_margin & (total_shots[team] > total_shots[other])
     elif spec.market == REGULATION_STANDARD:
         if ctx is None or settings is None:

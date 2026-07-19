@@ -168,6 +168,171 @@ def _prob_max_at_least(total: int, probs: np.ndarray, threshold: int) -> float:
     return float(np.clip(1.0 - below, 0.0, 1.0))
 
 
+def _prob_binomial_strict_more(
+    left_total: int,
+    right_total: int,
+    left_probability: float,
+    right_probability: float,
+) -> float:
+    """Exact ``P(X > Y)`` for two conditionally independent binomials.
+
+    The two players are on opposing teams, so their allocations are independent
+    conditional on the two team totals in one shared simulation world. Ties are
+    NO, matching the literal ``more than`` contract.
+    """
+    from scipy import stats
+
+    left_total = max(int(left_total), 0)
+    right_total = max(int(right_total), 0)
+    left_probability = float(np.clip(left_probability, 0.0, 1.0))
+    right_probability = float(np.clip(right_probability, 0.0, 1.0))
+    values = np.arange(left_total + 1)
+    probability = np.sum(
+        stats.binom.pmf(values, left_total, left_probability)
+        * stats.binom.cdf(values - 1, right_total, right_probability)
+    )
+    return float(np.clip(probability, 0.0, 1.0))
+
+
+def _prob_distinct_at_least(total: int, probs: np.ndarray, threshold: int) -> float:
+    """Exact multinomial occupancy probability ``P(distinct owners >= K)``.
+
+    Conditional on a team's total attempts, every shot is allocated to one
+    player using ``probs``. The exponential generating function
+
+    ``prod_i [1 + y * (exp(p_i*x) - 1)]``
+
+    has coefficient ``x^total y^d * total!`` equal to the probability of
+    exactly ``d`` distinct shooters. Dynamic programming evaluates those
+    coefficients without another Monte Carlo layer.
+    """
+    import math
+
+    total = max(int(total), 0)
+    threshold = int(threshold)
+    if threshold <= 0:
+        return 1.0
+    if total < threshold:
+        return 0.0
+    probabilities = np.asarray(probs, dtype=float)
+    probabilities = np.where(np.isfinite(probabilities), np.maximum(probabilities, 0.0), 0.0)
+    if probabilities.size < threshold or probabilities.sum() <= 0:
+        return 0.0
+    probabilities /= probabilities.sum()
+
+    players = len(probabilities)
+    coefficients = np.zeros((players + 1, total + 1), dtype=float)
+    coefficients[0, 0] = 1.0
+    used_players = 0
+    for probability in probabilities:
+        updated = coefficients.copy()  # this player owns zero attempts
+        positive = np.asarray([
+            float(probability) ** count / math.factorial(count)
+            for count in range(1, total + 1)
+        ])
+        for distinct in range(used_players + 1):
+            base = coefficients[distinct]
+            for already_used in np.flatnonzero(base):
+                room = total - int(already_used)
+                if room <= 0:
+                    continue
+                updated[distinct + 1, already_used + 1:total + 1] += (
+                    base[already_used] * positive[:room]
+                )
+        coefficients = updated
+        used_players += 1
+    probability = math.factorial(total) * coefficients[threshold:, total].sum()
+    return float(np.clip(probability, 0.0, 1.0))
+
+
+def _player_allocation_probability(
+    player: str,
+    team_idx: int,
+    stat: str,
+    ctx,
+    shares: PlayerShares | None,
+    settings: Settings,
+) -> float:
+    label = "A" if team_idx == TEAM_A else "B"
+    position, exposure = _player_position_exposure(
+        {"player": player, "team": label}, ctx, settings,
+    )
+    share = shares.get(player, stat) if shares is not None else None
+    if share is None:
+        share = position_prior_share(position, stat, settings) or 0.0
+    return float(np.clip(float(share) * float(exposure), 0.0, 1.0))
+
+
+def prob_player_stat_more(
+    outcome: MatchOutcome,
+    ctx,
+    *,
+    stat: str,
+    left_player: str,
+    left_team: int,
+    right_player: str,
+    right_team: int,
+    shares: PlayerShares | None,
+    settings: Settings,
+) -> float:
+    """Strict two-player comparison tied to both simulated regulation totals."""
+    if left_team == right_team:
+        raise ValueError("same-team player comparisons require multinomial allocation")
+    left_p = _player_allocation_probability(
+        left_player, left_team, stat, ctx, shares, settings,
+    )
+    right_p = _player_allocation_probability(
+        right_player, right_team, stat, ctx, shares, settings,
+    )
+    left_totals = np.asarray(
+        outcome.team_total(stat, left_team, include_et=False), dtype=int,
+    )
+    right_totals = np.asarray(
+        outcome.team_total(stat, right_team, include_et=False), dtype=int,
+    )
+    lookup = {
+        (int(left), int(right)): _prob_binomial_strict_more(
+            int(left), int(right), left_p, right_p,
+        )
+        for left, right in np.unique(
+            np.column_stack((left_totals, right_totals)), axis=0,
+        )
+    }
+    values = np.asarray([
+        lookup[(int(left), int(right))]
+        for left, right in zip(left_totals, right_totals)
+    ])
+    return float(np.clip(np.mean(values), 0.0, 1.0))
+
+
+def prob_team_unique_shooters(
+    total_shots: np.ndarray,
+    ctx,
+    team_idx: int,
+    threshold: int,
+    shares: PlayerShares | None,
+    settings: Settings,
+) -> float:
+    """Probability a team has ``threshold`` distinct regulation shot takers.
+
+    Team total shots come from the simulator's shots-on-target plus fitted
+    off-target model. The current compact player artifact has shots-on-target
+    ownership shares, which are used as disclosed shot-attempt allocation
+    weights; expected-minutes exposure is retained and the vector is
+    renormalized across the available lineup.
+    """
+    probs, _ = _team_share_vector(
+        ctx, team_idx, "shots_on_target", shares, settings,
+    )
+    totals = np.asarray(total_shots, dtype=int)
+    lookup = {
+        int(total): _prob_distinct_at_least(int(total), probs, threshold)
+        for total in np.unique(totals)
+    }
+    values = np.asarray([lookup[int(total)] for total in totals])
+    return float(np.clip(np.mean(values), 0.0, 1.0))
+
+
 def prob_any_player_threshold(
     outcome: MatchOutcome, ctx, stat: str, comparator: str, threshold: float,
     shares: PlayerShares | None, settings: Settings, *, unassigned_share: float = 0.0,
