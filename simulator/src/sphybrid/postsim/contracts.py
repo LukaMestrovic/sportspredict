@@ -71,6 +71,8 @@ def contract_key(market: str, params: dict | None, *, stage: str | None = None) 
             f"team_unique_shooters:{params.get('comparator')}:"
             f"{_number(params.get('threshold'))}:reg"
         )
+    if market == "to_advance":
+        return "to_advance:team:full"
     if market == "compound_and":
         return "compound:first_goal_and_other_team_scores_2h"
     if market == "team_corners_and_total_shots_more":

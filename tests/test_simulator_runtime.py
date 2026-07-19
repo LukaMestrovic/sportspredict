@@ -462,6 +462,125 @@ class BundledSimulatorTests(unittest.TestCase):
         )
         self.assertEqual(_prob_distinct_at_least(3, np.array([1.0, 0.0]), 2), 0.0)
 
+    def test_eventual_winner_and_combined_totals_precede_baseline_ambiguities(self):
+        report = self._run_bridge({
+            "home": "Spain",
+            "away": "Argentina",
+            "kickoff": "2026-07-19T19:00:00Z",
+            "stage": "knockout",
+            "n_sims": 400,
+            "questions": [
+                {
+                    "market_id": "world_cup_winner",
+                    "question": "Will Argentina win the World Cup?",
+                },
+                {
+                    "market_id": "world_cup_winner_short",
+                    "question": "Will Argentina win World Cup?",
+                },
+                {
+                    "market_id": "argentina_advance",
+                    "question": "Will Argentina advance?",
+                },
+                {
+                    "market_id": "spain_advance",
+                    "question": "Will Spain advance?",
+                },
+                {
+                    "market_id": "argentina_regulation",
+                    "question": (
+                        "Will Argentina win in regulation "
+                        "(90 minutes + stoppage time)?"
+                    ),
+                },
+                {
+                    "market_id": "combined_offsides",
+                    "question": (
+                        "Will there be 5 or more offsides (both teams combined) in "
+                        "regulation (90 minutes + stoppage time)?"
+                    ),
+                },
+                {
+                    "market_id": "plain_offsides",
+                    "question": "Will there be 5 or more offsides in regulation?",
+                },
+                {
+                    "market_id": "each_offsides",
+                    "question": "Will both teams have 5 or more offsides in regulation?",
+                },
+                {
+                    "market_id": "combined_corners",
+                    "question": (
+                        "Will there be 10 or more total corner kicks (both teams combined) "
+                        "in regulation (90 minutes + stoppage time)?"
+                    ),
+                },
+                {
+                    "market_id": "plain_corners",
+                    "question": "Will there be 10 or more total corner kicks in regulation?",
+                },
+                {
+                    "market_id": "each_corners",
+                    "question": "Will both teams have 10 or more corners in regulation?",
+                },
+            ],
+        })
+        by_id = {item["market_id"]: item for item in report["question_reports"]}
+
+        self.assertEqual(report["unsupported_questions"], [])
+        for market_id in (
+            "world_cup_winner", "world_cup_winner_short",
+            "argentina_advance", "spain_advance",
+        ):
+            self.assertEqual(by_id[market_id]["family"], "to_advance")
+            self.assertEqual(by_id[market_id]["contract_key"], "to_advance:team:full")
+            self.assertIn("including extra time", by_id[market_id]["explanation"])
+        self.assertIn("Argentina (side B)", by_id["world_cup_winner"]["explanation"])
+        self.assertIn("Spain (side A)", by_id["spain_advance"]["explanation"])
+
+        self.assertEqual(
+            by_id["world_cup_winner"]["probability"],
+            by_id["argentina_advance"]["probability"],
+        )
+        self.assertEqual(
+            by_id["world_cup_winner_short"]["probability"],
+            by_id["argentina_advance"]["probability"],
+        )
+        self.assertAlmostEqual(
+            by_id["argentina_advance"]["probability"]
+            + by_id["spain_advance"]["probability"],
+            1.0,
+            places=6,
+        )
+        self.assertGreaterEqual(
+            by_id["argentina_advance"]["probability"],
+            by_id["argentina_regulation"]["probability"],
+        )
+
+        expected_keys = {
+            "combined_offsides": "count:offsides:match:full:>=:5:reg",
+            "combined_corners": "count:corners:match:full:>=:10:reg",
+        }
+        for market_id, key in expected_keys.items():
+            self.assertEqual(by_id[market_id]["family"], "count_threshold")
+            self.assertEqual(by_id[market_id]["contract_key"], key)
+        self.assertEqual(
+            by_id["combined_offsides"]["probability"],
+            by_id["plain_offsides"]["probability"],
+        )
+        self.assertEqual(
+            by_id["combined_corners"]["probability"],
+            by_id["plain_corners"]["probability"],
+        )
+        self.assertGreaterEqual(
+            by_id["combined_offsides"]["probability"],
+            by_id["each_offsides"]["probability"],
+        )
+        self.assertGreaterEqual(
+            by_id["combined_corners"]["probability"],
+            by_id["each_corners"]["probability"],
+        )
+
     def _run_bridge(self, payload):
         env = os.environ.copy()
         env["PYTHONPATH"] = str(SIMULATOR / "src")

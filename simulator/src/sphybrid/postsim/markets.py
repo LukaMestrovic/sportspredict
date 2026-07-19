@@ -17,6 +17,8 @@ from sportspredict.types import (
     GOALS,
     H1,
     H2,
+    RESULT_A,
+    RESULT_B,
     SHOTS_ON_TARGET,
     TEAM_A,
     TEAM_B,
@@ -64,6 +66,7 @@ TEAM_TWO_PLUS_SAME_HALF = "team_two_plus_same_half"
 PENALTY_SCORED = "penalty_scored"
 PLAYER_SOT_COMPARE = "player_sot_compare"
 TEAM_UNIQUE_SHOOTERS = "team_unique_shooters"
+TO_ADVANCE = "to_advance"
 FIRST_HYDRATION_MINUTE = 22.0
 SECOND_HYDRATION_MINUTE = 70.0
 
@@ -246,6 +249,53 @@ def parse_extended(question: str, ctx: MatchContext) -> ExtSpec | None:
         return None
     core = _strip_lead(question)
     raw_lower = question.lower()
+
+    # Official knockout progression is not a regulation 1X2 result. This
+    # dedicated route covers both ordinary qualification wording and the final's
+    # equivalent tournament-winner wording before the baseline can reduce the
+    # latter to a 90-minute win.
+    teams = _teams_in_text(core, ctx)
+    eventual_winner = bool(re.search(
+        r"\badvance\b|\bqualif(?:y|ies|ied|ication)\b|"
+        r"\bwin (?:the )?(?:fifa )?world cup\b",
+        core,
+    ))
+    if ctx.is_knockout and eventual_winner and len(teams) == 1:
+        label = teams[0]
+        team_idx = _LABEL[label]
+        return ExtSpec(TO_ADVANCE, {
+            "team": team_idx,
+            "side": label,
+            "team_name": ctx.team_a if team_idx == TEAM_A else ctx.team_b,
+            "scope": "full",
+        }, question)
+
+    # The frozen parser treats the words "both teams" as a per-team
+    # conjunction even when the explicit parenthetical says combined. Preserve
+    # the raw settlement wording and construct the exact match-total spec.
+    if _regulation_only(raw_lower) and "(both teams combined)" in raw_lower:
+        count = _threshold(core)
+        stat = (
+            "offsides" if re.search(r"\boffsides?\b", core)
+            else "corners" if re.search(r"\bcorners?(?: kicks?)?\b", core)
+            else None
+        )
+        if count and stat:
+            return ExtSpec(REGULATION_STANDARD, {
+                "baseline_spec": MarketSpec(
+                    MarketType.COUNT_THRESHOLD,
+                    {
+                        "stat": stat,
+                        "scope": "match",
+                        "team": None,
+                        "comparator": count[0],
+                        "threshold": count[1],
+                        "half": "full",
+                    },
+                    question,
+                ),
+                "regulation": True,
+            }, question)
 
     # These exact final-match specials must precede every generic baseline
     # fallback. Four of them otherwise parse as a broader, incorrect contract:
@@ -692,6 +742,9 @@ def resolve_extended(
             ),
         )
 
+    if spec.market == TO_ADVANCE:
+        result_code = RESULT_A if spec.params["team"] == TEAM_A else RESULT_B
+        return float(np.mean(outcome.result == result_code))
     if spec.market == FIRST_GOAL_ASSISTED:
         # The configured assisted-goal fraction is conditional on a goal. No
         # goal is explicitly NO, so averaging this conditional probability over

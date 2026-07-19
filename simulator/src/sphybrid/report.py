@@ -39,6 +39,7 @@ from .postsim import (
     TEAM_CORNERS_AND_TOTAL_SHOTS_MORE,
     TEAM_TWO_PLUS_SAME_HALF,
     TEAM_UNIQUE_SHOOTERS,
+    TO_ADVANCE,
     SECOND_HYDRATION_MINUTE,
     TOTAL_SHOTS_THRESHOLD,
     WIN_BOTH_HALVES,
@@ -85,6 +86,11 @@ def _simulator_can_parse(item: dict[str, str], ctx: MatchContext) -> bool:
 
 def _explanation(market: str, params: dict, notes: str | None) -> str:
     """One deterministic, family-specific sentence; no generated prose or hidden heuristics."""
+    if market == TO_ADVANCE:
+        return (
+            f"Estimated from the simulator's official knockout winner for {params.get('team_name')} "
+            f"(side {params.get('side')}), including extra time and a penalty shootout when needed."
+        )
     if market == FIRST_GOAL:
         scope = "including extra time" if params.get("include_et") else "regulation only"
         return (
