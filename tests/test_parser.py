@@ -331,6 +331,63 @@ class KnockoutWordingTests(unittest.TestCase):
             "Will the second half produce more goals than the first half?",
         )
 
+    def test_spain_argentina_final_questions_are_tracked(self):
+        cases = [
+            (
+                "first_assist",
+                "Will the first goal of the match be credited with an assist in "
+                "regulation (90 minutes + stoppage time)? Settles No if the match "
+                "is 0-0.",
+                "first_goal_assisted", "match", "yes", None, None, "regulation",
+            ),
+            (
+                "same_half",
+                "Will either team score 2 or more goals in the same half of "
+                "regulation (90 minutes + stoppage time)?",
+                "team_two_plus_same_half", "match", "gte", 2, None, "regulation",
+            ),
+            (
+                "penalty",
+                "Will a penalty kick be scored in regulation "
+                "(90 minutes + stoppage time)?",
+                "penalty_scored", "match", "yes", None, None, "regulation",
+            ),
+            (
+                "player_compare",
+                "Will Lamine Yamal (Spain, #19) record more shots on target than "
+                "Lionel Messi (Argentina, #10) in regulation "
+                "(90 minutes + stoppage time)?",
+                "player_sot_compare", "player", "more", None,
+                "Lamine Yamal vs Lionel Messi", "regulation",
+            ),
+            (
+                "unique_shooters",
+                "Will 5 or more different Spain players attempt a shot in "
+                "regulation (90 minutes + stoppage time)?",
+                "team_unique_shooters", "home", "gte", 5, None, "regulation",
+            ),
+            (
+                "champion",
+                "Will Argentina win the World Cup?",
+                "to_advance", "away", "yes", None, None, "full_match",
+            ),
+        ]
+        parsed = parse_questions(
+            [{"id": market_id, "question": question}
+             for market_id, question, *_expected in cases],
+            "Spain", "Argentina",
+        )
+
+        self.assertFalse(parsed.unresolved)
+        for market_id, question, *expected in cases:
+            intent = parsed[market_id]
+            actual = [
+                intent["market"], intent["subject"], intent["comparator"],
+                intent["threshold"], intent["player"], intent["time_scope"],
+            ]
+            self.assertEqual(actual, expected, msg=question)
+            self.assertEqual(parsed.intent_sources[market_id], "tracked-rule")
+
     def test_regulation_and_full_match_scopes_remain_distinct(self):
         regulation = self._parse(
             "Will a goal be scored after the second hydration break in regulation "

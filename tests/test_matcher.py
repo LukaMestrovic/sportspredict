@@ -89,6 +89,31 @@ class DirectContractTests(unittest.TestCase):
             ("player_threshold", 267, "Over", 3.5, "Diogo Costa"),
         )
 
+    def test_player_score_or_assist_uses_exact_player_ladder(self):
+        spec = self.match(
+            market="player_score_or_assist", subject="player",
+            comparator="yes", player="Lamine Yamal",
+        )
+        self.assertEqual(
+            (spec["type"], spec["bet_id"], spec["player"]),
+            ("player_yes", 257, "Lamine Yamal"),
+        )
+
+    def test_new_non_direct_specials_do_not_get_wrong_catalogue_contracts(self):
+        for intent in (
+            _I("first_goal_assisted"),
+            _I("team_two_plus_same_half", comparator="gte", threshold=2),
+            _I("penalty_scored"),
+            _I(
+                "player_sot_compare", "player", "more",
+                player="Lamine Yamal vs Lionel Messi",
+            ),
+            _I("team_unique_shooters", "home", "gte", 5),
+        ):
+            self.assertIsNone(
+                match_intent(intent, "Spain", "Argentina"), msg=intent,
+            )
+
     def test_unpriced_open_specials_do_not_get_wrong_direct_contracts(self):
         self.assertIsNone(self.match(
             market="total_substitutions", subject="match", comparator="gte",

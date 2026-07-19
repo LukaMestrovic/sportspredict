@@ -118,6 +118,11 @@ MARKET_KEYS = (
         "any_team_player_shots_on_target",
         "total_substitutions",
         "first_card_before_first_goal",
+        "first_goal_assisted",
+        "team_two_plus_same_half",
+        "penalty_scored",
+        "player_sot_compare",
+        "team_unique_shooters",
     ]
     + ["none"]
 )
@@ -415,6 +420,10 @@ def match_intent(
     if market == "player_goal_scorer" and intent.get("player"):
         return {"type": "player_yes", "bet_id": 92,
                 "player": intent["player"], "label": "player anytime scorer"}
+
+    if market == "player_score_or_assist" and intent.get("player"):
+        return {"type": "player_yes", "bet_id": 257,
+                "player": intent["player"], "label": "player to score or assist"}
 
     if market == "player_card" and intent.get("player"):
         return {"type": "player_yes", "bet_id": 251,

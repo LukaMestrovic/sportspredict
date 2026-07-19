@@ -319,6 +319,41 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
 
     # New exact specials whose wording contains AND/OR or otherwise looks like a
     # nearby standard market. Claim them before the generic compound guard.
+    if "first goal" in lower and "credited with an assist" in lower:
+        return _intent("first_goal_assisted", comparator="yes", period=period)
+    if (
+        "either team" in lower
+        and "same half" in lower
+        and "goal" in lower
+    ):
+        count = _threshold_in(lower)
+        if count:
+            return _intent(
+                "team_two_plus_same_half", comparator=count[0],
+                threshold=count[1], period=period,
+            )
+    if "penalty kick be scored" in lower:
+        return _intent("penalty_scored", comparator="yes", period=period)
+    player_sot_compare = re.fullmatch(
+        r"will (.+?) (?:record|have) more shots? on target than (.+?)\?",
+        question.strip(), re.IGNORECASE,
+    )
+    if player_sot_compare and not compare_subject:
+        first_player, second_player = player_sot_compare.groups()
+        return _intent(
+            "player_sot_compare", "player", "more", period=period,
+            player=f"{first_player} vs {second_player}",
+        )
+    if (
+        subject
+        and "different" in lower
+        and "players attempt a shot" in lower
+    ):
+        count = _threshold_in(lower)
+        if count:
+            return _intent(
+                "team_unique_shooters", subject[0], count[0], count[1], period,
+            )
     if (
         "more corner" in lower
         and "more total shots" in lower
@@ -486,6 +521,10 @@ def _parse_template(question: str, home: str, away: str) -> dict | None:
 
     if subject:
         side, team = subject
+        # This wording is used for the final: winning the tournament is exactly
+        # the same event as qualifying from the current two-team match.
+        if re.search(r"\bwin (?:the )?(?:fifa )?world cup\b", lower):
+            return _intent("to_advance", side)
         if (
             "any" in lower and "player" in lower
             and "shot" in lower and "on target" in lower

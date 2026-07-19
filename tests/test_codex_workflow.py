@@ -29,6 +29,21 @@ class CodexWorkflowTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def test_intent_task_declares_catalogue_first_fallback_order(self):
+        task = codex_workflow._intent_task(
+            self.root / "intent_request.json",
+            self.root / "intent_response.json",
+            {"request_id": "request"},
+        )
+        self.assertIn("exact pre-match market", task)
+        self.assertIn("never treat a live/in-play market ID", task)
+        self.assertLess(task.index("exact pre-match market"), task.index("exact web odds"))
+        self.assertLess(task.index("exact web odds"), task.index("live-odds proxy"))
+        self.assertIn("combine it with the simulator", task)
+        self.assertIn("one-source basis", task)
+        self.assertIn("researched base rates as the final fallback", task)
+        self.assertIn("unchanged intent-resolution schema", task)
+
     def test_unfamiliar_question_stops_before_metered_odds_work(self):
         parsed = SimpleNamespace(
             unresolved=[{
