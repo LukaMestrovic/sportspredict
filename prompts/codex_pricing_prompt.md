@@ -63,20 +63,36 @@ result of this hierarchy is `base_probability_int`. Only the later
 `language_adjustment` may move it for lineup, tactical, referee, weather, form,
 or broader match-read reasons.
 
-1. `direct_odds`: use the de-vigged `probability_pct` spread as the primary
+1. `direct_odds`: first use an exact contract mapped from the tracked
+   pre-match soccer market catalogue. Use the de-vigged `probability_pct` spread as the primary
    base. Prefer liquid, independent books with matching scope and fresh prices.
    Choose a base inside the spread, or just outside it only for a clear
    scope/liquidity/conversion reason.
-2. `online_odds_candidates`: use exact fresh candidates before simulator or
-   empirical context. Carry them into `online_odds_found` with quoted price,
-   conversion/de-vig method, and how they were used. Reject only for stale or
-   wrong-scope reasons.
-3. `simulator_estimate`: if no direct or online odds exist, start from
+2. Exact online odds: use supplied `online_odds_candidates` or an exact fresh
+   price found during the base-pricing search before simulator or empirical
+   context. Carry it into `online_odds_found` with URL, quoted price,
+   `converted_probability_pct`, conversion/de-vig method, and `how_used` that
+   explicitly identifies a direct price. Reject only for stale or wrong-scope
+   reasons. An agent-found exact price may override a prepared blend only when
+   this complete audit is present and the integer base lies within the retained
+   exact-price spread; use `online_odds` as the base memo method and explicitly
+   downweight the supplied proxy observations.
+3. `blended_baseline`: when no exact direct or online price exists and the
+   evidence supplies both a `live_odds_proxy` and a simulator estimate, copy
+   `blended_baseline.probability_pct` (rounded to the nearest integer) as the
+   base. The blend transfers only a capped live-market residual from a declared
+   related contract into the exact-contract simulator price. Audit every proxy
+   observation in `provided_odds_used` with `how_used` set to
+   `live_odds_proxy`, and use `proxy_simulator_blend` as the base-pricing memo
+   method. A proxy remains a different contract: never call it direct odds,
+   never relabel a marginal as an exact compound, and never replace the
+   supplied blend with an informal average.
+4. `simulator_estimate`: if no direct, online, or two-source blend exists, start from
    `calibrated_baseline.probability_pct` when present; otherwise start from
    `probability_pct`. If the calibrated source is `empirical_rate` or
    `always_50`, describe that as the base and treat the raw simulator only as
    context.
-4. No odds or simulator baseline: search exact online markets first. If none
+5. No odds or simulator baseline: search exact online markets first. If none
    exist, build a transparent base-rate estimate from structured context and
    exact-contract priors.
 
@@ -88,6 +104,7 @@ levers only in `language_adjustment`.
 
 - Direct provider odds primary: maximum move is 5 probability points.
 - Pre-collected online odds primary: maximum move is 6 probability points.
+- Live-odds proxy plus simulator blend primary: maximum move is 8 probability points.
 - Simulator/calibrated/no-odds primary: maximum move is 10 probability points.
 - A non-zero move must include non-empty `match_read_evidence` and a clear
   `why_move_or_hold`.
@@ -201,9 +218,16 @@ The evidence JSON may include:
 - `direct_odds`: de-vigged bookmaker probability spread for this contract.
 - `online_odds_candidates`: pre-collected public bookmaker odds. Exact
   candidates must be carried into `online_odds_found`.
+- `live_odds_proxy`: per-book prices for explicitly related, non-target
+  contracts, their companion simulator prices, the tracked relation, and the
+  capped residual-transfer weight. These are never direct odds.
+- `blended_baseline`: the required no-exact-odds base when both live proxy and
+  exact-contract simulator evidence exist. It retains the formula, inputs,
+  per-book target estimates, and dispersion instead of hiding disagreement.
 - `simulator_estimate`: deterministic fallback context. `calibrated_baseline` is
-  the required no-direct starting point when present and may choose simulator,
-  empirical rate, or 50/50 depending on exact-contract Brier.
+  the required starting point only when no higher-priority blend is present;
+  it may choose simulator, empirical rate, or 50/50 depending on exact-contract
+  Brier.
 - `compound_component_evidence`: locally parsed component odds for recurring
   compound questions. Use exact combined online specials first; if absent, use
   these components as derivation inputs and state the correlation assumption.
@@ -248,7 +272,7 @@ from the task manifest; submission rejects a response bound to another run.
         "question_id": "Q1",
         "market_id": "<id>",
         "base_probability_int": <integer 1..99>,
-        "method": "direct_odds / online_odds / simulator / compound / researched_base",
+        "method": "direct_odds / online_odds / proxy_simulator_blend / simulator / compound / researched_base",
         "memo": "Public memo: base source, scope, conversion, and uncertainty.",
         "sources": ["URL or provided evidence"]
       }

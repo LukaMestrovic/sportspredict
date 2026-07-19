@@ -86,6 +86,26 @@ def _af_btts_total_books():
     }]
 
 
+def _af_penalty_awarded_books():
+    return [{
+        "name": "Bet365",
+        "bets": [{"id": 163, "values": [
+            {"value": "Yes", "odd": "3.00"},
+            {"value": "No", "odd": "1.50"},
+        ]}],
+    }]
+
+
+def _af_player_score_or_assist_books():
+    return [{
+        "name": "Bet365",
+        "bets": [{"id": 257, "values": [
+            {"value": "Player One", "odd": "2.20"},
+            {"value": "Player Two", "odd": "3.10"},
+        ]}],
+    }]
+
+
 class _OA:
     def __init__(self):
         self.requested = []
@@ -551,7 +571,7 @@ class EvidenceTests(unittest.TestCase):
         estimates.assert_called_once()
         self.assertEqual(estimates.call_args.kwargs["intents"], result.intents)
         q = evidence["question_evidence"][0]
-        self.assertEqual(evidence["schema_version"], 25)
+        self.assertEqual(evidence["schema_version"], 26)
         self.assertEqual(q["simulator_estimate"], {"probability_pct": 24.1})
         self.assertLess(
             list(q).index("direct_odds"),
@@ -610,21 +630,32 @@ class EvidenceTests(unittest.TestCase):
         ctx = PriceCtx(
             "Home", "Away", _af_first_goal_books(), None, None, stage="knockout",
         )
-        sim = {"contract_key": "first_goal:full:et:team", "probability": 0.45}
+        def estimates(markets, _ctx, **_kwargs):
+            market_id = markets[0]["id"]
+            probability_pct = 45.0 if market_id == "first" else 43.0
+            return {market_id: {"probability_pct": probability_pct}}
 
-        with patch("bot.evidence.simulator.simulator_estimates",
-                   return_value={"first": sim}):
+        with patch(
+            "bot.evidence.simulator.simulator_estimates", side_effect=estimates,
+        ):
             bundle = build_match_evidence(
                 result, ctx, lineups=None, minutes_before=30,
             )
 
         question = bundle["question_evidence"][0]
-        self.assertEqual(bundle["schema_version"], 25)
-        self.assertEqual(question["direct_market_spec"]["bet_id"], 14)
-        self.assertEqual(len(question["direct_odds"]), 1)
-        self.assertIn("regulation first-team-to-score proxy",
-                      question["direct_odds"][0]["contract_note"])
-        self.assertNotIn("simulator_estimate", question)
+        self.assertEqual(bundle["schema_version"], 26)
+        self.assertIsNone(question["direct_market_spec"])
+        self.assertEqual(question["catalogue_proxy_spec"]["bet_id"], 14)
+        self.assertEqual(question["direct_odds"], [])
+        self.assertEqual(question["simulator_estimate"]["probability_pct"], 45.0)
+        self.assertEqual(
+            question["live_odds_proxy"]["relation"]["type"],
+            "regulation_first_goal_for_full_match_first_goal",
+        )
+        self.assertEqual(
+            question["decision_basis"]["primary"],
+            "live_odds_proxy_simulator_blend",
+        )
         self.assertEqual(question["contract_scope"], {
             "time_scope": "full_match",
             "interpretation": "Full match: include extra time if played; exclude shootout events.",
@@ -649,24 +680,31 @@ class EvidenceTests(unittest.TestCase):
         }, question="Will Away receive more cards than Home?")
         ctx = PriceCtx("Home", "Away", _af_cards_compare_books(), None, None)
 
-        with patch("bot.evidence.simulator.simulator_estimates",
-                   return_value={"cards": {"probability_pct": 50.0}}):
+        def estimates(markets, _ctx, **_kwargs):
+            market_id = markets[0]["id"]
+            return {market_id: {"probability_pct": 50.0}}
+
+        with patch(
+            "bot.evidence.simulator.simulator_estimates", side_effect=estimates,
+        ):
             bundle = build_match_evidence(
                 result, ctx, lineups=None, minutes_before=30,
             )
 
         question = bundle["question_evidence"][0]
-        self.assertEqual(question["direct_market_spec"]["bet_id"], 158)
+        self.assertIsNone(question["direct_market_spec"])
+        self.assertEqual(question["catalogue_proxy_spec"]["bet_id"], 158)
         self.assertEqual(
-            question["direct_market_spec"]["contract_proxy"],
+            question["catalogue_proxy_spec"]["contract_proxy"],
             "yellow_cards_1x2_for_all_cards_compare",
         )
-        self.assertEqual(len(question["direct_odds"]), 1)
-        direct = question["direct_odds"][0]
-        self.assertEqual((direct["bookmaker"], direct["market_key"]), ("Bet365", "af_bet_158"))
-        self.assertAlmostEqual(direct["probability_pct"], 59.42, places=2)
-        self.assertIn("yellow-card/bookings", direct["contract_note"])
-        self.assertNotIn("simulator_estimate", question)
+        self.assertEqual(question["direct_odds"], [])
+        proxy = question["live_odds_proxy"]["observations"][0]
+        self.assertEqual((proxy["bookmaker"], proxy["market_key"]),
+                         ("Bet365", "af_bet_158"))
+        self.assertAlmostEqual(proxy["probability_pct"], 59.42, places=2)
+        self.assertFalse(proxy["is_direct_for_target"])
+        self.assertIn("simulator_estimate", question)
 
     def test_team_score_excluding_own_goals_uses_labeled_scoreboard_proxy(self):
         result = _result({
@@ -678,21 +716,32 @@ class EvidenceTests(unittest.TestCase):
         }, question="Will Away score a goal (excluding own goals)?")
         ctx = PriceCtx("Home", "Away", _af_team_score_books(), None, None)
 
-        with patch("bot.evidence.simulator.simulator_estimates",
-                   return_value={"score": {"probability_pct": 40.0}}):
+        def estimates(markets, _ctx, **_kwargs):
+            market_id = markets[0]["id"]
+            probability_pct = 40.0 if market_id == "score" else 42.0
+            return {market_id: {"probability_pct": probability_pct}}
+
+        with patch(
+            "bot.evidence.simulator.simulator_estimates", side_effect=estimates,
+        ):
             bundle = build_match_evidence(
                 result, ctx, lineups=None, minutes_before=30,
             )
 
         question = bundle["question_evidence"][0]
-        self.assertEqual(question["direct_market_spec"]["bet_id"], 44)
+        self.assertIsNone(question["direct_market_spec"])
+        self.assertEqual(question["catalogue_proxy_spec"]["bet_id"], 44)
         self.assertEqual(
-            question["direct_market_spec"]["contract_proxy"],
+            question["catalogue_proxy_spec"]["contract_proxy"],
             "team_to_score_for_team_score_excluding_own_goals",
         )
-        self.assertEqual(len(question["direct_odds"]), 1)
-        self.assertIn("excluding-own-goals", question["direct_odds"][0]["contract_note"])
-        self.assertNotIn("simulator_estimate", question)
+        self.assertEqual(question["direct_odds"], [])
+        self.assertEqual(len(question["live_odds_proxy"]["observations"]), 1)
+        self.assertIn("simulator_estimate", question)
+        self.assertEqual(
+            question["decision_basis"]["primary"],
+            "live_odds_proxy_simulator_blend",
+        )
 
 
 class ContextEvidenceTests(unittest.TestCase):
@@ -712,7 +761,7 @@ class ContextEvidenceTests(unittest.TestCase):
         with patch("bot.evidence.simulator.simulator_estimates", return_value={}):
             evidence = build_match_evidence(result, ctx, lineups=None, minutes_before=30)
 
-        self.assertEqual(evidence["schema_version"], 25)
+        self.assertEqual(evidence["schema_version"], 26)
         self.assertEqual(
             list(evidence),
             [
@@ -826,6 +875,114 @@ class ContextEvidenceTests(unittest.TestCase):
 
         question = evidence["question_evidence"][0]
         self.assertEqual(question["online_odds_candidates"], [candidate])
+
+    def test_no_exact_price_gets_audited_live_proxy_simulator_blend(self):
+        result = _result({
+            "pen": {
+                "market": "penalty_scored", "subject": "match",
+                "player": None, "comparator": "yes", "threshold": None,
+                "period": "match", "time_scope": "regulation",
+            },
+        }, question="Will a penalty kick be scored in regulation?")
+        ctx = PriceCtx(
+            "Home", "Away", _af_penalty_awarded_books(), None, None,
+        )
+
+        def estimates(markets, _ctx, **_kwargs):
+            market_id = markets[0]["id"]
+            if market_id == "pen":
+                return {"pen": {
+                    "contract_key": "penalty_scored:reg",
+                    "probability_pct": 15.0,
+                }}
+            return {market_id: {
+                "contract_key": "event:penalty_awarded:reg",
+                "probability_pct": 20.0,
+            }}
+
+        with patch(
+            "bot.evidence.public_odds.online_odds", return_value=[],
+        ), patch(
+            "bot.evidence.simulator.simulator_estimates", side_effect=estimates,
+        ) as simulator_calls, patch(
+            "bot.evidence.simulator_benchmark.load", return_value={},
+        ):
+            evidence = build_match_evidence(
+                result, ctx, lineups=None, minutes_before=30,
+            )
+
+        question = evidence["question_evidence"][0]
+        self.assertEqual(simulator_calls.call_count, 2)
+        self.assertEqual(question["direct_odds"], [])
+        self.assertEqual(question["simulator_estimate"]["probability_pct"], 15.0)
+        self.assertFalse(question["live_odds_proxy"]["is_direct_odds"])
+        self.assertEqual(
+            question["live_odds_proxy"]["observations"][0]["role"],
+            "live_odds_proxy",
+        )
+        self.assertGreater(
+            question["blended_baseline"]["probability_pct"], 15.0,
+        )
+        self.assertEqual(
+            question["decision_basis"]["primary"],
+            "live_odds_proxy_simulator_blend",
+        )
+
+    def test_exact_direct_or_public_price_suppresses_proxy_blend(self):
+        direct_result = _result({
+            "soa": {
+                "market": "player_score_or_assist", "subject": "player",
+                "player": "Player One", "comparator": "yes",
+                "threshold": None, "period": "match",
+                "time_scope": "regulation",
+            },
+        }, question="Will Player One score or assist a goal?")
+        direct_ctx = PriceCtx(
+            "Home", "Away", _af_player_score_or_assist_books(), None, None,
+        )
+        with patch(
+            "bot.evidence.public_odds.online_odds", return_value=[],
+        ), patch(
+            "bot.evidence.simulator.simulator_estimates", return_value={},
+        ) as simulator_calls:
+            direct_evidence = build_match_evidence(
+                direct_result, direct_ctx, lineups=None, minutes_before=30,
+            )
+        direct_question = direct_evidence["question_evidence"][0]
+        self.assertEqual(simulator_calls.call_count, 1)
+        self.assertTrue(direct_question["direct_odds"])
+        self.assertNotIn("live_odds_proxy", direct_question)
+
+        public_result = _result({
+            "pen": {
+                "market": "penalty_scored", "subject": "match",
+                "player": None, "comparator": "yes", "threshold": None,
+                "period": "match", "time_scope": "regulation",
+            },
+        }, question="Will a penalty kick be scored in regulation?")
+        candidate = {
+            "bookmaker": "PublicBook", "contract": "Penalty scored Yes",
+            "probability_pct": 19.0, "url": "https://example.com/penalty",
+        }
+        with patch(
+            "bot.evidence.public_odds.online_odds", return_value=[candidate],
+        ), patch(
+            "bot.evidence.simulator.simulator_estimates",
+            return_value={"pen": {"probability_pct": 15.0}},
+        ) as simulator_calls:
+            public_evidence = build_match_evidence(
+                public_result,
+                PriceCtx("Home", "Away", _af_penalty_awarded_books(), None, None),
+                lineups=None,
+                minutes_before=30,
+            )
+        public_question = public_evidence["question_evidence"][0]
+        self.assertEqual(simulator_calls.call_count, 1)
+        self.assertEqual(
+            public_question["decision_basis"]["primary"],
+            "pre_collected_online_odds",
+        )
+        self.assertNotIn("live_odds_proxy", public_question)
 
     def test_second_half_sot_market_gets_period_specific_stat_guidance(self):
         result = _result({

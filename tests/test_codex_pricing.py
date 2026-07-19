@@ -98,6 +98,97 @@ class CodexPricingResponseTests(unittest.TestCase):
         result = _apply(_response([audit]))
         self.assertIn("without an explicit audit reason", result.skip_reasons["m1"])
 
+    def test_blend_requires_rounded_baseline_and_matching_memo_method(self):
+        evidence = _blend_evidence()
+        audit = _audit(probability=58, base=56, move=2)
+        audit["provided_odds_used"] = [_proxy_audit_row()]
+        response = _response([audit])
+        response["subagent_memos"]["base_pricing"][0]["method"] = (
+            "proxy_simulator_blend"
+        )
+        result = _apply(response, evidence=evidence)
+        self.assertIn("rounded blended_baseline", result.skip_reasons["m1"])
+
+        audit = _audit(probability=57, base=55, move=2)
+        audit["provided_odds_used"] = [_proxy_audit_row()]
+        response = _response([audit])
+        result = _apply(response, evidence=evidence)
+        self.assertIn("method=proxy_simulator_blend", result.skip_reasons["m1"])
+
+    def test_blend_requires_each_proxy_observation_in_audit(self):
+        evidence = _blend_evidence()
+        audit = _audit(probability=57, base=55, move=2)
+        audit["provided_odds_used"] = [{
+            "source": "api-football", "bookmaker": "Other",
+            "market_key": "af_bet_5", "how_used": "live_odds_proxy",
+        }]
+        response = _response([audit])
+        response["subagent_memos"]["base_pricing"][0]["method"] = (
+            "proxy_simulator_blend"
+        )
+        result = _apply(response, evidence=evidence)
+        self.assertIn("every live-odds proxy", result.skip_reasons["m1"])
+
+    def test_valid_blend_audit_uses_eight_point_movement_cap(self):
+        evidence = _blend_evidence()
+        audit = _audit(probability=63, base=55, move=8)
+        audit["provided_odds_used"] = [_proxy_audit_row()]
+        response = _response([audit])
+        response["subagent_memos"]["base_pricing"][0]["method"] = (
+            "proxy_simulator_blend"
+        )
+        result = _apply(response, evidence=evidence)
+        self.assertEqual(result.predictions[0].probability_int, 63)
+
+        audit = _audit(probability=64, base=55, move=9)
+        audit["provided_odds_used"] = [_proxy_audit_row()]
+        response = _response([audit])
+        response["subagent_memos"]["base_pricing"][0]["method"] = (
+            "proxy_simulator_blend"
+        )
+        result = _apply(response, evidence=evidence)
+        self.assertIn("exceeds 8 point cap", result.skip_reasons["m1"])
+
+    def test_audited_exact_online_price_can_override_prepared_blend(self):
+        evidence = _blend_evidence()
+        audit = _audit(probability=48, base=42, move=6)
+        audit["provided_odds_used"] = [_proxy_audit_row()]
+        audit["online_odds_found"] = [{
+            "source": "ExactBook",
+            "url": "https://example.com/exact-market",
+            "quoted_price_or_odds": "Yes 2.38; No 1.68",
+            "converted_probability_pct": 42.1,
+            "conversion_method": "same-book Yes/No de-vig",
+            "how_used": "exact direct price",
+        }]
+        response = _response([audit])
+        response["subagent_memos"]["base_pricing"][0]["method"] = "online_odds"
+        result = _apply(response, evidence=evidence)
+        self.assertEqual(result.predictions[0].probability_int, 48)
+
+        audit["probability_int"] = 49
+        audit["language_adjustment"]["move_points"] = 7
+        response = _response([audit])
+        response["subagent_memos"]["base_pricing"][0]["method"] = "online_odds"
+        result = _apply(response, evidence=evidence)
+        self.assertIn("exceeds 6 point cap", result.skip_reasons["m1"])
+
+    def test_incomplete_online_override_of_blend_is_rejected(self):
+        evidence = _blend_evidence()
+        audit = _audit(probability=44, base=42, move=2)
+        audit["provided_odds_used"] = [_proxy_audit_row()]
+        audit["online_odds_found"] = [{
+            "source": "ExactBook",
+            "url": "https://example.com/exact-market",
+            "quoted_price_or_odds": "2.38",
+            "converted_probability_pct": 42.0,
+            "how_used": "direct price",
+        }]
+        response = _response([audit])
+        response["subagent_memos"]["base_pricing"][0]["method"] = "online_odds"
+        result = _apply(response, evidence=evidence)
+        self.assertIn("lacks an audited exact online base", result.skip_reasons["m1"])
+
     def test_response_schema_is_required(self):
         response = _response([_audit()])
         response.pop("schema_version")
@@ -209,6 +300,38 @@ def _evidence():
             "direct_odds": [{"probability": .55}],
             "decision_basis": {"primary": "provided_direct_odds"},
         }],
+    }
+
+
+def _blend_evidence():
+    evidence = _evidence()
+    question = evidence["question_evidence"][0]
+    question["direct_odds"] = []
+    question["simulator_estimate"] = {"probability_pct": 52.0}
+    question["live_odds_proxy"] = {
+        "relation_type": "goal_volume_residual",
+        "proxy_contracts": [{
+            "observations": [{
+                "source": "api-football", "bookmaker": "Bet365",
+                "market_key": "af_bet_5", "probability_pct": 61.0,
+            }],
+        }],
+    }
+    question["blended_baseline"] = {
+        "source": "live_odds_proxy_plus_simulator",
+        "probability_pct": 55.4,
+    }
+    question["decision_basis"] = {
+        "primary": "live_odds_proxy_simulator_blend",
+    }
+    return evidence
+
+
+def _proxy_audit_row():
+    return {
+        "source": "api-football", "bookmaker": "Bet365",
+        "market_key": "af_bet_5", "probability_pct": 61.0,
+        "how_used": "live_odds_proxy",
     }
 
 

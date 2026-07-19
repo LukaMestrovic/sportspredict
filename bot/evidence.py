@@ -1,9 +1,10 @@
 """Build auditable per-match evidence for manual Codex pricing.
 
 The evidence file is the deterministic handoff between provider odds and the
-Codex agent's judgement. It contains per-book de-vigged probabilities for the exact
-SportPredict contract, or one simulator fallback when no exact price exists.
-Broad related-market bundles are deliberately excluded.
+Codex agent's judgement. It contains per-book de-vigged probabilities for the
+exact SportPredict contract. When exact provider and public-web prices are both
+absent, a small allowlist may add a labeled related-market proxy mixed with the
+exact-target simulator; the proxy is never relabeled as direct odds.
 """
 from __future__ import annotations
 
@@ -19,6 +20,7 @@ from . import (
     card_stoppage,
     config,
     empirical_specials,
+    live_odds_proxy,
     parser as question_parser,
     public_odds,
     simulator,
@@ -39,7 +41,7 @@ from .odds_context import PriceCtx
 
 
 EVIDENCE_DIR = config.ROOT / "logs" / "codex_runs"
-EVIDENCE_SCHEMA_VERSION = 25
+EVIDENCE_SCHEMA_VERSION = 26
 MIN_BASELINE_COMPARISON_OBSERVATIONS = 30
 SHRUNK_EMPIRICAL_RATE_SOURCE = "shrunk_empirical_rate"
 BASELINE_BRIER_KEYS = (
@@ -69,18 +71,43 @@ def build_match_evidence(
     """Return the full JSON-serialisable evidence bundle for one match."""
     direct_by_market: dict[str, list[dict]] = {}
     spec_by_market: dict[str, dict | None] = {}
+    catalogue_proxy_spec_by_market: dict[str, dict | None] = {}
     for market in result.markets:
         mid = market["id"]
         intent = result.intents.get(mid)
-        direct, spec = _direct_odds(intent, ctx)
-        why = _direct_contract_note(spec)
-        direct_by_market[mid] = _tag_observations(direct, "direct", why)
-        spec_by_market[mid] = spec
+        observations, spec = _direct_odds(intent, ctx)
+        if _provider_spec_is_proxy(spec):
+            # Catalogue near-matches are deliberately removed from the exact
+            # lane. The allowlisted live-proxy layer will re-price the same
+            # helper contract against a simulator companion, if both exist.
+            direct_by_market[mid] = []
+            spec_by_market[mid] = None
+            catalogue_proxy_spec_by_market[mid] = spec
+        else:
+            direct_by_market[mid] = _tag_observations(
+                observations, "direct", _direct_contract_note(spec),
+            )
+            spec_by_market[mid] = spec
+            catalogue_proxy_spec_by_market[mid] = None
 
-    # Direct odds are computed first so the simulator only prices the markets
-    # without an exact direct contract (plus the retained model-sensitive
-    # penalty/shot-on-target targets). It preserves direct-odds priority: a
-    # liquid exact price is never displaced by simulator context.
+    # Exact public-web candidates sit ahead of every proxy/model fallback. Fetch
+    # each unsupported target once before constructing any simulator companion
+    # markets so an exact candidate cannot be displaced by a related contract.
+    online_by_market: dict[str, list[dict]] = {}
+    for market in result.markets:
+        mid = market["id"]
+        intent = result.intents.get(mid)
+        online_by_market[mid] = (
+            [] if direct_by_market[mid] else public_odds.online_odds(
+                intent, result.home, result.away,
+                question=market.get("question") or "",
+            )
+        )
+
+    # Direct odds are computed first so the simulator prices only markets with
+    # no exact provider contract. Exact public candidates remain ahead of its
+    # output in the later decision hierarchy, while a liquid provider price is
+    # never displaced by simulator context.
     stage = _fixture_stage(result) or ctx.stage
     simulator_by_market = simulator.simulator_estimates(
         result.markets,
@@ -115,6 +142,60 @@ def build_match_evidence(
         simulator_benchmark.overlay(simulator_by_market, live_benchmark)
         _apply_live_context_models(simulator_by_market, ctx)
 
+    simulator_compact_by_market = {
+        mid: _compact_simulator_estimate(estimate, stage=stage)
+        for mid, estimate in simulator_by_market.items()
+    }
+
+    # Proxy recipes use a second local simulator pass for the exact helper
+    # contracts. They consume no provider quota: live quotes come only from the
+    # already-retained API-Football bookmaker snapshot in ``ctx.af_books``.
+    proxy_targets = [
+        market for market in result.markets
+        if not direct_by_market[market["id"]]
+        and not online_by_market[market["id"]]
+    ]
+    helper_groups = live_odds_proxy.helper_targets(
+        proxy_targets, result.intents, result.home, result.away,
+    )
+    helper_markets = [group["market"] for group in helper_groups.values()]
+    helper_intents = {
+        group["market"]["id"]: group["intent"]
+        for group in helper_groups.values()
+    }
+    helper_estimates = {}
+    if helper_markets:
+        helper_estimates = simulator.simulator_estimates(
+            helper_markets,
+            ctx,
+            direct_by_market={market["id"]: [] for market in helper_markets},
+            intents=helper_intents,
+            kickoff=result.sp_match.get("opening_time"),
+            referee=_fixture_referee(result),
+            stage=stage,
+            lineups=lineups,
+        )
+
+    proxy_by_market: dict[str, dict] = {}
+    blend_by_market: dict[str, dict] = {}
+    markets_by_id = {str(market["id"]): market for market in result.markets}
+    for market_id in helper_groups:
+        market = markets_by_id.get(str(market_id))
+        target_simulator = simulator_compact_by_market.get(market_id)
+        if market is None or target_simulator is None:
+            continue
+        proxy, blend = live_odds_proxy.build_proxy_and_blend(
+            market,
+            str(market.get("question") or ""),
+            result.intents.get(market["id"]),
+            target_simulator,
+            helper_estimates,
+            ctx,
+        )
+        if proxy and blend:
+            proxy_by_market[market_id] = proxy
+            blend_by_market[market_id] = blend
+
     context = getattr(result, "match_context", None) or {}
 
     match_meta = _match_meta(result, lineups, minutes_before)
@@ -135,18 +216,21 @@ def build_match_evidence(
             "contract_scope": contract_scope,
             "direct_market_spec": spec_by_market[mid],
         }
+        if catalogue_proxy_spec_by_market[mid]:
+            item["catalogue_proxy_spec"] = catalogue_proxy_spec_by_market[mid]
         item["direct_odds"] = direct_compact
-        online = [] if direct else public_odds.online_odds(
-            intent, result.home, result.away, question=question,
-        )
+        online = online_by_market[mid]
         if online:
             item["online_odds_candidates"] = online
         simulator_estimate = None
-        if not direct and mid in simulator_by_market:
-            simulator_estimate = _compact_simulator_estimate(
-                simulator_by_market[mid], stage=stage,
-            )
+        if not direct and mid in simulator_compact_by_market:
+            simulator_estimate = simulator_compact_by_market[mid]
             item["simulator_estimate"] = simulator_estimate
+        live_proxy = proxy_by_market.get(str(mid))
+        blended_baseline = blend_by_market.get(str(mid))
+        if live_proxy and blended_baseline:
+            item["live_odds_proxy"] = live_proxy
+            item["blended_baseline"] = blended_baseline
         component_evidence = _compound_component_evidence(
             question, result.home, result.away, ctx,
             compound=(getattr(result, "compounds", {}) or {}).get(mid),
@@ -157,7 +241,7 @@ def build_match_evidence(
         if guidance:
             item["adjustment_guidance"] = guidance
         item["decision_basis"] = _decision_basis(
-            direct_compact, online, simulator_estimate,
+            direct_compact, online, blended_baseline, simulator_estimate,
         )
         item["subagent_brief"] = _subagent_brief(
             question_id=question_id,
@@ -386,15 +470,22 @@ def _compound_component_evidence(
         if not component_question or not intent:
             return None
         direct, spec = _direct_odds(intent, ctx)
+        catalogue_proxy_spec = spec if _provider_spec_is_proxy(spec) else None
+        if catalogue_proxy_spec:
+            direct = []
+            spec = None
         direct_compact = [_compact_direct_odd(obs) for obs in direct]
-        components.append({
+        component = {
             "label": label,
             "question": component_question,
             "intent": intent,
             "direct_market_spec": spec,
             "direct_odds": direct_compact,
-            "decision_basis": _decision_basis(direct_compact, [], None),
-        })
+            "decision_basis": _decision_basis(direct_compact, [], None, None),
+        }
+        if catalogue_proxy_spec:
+            component["catalogue_proxy_spec"] = catalogue_proxy_spec
+        components.append(component)
     return {
         "operator": operator,
         "components": components,
@@ -473,6 +564,7 @@ def _agent_workflow(question_evidence: list[dict]) -> dict:
 def _decision_basis(
     direct_odds: list[dict],
     online_candidates: list[dict],
+    blended_baseline: dict | None,
     simulator_estimate: dict | None,
 ) -> dict:
     """Summarize the intended starting point for a question."""
@@ -517,6 +609,26 @@ def _decision_basis(
             }
             basis["midpoint_pct"] = round(sum(values) / len(values), 2)
         return basis
+
+    blended_baseline = blended_baseline or {}
+    probability_pct = blended_baseline.get("probability_pct")
+    if probability_pct is not None:
+        basis = {
+            "primary": "live_odds_proxy_simulator_blend",
+            "probability_pct": probability_pct,
+            "book_count": blended_baseline.get("book_count"),
+            "probability_pct_range": blended_baseline.get(
+                "probability_pct_range"
+            ),
+            "instruction": (
+                "No exact provider or pre-collected online price is present. "
+                "Use blended_baseline.probability_pct as the required base. It "
+                "mixes a labeled live related-market residual with the exact-"
+                "target simulator; audit every proxy observation and never call "
+                "the helper contract direct odds."
+            ),
+        }
+        return {key: value for key, value in basis.items() if value is not None}
 
     simulator_estimate = simulator_estimate or {}
     baseline = simulator_estimate.get("calibrated_baseline") or {}
@@ -1617,6 +1729,18 @@ def _direct_contract_note(spec: dict | None) -> str:
     if spec.get("proxy_note"):
         return str(spec["proxy_note"])
     return "exact mapped contract"
+
+
+def _provider_spec_is_proxy(spec: dict | None) -> bool:
+    """Return whether a mapped provider contract differs from the target."""
+    return bool(
+        isinstance(spec, dict)
+        and (
+            spec.get("scope_proxy")
+            or spec.get("contract_proxy")
+            or spec.get("proxy_note")
+        )
+    )
 
 
 def _tag_observations(observations: Iterable[dict], role: str, why: str) -> list[dict]:

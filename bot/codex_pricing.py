@@ -221,6 +221,11 @@ def _validate_subagent_memos(
         for item in evidence.get("question_evidence", [])
         if isinstance(item, dict) and item.get("market_id") is not None
     }
+    evidence_by_market = {
+        item.get("market_id"): item
+        for item in evidence.get("question_evidence", [])
+        if isinstance(item, dict) and item.get("market_id") is not None
+    }
     market_audits = {
         item.get("market_id"): item for item in markets
         if isinstance(item, dict) and item.get("market_id") is not None
@@ -270,6 +275,30 @@ def _validate_subagent_memos(
                 return False, f"Codex pricing subagent_memos.{section} has wrong question_id"
             if section == "base_pricing" and not str(row.get("method") or "").strip():
                 return False, "Codex pricing subagent_memos.base_pricing missing method"
+            if section == "base_pricing":
+                primary = str(
+                    ((evidence_by_market.get(mid, {}).get("decision_basis") or {})
+                     .get("primary") or "")
+                )
+                if (
+                    primary == "live_odds_proxy_simulator_blend"
+                    and row.get("method") not in {
+                        "proxy_simulator_blend", "online_odds",
+                    }
+                ):
+                    return False, (
+                        "Codex pricing blend base memo must use method="
+                        "proxy_simulator_blend or an audited online_odds override"
+                    )
+                if (
+                    primary == "live_odds_proxy_simulator_blend"
+                    and row.get("method") == "online_odds"
+                    and not _has_audited_exact_online_base(audit, parsed)
+                ):
+                    return False, (
+                        "Codex pricing online_odds override lacks an audited exact "
+                        "online base"
+                    )
         if seen != expected:
             return False, (
                 f"Codex pricing subagent_memos.{section} must exactly match evidence markets"
@@ -334,6 +363,26 @@ def validate_market_audit(
     )
     if not ok:
         return False, reason, 0
+    question_evidence = question_evidence or {}
+    decision_primary = str(
+        ((question_evidence.get("decision_basis") or {}).get("primary") or "")
+    )
+    if decision_primary == "live_odds_proxy_simulator_blend":
+        blend_probability = (
+            (question_evidence.get("blended_baseline") or {}).get("probability_pct")
+        )
+        expected_base = _rounded_probability_pct(blend_probability)
+        if expected_base is None:
+            return False, "Codex pricing blend evidence is missing probability_pct", 0
+        if (
+            base_probability_int != expected_base
+            and not _has_audited_exact_online_base(audit, base_probability_int)
+        ):
+            return (
+                False,
+                "Codex pricing base_probability_int must equal rounded blended_baseline",
+                0,
+            )
     for field in REQUIRED_AUDIT_FIELDS:
         value = audit.get(field)
         if value is None:
@@ -345,7 +394,7 @@ def validate_market_audit(
         if field == "sources" and not _valid_sources(value):
             return False, "Codex pricing sources must be a non-empty list", 0
     ok, reason = _validate_language_adjustment(
-        audit, probability_int, base_probability_int, question_evidence or {},
+        audit, probability_int, base_probability_int, question_evidence,
     )
     if not ok:
         return False, reason, 0
@@ -382,7 +431,24 @@ def validate_market_audit(
             "Codex pricing ignored one or more pre-collected online odds candidates",
             0,
         )
+    proxy = question_evidence.get("live_odds_proxy") or {}
+    if proxy and not _audit_accounts_for_proxy_observations(audit, proxy):
+        return (
+            False,
+            "Codex pricing did not audit every live-odds proxy observation",
+            0,
+        )
     return True, "", probability_int
+
+
+def _rounded_probability_pct(value) -> int | None:
+    """Round a finite percentage to the response's integer 1..99 contract."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    numeric = float(value)
+    if not math.isfinite(numeric):
+        return None
+    return min(99, max(1, int(math.floor(numeric + 0.5))))
 
 
 def _probability_int(value, field: str) -> tuple[bool, str, int]:
@@ -470,19 +536,64 @@ def _validate_language_adjustment(
     if not isinstance(adjustment.get("additional_research"), list):
         return False, "Codex pricing language_adjustment additional_research must be a list"
 
-    cap = _movement_cap(question_evidence)
+    cap = _movement_cap(question_evidence, audit)
     if move_points > cap:
         return False, f"Codex pricing language_adjustment move exceeds {cap} point cap"
     return True, ""
 
 
-def _movement_cap(question_evidence: dict) -> int:
+def _movement_cap(question_evidence: dict, audit: dict | None = None) -> int:
     primary = ((question_evidence.get("decision_basis") or {}).get("primary") or "")
     if primary == "provided_direct_odds" or question_evidence.get("direct_odds"):
         return 5
     if primary == "pre_collected_online_odds" or question_evidence.get("online_odds_candidates"):
         return 6
+    if _has_audited_exact_online_base(audit or {}, None):
+        return 6
+    if primary == "live_odds_proxy_simulator_blend":
+        return 8
     return 10
+
+
+def _has_audited_exact_online_base(
+    audit: dict,
+    base_probability_int: int | None,
+) -> bool:
+    """Recognize a structured, converted exact-web price used as the base.
+
+    This is the only allowed override of a prepared proxy/simulator baseline.
+    Scope correctness still belongs in the public audit, but the validator
+    requires a URL, quote, conversion, explicit direct use, and a base within
+    the retained exact-price spread.
+    """
+    probabilities = []
+    for row in audit.get("online_odds_found") or []:
+        if not isinstance(row, dict):
+            continue
+        how_used = str(row.get("how_used") or "").strip().lower()
+        if "direct" not in how_used:
+            continue
+        if not str(row.get("url") or "").strip():
+            continue
+        if not str(row.get("quoted_price_or_odds") or "").strip():
+            continue
+        if not str(row.get("conversion_method") or "").strip():
+            continue
+        value = row.get("converted_probability_pct")
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        probability = float(value)
+        if math.isfinite(probability) and 0.0 < probability < 100.0:
+            probabilities.append(probability)
+    if not probabilities:
+        return False
+    if base_probability_int is None:
+        return True
+    return (
+        math.floor(min(probabilities))
+        <= base_probability_int
+        <= math.ceil(max(probabilities))
+    )
 
 
 def _audit_uses_all_online_candidates(audit: dict, candidates: list[dict]) -> bool:
@@ -497,6 +608,53 @@ def _audit_uses_all_online_candidates(audit: dict, candidates: list[dict]) -> bo
         tokens = [token for token in (bookmaker, url, contract) if token]
         if not tokens or not any(token in text for token in tokens):
             return False
+    return True
+
+
+def _audit_accounts_for_proxy_observations(audit: dict, proxy: dict) -> bool:
+    """Require every retained proxy book to be used or explicitly downweighted."""
+    observations = []
+    components = proxy.get("proxy_contracts") or proxy.get("components") or []
+    for component in components:
+        if isinstance(component, dict):
+            observations.extend(
+                item for item in (component.get("observations") or [])
+                if isinstance(item, dict)
+            )
+    if not observations:
+        observations = [
+            item for item in (proxy.get("observations") or [])
+            if isinstance(item, dict)
+        ]
+    if not observations:
+        return False
+
+    used = [
+        item for item in (audit.get("provided_odds_used") or [])
+        if isinstance(item, dict)
+    ]
+    ignored_text = json.dumps(
+        audit.get("ignored_or_downweighted_evidence") or [],
+        ensure_ascii=False,
+    ).lower()
+    for observation in observations:
+        bookmaker = str(observation.get("bookmaker") or "").strip().lower()
+        market_key = str(observation.get("market_key") or "").strip().lower()
+        source = str(observation.get("source") or "").strip().lower()
+        accounted_for = any(
+            str(item.get("how_used") or "").strip().lower()
+            == "live_odds_proxy"
+            and (not bookmaker or str(item.get("bookmaker") or "").strip().lower() == bookmaker)
+            and (not market_key or str(item.get("market_key") or "").strip().lower() == market_key)
+            and (not source or str(item.get("source") or "").strip().lower() == source)
+            for item in used
+        )
+        if accounted_for:
+            continue
+        tokens = [token for token in (bookmaker, market_key, source) if token]
+        if tokens and all(token in ignored_text for token in tokens):
+            continue
+        return False
     return True
 
 
@@ -617,6 +775,34 @@ def _markdown_report(
             lines.append(
                 f"- pre-collected online odds candidates: "
                 f"{len(qe['online_odds_candidates'])}"
+            )
+        proxy = qe.get("live_odds_proxy") or {}
+        blend = qe.get("blended_baseline") or {}
+        if proxy:
+            components = proxy.get("proxy_contracts") or proxy.get("components") or []
+            observations = sum(
+                len(component.get("observations") or [])
+                for component in components if isinstance(component, dict)
+            )
+            if not observations:
+                observations = len(proxy.get("observations") or [])
+            component_count = len(components) or bool(proxy.get("helper_contract"))
+            lines.append(
+                "- live-odds proxy: "
+                f"relation={proxy.get('relation_type') or proxy.get('recipe_id')} "
+                f"components={int(component_count)} observations={observations}; "
+                "different contract, not direct odds"
+            )
+        if blend:
+            spread = blend.get("probability_pct_range") or {}
+            spread_text = (
+                f" range={spread.get('min')}-{spread.get('max')}%"
+                if spread else ""
+            )
+            lines.append(
+                f"- proxy/simulator blended baseline: "
+                f"{blend.get('probability_pct')}%{spread_text}; "
+                f"formula={blend.get('formula')}"
             )
         est = qe.get("simulator_estimate")
         if est is None:

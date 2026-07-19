@@ -21,12 +21,12 @@ SportPredict match + questions
               └──────── versioned local registry ◄┘
               │
               ▼
- exact provider contracts + per-book de-vigging
+ catalogue-first exact provider contracts + per-book de-vigging
               │
-              ├── API-Football odds and match context
-              ├── The Odds API exact markets
-              ├── public odds candidates
-              └── bundled learned simulator context
+              ├── exact API-Football / Odds API contract
+              ├── exact cached public-web candidate
+              ├── disclosed live-odds proxy + simulator blend
+              └── simulator-only / researched fallback
               │
               ▼
  immutable run directory: evidence + prompt + manifest hashes
@@ -164,6 +164,17 @@ teams. Seeing the same wording later is deterministic. Conflicting answers fail
 closed. A recurring contract should eventually be promoted into a tracked rule
 in `bot/parser.py` with tests; runtime entries remain provenance for old runs.
 
+Intent resolution is semantic only; a response cannot inject provider bet IDs,
+regular expressions, or executable fallback logic. For every unfamiliar
+contract, inspect `soccer_live_odds_market_catalog.pdf` first and promote an
+exact pre-match mapping only when period, subject, threshold, and settlement all
+match. Live/in-play bet IDs use a separate namespace and are not pre-match
+direct evidence. If no coherent exact catalogue contract is present, the
+deterministic order is exact cached public-web odds, then an allowlisted
+related-market proxy mixed with the exact-contract simulator, then a disclosed
+one-source or researched fallback. Near matches and overlapping selections
+never enter `direct_odds`.
+
 ### 4. Run Codex research and pricing
 
 Give Codex the generated `task.md`. It should read the run-local prompt and
@@ -180,6 +191,8 @@ integer probabilities, and complete market audits. The validator rejects:
 - unexplained movement, invalid confidence, or movement beyond evidence-specific
   caps;
 - silent omission of supplied direct odds or pre-collected online candidates;
+- replacing a supplied proxy/simulator blend with an unaudited base, or omitting
+  one of its retained proxy observations;
 - incomplete public reasoning or sources.
 
 ### 5. Submit and verify once
@@ -214,6 +227,14 @@ performed over a coherent outcome set from the same bookmaker and contract.
 Compound evidence uses separately priced components and an explicit correlation
 assumption; a marginal line is never presented as an exact compound price.
 
+`bot/live_odds_proxy.py` owns the small allowlist of related-contract recipes.
+It uses only already-fetched pre-match API-Football observations. When a target
+has no exact price, it compares each live proxy component with the same
+component from the simulator, transfers a capped residual on the log-odds
+scale, and mixes that residual with the exact-target simulator baseline. The
+evidence retains the recipe, weight, companion prices, every bookmaker, and the
+resulting range; it labels the result non-direct throughout.
+
 Provider matches are linked by kickoff and both teams, including when only one
 fixture happens to share the kickoff. A team mismatch fails closed.
 
@@ -226,6 +247,9 @@ fixture happens to share the kickoff. A team mismatch fails closed.
 - explicit settlement scope, especially regulation versus a knockout match that
   can include extra time;
 - pre-collected public odds candidates for unsupported provider contracts;
+- an allowlisted non-direct live-odds proxy and deterministic proxy/simulator
+  blend when exact provider and public-web prices are absent and both inputs
+  exist;
 - deterministic compound components when available;
 - lineups, injuries, team/player form, referee, venue, and provider-error
   provenance;
@@ -234,9 +258,14 @@ fixture happens to share the kickoff. A team mismatch fails closed.
 - exact-contract empirical rates and leakage-safe family Brier comparisons;
 - stable question IDs, decision-basis instructions, and Codex subagent briefs.
 
-Simulator estimates are labeled context, never hidden final anchors. Unsupported
-questions remain explicit research tasks. Direct odds have priority and cannot
-be silently ignored in the final audit.
+Simulator estimates and proxy recipes are labeled and retained, never hidden
+anchors. Unsupported questions remain explicit research tasks. Exact direct
+odds have priority. When a blend is primary, the response validator requires
+the rounded blend as the audited base and requires every retained proxy book to
+be used or explicitly downweighted. The sole override is a newly researched
+exact online price with a retained URL, quote, conversion, direct-use label, and
+an integer base inside its price spread; that path receives the tighter online
+movement cap.
 
 ## Ledger and settlement
 
