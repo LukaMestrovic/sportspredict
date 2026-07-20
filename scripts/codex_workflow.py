@@ -770,7 +770,7 @@ def _parse_kickoff(opening_time: str) -> datetime:
 
 def _host_path(pathish) -> str:
     path = Path(str(pathish))
-    host_root = os.environ.get("SPLLM_HOST_ROOT")
+    host_root = os.environ.get("SPORTSPREDICT_HOST_ROOT")
     if not host_root:
         return str(path)
     try:
@@ -782,7 +782,7 @@ def _host_path(pathish) -> str:
 
 def _container_path(pathish) -> str:
     path = Path(str(pathish))
-    host_root = os.environ.get("SPLLM_HOST_ROOT")
+    host_root = os.environ.get("SPORTSPREDICT_HOST_ROOT")
     root = Path(__file__).resolve().parent.parent
     if host_root:
         try:

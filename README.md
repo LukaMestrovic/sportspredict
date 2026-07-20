@@ -1,4 +1,4 @@
-# sportspredict-llm
+# sportspredict
 
 A production workflow for pricing FIFA World Cup 2026 questions in the
 SportPredict Probability Cup. The repository builds deterministic bookmaker and
@@ -323,7 +323,7 @@ crontab -l
 Deployment refuses a dirty working tree so the recorded Git commit exactly
 matches the image source. It then:
 
-1. builds `sportspredict-llm:<commit>-<UTC timestamp>` plus the `v1` alias;
+1. builds `sportspredict:<commit>-<UTC timestamp>` plus the `v1` alias;
 2. smoke-tests the real bundled learned simulator and fitted artifacts without
    secrets;
 3. runs a read-only live `manual status --next` container smoke test;

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# Immutable image for the sportspredict-llm deployed runner. The CURRENT
+# Immutable image for the sportspredict deployed runner. The CURRENT
 # source is baked in, so once deployed the running bot is a frozen snapshot:
 # editing the working tree never affects a live manual/settle run until the next
 # scripts/deploy.sh rebuild. Secrets are NEVER baked — the API keys are passed

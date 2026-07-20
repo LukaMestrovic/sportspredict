@@ -16,7 +16,7 @@ class FIFA:
         self.s = requests.Session()
         self.s.headers.update({
             "Accept": "application/json",
-            "User-Agent": "sportspredict-llm/1.0",
+            "User-Agent": "sportspredict/1.0",
         })
 
     def _get(self, path: str, **params) -> dict:

@@ -3,13 +3,13 @@
 # installs the settlement cron schedule. Editing the working tree never affects
 # a live manual or settlement run until you re-run this script.
 # Re-running is safe and idempotent — it rebuilds the image and rewrites only the
-# sportspredict-llm cron block.
+# sportspredict cron block.
 #
 #   scripts/deploy.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
-IMAGE="${SPLLM_IMAGE:-sportspredict-llm}"
+IMAGE="${SPORTSPREDICT_IMAGE:-sportspredict}"
 
 # The image tag and deployment metadata name a Git commit, so refuse to build
 # source that is not exactly that commit. Ignored retained cache/log state is
@@ -21,8 +21,8 @@ if ! git diff --quiet || ! git diff --cached --quiet \
 fi
 COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-TAG="${SPLLM_TAG:-${COMMIT}-${STAMP}}"
-ALIAS_TAG="${SPLLM_ALIAS_TAG:-v1}"
+TAG="${SPORTSPREDICT_TAG:-${COMMIT}-${STAMP}}"
+ALIAS_TAG="${SPORTSPREDICT_ALIAS_TAG:-v1}"
 
 # 1) Require the three live provider keys. Values are loaded by reference and
 #    are never passed in argv or copied into the image.
@@ -89,7 +89,7 @@ echo ">> smoke-test image (manual status, no submit) ..."
 docker run -i --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -e SPORTSPREDICT_KEY -e APIFOOTBALL_KEY -e ODDS_API_KEY \
   -e ODDS_REGIONS -e SPORTSPREDICT_SIMULATOR_N_SIMS \
-  -e SPLLM_HOST_ROOT="$ROOT" \
+  -e SPORTSPREDICT_HOST_ROOT="$ROOT" \
   -v "$ROOT/cache:/app/cache" -v "$ROOT/logs:/app/logs" \
   "$IMAGE:$TAG" manual status --next
 
@@ -137,7 +137,7 @@ mkdir -p "\$ROOT/cache" "\$ROOT/logs"
 exec docker run -i --rm --user "\$(id -u):\$(id -g)" -e HOME=/tmp \\
   -e SPORTSPREDICT_KEY -e APIFOOTBALL_KEY -e ODDS_API_KEY \\
   -e ODDS_REGIONS -e SPORTSPREDICT_SIMULATOR_N_SIMS \\
-  -e SPLLM_HOST_ROOT="\$ROOT" \\
+  -e SPORTSPREDICT_HOST_ROOT="\$ROOT" \\
   -v "\$ROOT/cache:/app/cache" \\
   -v "\$ROOT/logs:/app/logs" \\
   "\$IMAGE:\$TAG" "\$@"
@@ -150,10 +150,10 @@ mv -f "$RUNNER_TMP" "$DEPLOYED_RUNNER"
 mv -f "$CURRENT_TMP" "$DEPLOYED_DIR/current.json"
 trap - EXIT
 
-# 6) Install the cron schedule (idempotent: replace any sportspredict-llm block).
+# 6) Install the cron schedule (idempotent: replace any sportspredict block).
 echo ">> installing cron schedule ..."
-begin="# >>> sportspredict-llm v1 >>>"
-end="# <<< sportspredict-llm v1 <<<"
+begin="# >>> sportspredict v1 >>>"
+end="# <<< sportspredict v1 <<<"
 block="$(cat <<EOF
 $begin
 # Every five minutes: settle explicit SportPredict outcomes, extend the
@@ -162,8 +162,8 @@ $begin
 $end
 EOF
 )"
-# Strip ANY existing versioned sportspredict-llm block so a tag bump never leaves two running.
-( crontab -l 2>/dev/null | sed '/# >>> sportspredict-llm v.* >>>/,/# <<< sportspredict-llm v.* <<</d'; echo "$block" ) | crontab -
+# Strip ANY existing versioned sportspredict block so a tag bump never leaves two running.
+( crontab -l 2>/dev/null | sed '/# >>> sportspredict[^ ]* v.* >>>/,/# <<< sportspredict[^ ]* v.* <<</d'; echo "$block" ) | crontab -
 
 echo ">> deployed: image $IMAGE:$TAG (alias $IMAGE:$ALIAS_TAG), settlement cron installed."
 echo "   logs:   tail -f $ROOT/logs/settle.log"
