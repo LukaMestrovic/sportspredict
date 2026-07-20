@@ -2,7 +2,7 @@
 .env
 .env.*
 !.env.example
-.claude/
+/.claude/
 
 # Python
 __pycache__/
@@ -14,20 +14,10 @@ venv/
 # Local data / scratch
 /tmp/
 *.log
-out/
-# historical generated prediction review snapshots
-logs/predictions_*.json
-logs/predictions_*.md
-# historical cron submission audit trail (runtime, per-machine)
-logs/cron_submissions.jsonl
-# durable local prediction ledger
-logs/prediction_ledger.sqlite3*
+/out/
 
 # paid odds-api cache
-cache/
+/cache/
 
-logs/calibration_runs/
-logs/llm_pricing_runs/
-logs/codex_runs/
-logs/manual_submissions/
-logs/*.log
+# Durable runtime state: run audits, submission history, and the ledger.
+/logs/
