@@ -86,12 +86,24 @@ print("simulator bridge OK:", {k: (v["family"], v["contract_key"], v["probabilit
 # 4) Smoke-test the image without submitting: it must reach SportPredict and
 #    report the next match. Keys are read from .env by reference, never argv.
 echo ">> smoke-test image (manual status, no submit) ..."
-docker run -i --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+STATUS_TMP="$(mktemp)"
+if docker run -i --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -e SPORTSPREDICT_KEY -e APIFOOTBALL_KEY -e ODDS_API_KEY \
   -e ODDS_REGIONS -e SPORTSPREDICT_SIMULATOR_N_SIMS \
   -e SPORTSPREDICT_HOST_ROOT="$ROOT" \
   -v "$ROOT/cache:/app/cache" -v "$ROOT/logs:/app/logs" \
-  "$IMAGE:$TAG" manual status --next
+  "$IMAGE:$TAG" manual status --next >"$STATUS_TMP" 2>&1; then
+  cat "$STATUS_TMP"
+else
+  status=$?
+  cat "$STATUS_TMP"
+  if ! grep -Fxq "no upcoming open matches" "$STATUS_TMP"; then
+    rm -f "$STATUS_TMP"
+    exit "$status"
+  fi
+  echo ">> no upcoming open matches; continuing deployment"
+fi
+rm -f "$STATUS_TMP"
 
 # 5) Write the active deployed runner. Cron and manual submissions use this
 #    untracked script, pinned to the immutable image tag above.
